@@ -1,0 +1,721 @@
+// =====================================================================
+// Office Automation System — Prisma Schema (DRAFT v0.1)
+// Prisma 7 · PostgreSQL
+// Referensi: docs/02-TECH-SPEC.md
+// Catatan:
+//  - Semua nominal uang dalam IDR tanpa desimal -> BigInt.
+//    Konversi ke number/string sebelum dikirim ke Client Component.
+//  - Tanggal tanpa jam -> @db.Date. Zona waktu aplikasi: Asia/Jakarta.
+// =====================================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  // URL koneksi diatur di prisma.config.ts (Prisma 7)
+}
+
+// ---------------------------------------------------------------------
+// ENUMS
+// ---------------------------------------------------------------------
+
+enum Role {
+  ADMIN // lihat & kelola semua data + Setting
+  STAFF // hanya data sendiri; divisi (Sales/Engineer/Umum) dari Employee.division
+}
+
+enum Division {
+  SALES
+  ENGINEER
+  UMUM // HR / Finance / GA (mis. Ci Ika, Bu Devi)
+  DIRECTOR // Direktur: Ko Rudy, Ko Leonard
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  RESIGNED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  DIVORCED
+  WIDOWED
+}
+
+enum FamilyRelation {
+  SPOUSE
+  CHILD
+}
+
+enum DocumentOwnerType {
+  EMPLOYEE
+  FAMILY
+  CANDIDATE
+}
+
+enum DocumentType {
+  KTP
+  KK
+  NPWP
+  PAS_FOTO
+  SIM
+  BPJS_TK
+  BPJS_KES
+  IJAZAH_TRANSKRIP
+  SKCK
+  SURAT_NIKAH_CERAI
+  KTP_PASANGAN
+  AKTE_KELAHIRAN_ANAK
+  OTHER
+}
+
+enum CertificateType {
+  PROFESSIONAL
+  IJAZAH
+}
+
+enum AssetCategory {
+  DEMO_UNIT
+  BACKUP_UNIT
+  INVENTORY
+}
+
+enum PaymentMethod {
+  CASH
+  CC
+}
+
+enum ProjectType {
+  RUNNING
+  NEW_ACQUISITION
+}
+
+enum CandidateStatus {
+  APPLIED
+  INTERVIEW
+  ACCEPTED
+  REJECTED
+}
+
+enum RequestStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED // disiapkan; alur reject ditunda (OI-05)
+}
+
+enum ApprovalModule {
+  REIMBURSE
+  LEAVE
+  HEALTH
+  EXPENSE
+  REVENUE
+}
+
+enum FlowScope {
+  REGULAR
+  FALLBACK // dipakai jika semua step ter-skip (kecuali flow autoApproveWhenSkipped)
+}
+
+enum StepStatus {
+  WAITING
+  PENDING
+  APPROVED
+  SKIPPED
+  REJECTED
+}
+
+enum EmailStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+// ---------------------------------------------------------------------
+// AUTH
+// ---------------------------------------------------------------------
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  role         Role
+  isActive     Boolean   @default(true)
+  employeeId   String?   @unique
+  employee     Employee? @relation(fields: [employeeId], references: [id])
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  approverOfSteps  ApprovalStepApprover[]
+  approvalRequests ApprovalRequest[]      @relation("RequestRequester")
+  actedSteps       ApprovalRequestStep[]  @relation("StepActor")
+  auditLogs        AuditLog[]
+  uploadedDocs     Document[]             @relation("DocUploader")
+  attendanceFixes  Attendance[]           @relation("AttendanceCorrector")
+}
+
+// ---------------------------------------------------------------------
+// KARYAWAN
+// ---------------------------------------------------------------------
+
+model Employee {
+  id            String         @id @default(cuid())
+  // Admin membuat record minimal (nama, email, divisi, jabatan, tgl masuk, role);
+  // data diri lainnya dilengkapi staf sendiri, jadi boleh kosong dulu.
+  employeeNo    String?        @unique // nomor induk karyawan internal
+  nik           String?        @unique @db.VarChar(16) // KTP, 16 digit; unik bila terisi
+  kkNo          String?        @db.VarChar(16)
+  fullName      String
+  birthPlace    String?
+  birthDate     DateTime?      @db.Date
+  gender        Gender?
+  maritalStatus MaritalStatus  @default(SINGLE)
+  address       String?
+  phone         String? // format +62...
+  email         String         @unique
+  npwp          String?        @db.VarChar(16) // 15/16 digit, tanpa tanda baca
+  bpjsTkNo      String?
+  bpjsKesNo     String?
+  division      Division
+  position      String // jabatan
+  level         String? // level/grade
+  status        EmployeeStatus @default(ACTIVE)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  user             User?
+  periods          EmploymentPeriod[]
+  family           FamilyMember[]
+  documents        Document[]
+  certificates     Certificate[]
+  assetAssignments AssetAssignment[]
+  reimbursements   Reimbursement[]
+  leaveBalances    LeaveBalance[]
+  leaveRequests    LeaveRequest[]
+  healthPlafonds   HealthPlafond[]
+  healthClaims     HealthClaim[]
+  attendances      Attendance[]
+  fromCandidate    Candidate?
+
+  @@index([status, division])
+}
+
+model EmploymentPeriod {
+  id         String    @id @default(cuid())
+  employeeId String
+  employee   Employee  @relation(fields: [employeeId], references: [id])
+  startDate  DateTime  @db.Date // tgl masuk
+  endDate    DateTime? @db.Date // tgl keluar (null = masih aktif)
+  endReason  String? // mis. "RESIGN"
+  note       String?
+  createdAt  DateTime  @default(now())
+
+  @@index([employeeId, startDate])
+}
+
+model FamilyMember {
+  id         String         @id @default(cuid())
+  employeeId String
+  employee   Employee       @relation(fields: [employeeId], references: [id])
+  relation   FamilyRelation
+  fullName   String
+  nik        String?        @db.VarChar(16)
+  birthDate  DateTime?      @db.Date
+  documents  Document[]
+  createdAt  DateTime       @default(now())
+  deletedAt  DateTime? // soft delete: data tidak dihapus permanen (NFR v1.14)
+}
+
+model Document {
+  id             String            @id @default(cuid())
+  ownerType      DocumentOwnerType
+  employeeId     String?
+  employee       Employee?         @relation(fields: [employeeId], references: [id])
+  familyMemberId String?
+  familyMember   FamilyMember?     @relation(fields: [familyMemberId], references: [id])
+  candidateId    String?
+  candidate      Candidate?        @relation(fields: [candidateId], references: [id])
+  docType        DocumentType
+  fileKey        String // path/key di storage (nama UUID)
+  fileName       String // nama asli
+  mimeType       String
+  sizeBytes      Int
+  uploadedById   String
+  uploadedBy     User              @relation("DocUploader", fields: [uploadedById], references: [id])
+  createdAt      DateTime          @default(now())
+  deletedAt      DateTime? // soft delete: data tidak dihapus permanen (NFR v1.14)
+
+  @@index([employeeId, docType])
+  @@index([candidateId])
+}
+
+model Certificate {
+  id         String          @id @default(cuid())
+  employeeId String
+  employee   Employee        @relation(fields: [employeeId], references: [id])
+  type       CertificateType
+  name       String
+  issuer     String?
+  number     String?
+  startDate  DateTime        @db.Date
+  endDate    DateTime?       @db.Date // null = berlaku seumur hidup
+  fileKey    String?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  deletedAt  DateTime? // soft delete: data tidak dihapus permanen (NFR v1.14)
+
+  @@index([endDate])
+}
+
+// ---------------------------------------------------------------------
+// INVENTORY / DEMO UNIT
+// ---------------------------------------------------------------------
+
+model Asset {
+  id            String        @id @default(cuid())
+  deviceName    String
+  serialNo      String        @unique // uppercase
+  category      AssetCategory
+  supportStart  DateTime?     @db.Date
+  supportEnd    DateTime?     @db.Date
+  warrantyStart DateTime?     @db.Date
+  warrantyEnd   DateTime?     @db.Date
+  warrantyNote  String?
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  assignments AssetAssignment[]
+  deletedAt   DateTime? // soft delete: data tidak dihapus permanen (NFR v1.14)
+}
+
+model AssetAssignment {
+  id         String    @id @default(cuid())
+  assetId    String
+  asset      Asset     @relation(fields: [assetId], references: [id])
+  employeeId String
+  employee   Employee  @relation(fields: [employeeId], references: [id])
+  assignedAt DateTime  @db.Date
+  returnedAt DateTime? @db.Date
+  note       String?
+
+  @@index([assetId, returnedAt])
+}
+
+// ---------------------------------------------------------------------
+// CUSTOMER & PROJECT
+// ---------------------------------------------------------------------
+
+model Customer {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  projects  Project[]
+  createdAt DateTime  @default(now())
+
+  reimbursementItems ReimbursementItem[]
+  deletedAt          DateTime? // soft delete: data tidak dihapus permanen (NFR v1.14)
+}
+
+model Project {
+  id         String      @id @default(cuid())
+  name       String
+  customerId String
+  customer   Customer    @relation(fields: [customerId], references: [id])
+  type       ProjectType
+  isActive   Boolean     @default(true)
+  createdAt  DateTime    @default(now())
+
+  reimbursementItems ReimbursementItem[]
+  expenses           ProjectExpense[]
+  revenues           ProjectRevenue[]
+
+  @@unique([customerId, name])
+}
+
+model ProjectExpense {
+  id            String        @id @default(cuid())
+  number        String        @unique
+  projectId     String
+  project       Project       @relation(fields: [projectId], references: [id])
+  date          DateTime      @db.Date
+  description   String
+  paymentMethod PaymentMethod
+  amount        BigInt
+  status        RequestStatus @default(DRAFT)
+  createdById   String
+  createdAt     DateTime      @default(now())
+}
+
+// TODO(OI-06): detail field revenue belum ditentukan
+model ProjectRevenue {
+  id          String        @id @default(cuid())
+  number      String        @unique
+  projectId   String
+  project     Project       @relation(fields: [projectId], references: [id])
+  date        DateTime      @db.Date
+  description String
+  amount      BigInt
+  status      RequestStatus @default(DRAFT)
+  createdById String
+  createdAt   DateTime      @default(now())
+}
+
+// ---------------------------------------------------------------------
+// REIMBURSEMENT
+// ---------------------------------------------------------------------
+
+model ReimburseType {
+  id        String     @id @default(cuid())
+  code      String     @unique // ENTERTAINMENT, MEALS, GIFT, ACCOMMODATION, TRANSPORT, ALLOWANCE
+  name      String
+  divisions Division[] // divisi yang boleh memakai tipe ini (dropdown difilter dengan `has`)
+  isActive  Boolean    @default(true)
+
+  items ReimbursementItem[]
+}
+
+model Reimbursement {
+  id          String        @id @default(cuid())
+  number      String        @unique // RMB/YYYY/MM/NNNN
+  employeeId  String
+  employee    Employee      @relation(fields: [employeeId], references: [id])
+  division    Division // snapshot saat submit
+  status      RequestStatus @default(DRAFT)
+  totalCash   BigInt        @default(0)
+  totalCc     BigInt        @default(0)
+  total       BigInt        @default(0)
+  note        String?
+  submittedAt DateTime?
+  approvedAt  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  items     ReimbursementItem[]
+  deletedAt DateTime? // soft delete: data tidak dihapus permanen (NFR v1.14)
+
+  @@index([employeeId, status])
+}
+
+model ReimbursementItem {
+  id              String        @id @default(cuid())
+  reimbursementId String
+  reimbursement   Reimbursement @relation(fields: [reimbursementId], references: [id], onDelete: Cascade)
+  date            DateTime      @db.Date
+  customerId      String?
+  customer        Customer?     @relation(fields: [customerId], references: [id])
+  projectId       String?
+  project         Project?      @relation(fields: [projectId], references: [id])
+  activity        String // Activities
+  participants    String // Names – Position (multi-baris)
+  location        String
+  typeId          String
+  type            ReimburseType @relation(fields: [typeId], references: [id])
+  hasReceipt      Boolean
+  paymentMethod   PaymentMethod
+  amount          BigInt
+  receiptFileKey  String?
+  receiptFileName String?
+
+  @@index([projectId])
+}
+
+// ---------------------------------------------------------------------
+// CUTI
+// ---------------------------------------------------------------------
+
+model LeavePolicy {
+  id       String @id @default(cuid())
+  minYears Int // masa kerja (tahun penuh) minimal, inklusif
+  maxYears Int? // inklusif; null = tanpa batas atas
+  days     Int
+}
+
+model LeaveBalance {
+  id          String   @id @default(cuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id])
+  periodStart DateTime @db.Date // 1 Jan tahun cuti (atau tanggal masuk/rehire di tahun itu) — periode = tahun kalender
+  periodEnd   DateTime @db.Date
+  entitlement Int // jatah dari LeavePolicy
+  carriedOver Int      @default(0) // maks 3 (AppSetting leave.maxCarryOver)
+  used        Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@unique([employeeId, periodStart])
+}
+
+model LeaveRequest {
+  id          String        @id @default(cuid())
+  number      String        @unique // LV/YYYY/MM/NNNN
+  employeeId  String
+  employee    Employee      @relation(fields: [employeeId], references: [id])
+  startDate   DateTime      @db.Date
+  endDate     DateTime      @db.Date
+  workingDays Int // tanpa Sabtu/Minggu/Holiday
+  reason      String
+  status      RequestStatus @default(DRAFT)
+  submittedAt DateTime?
+  approvedAt  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([employeeId, status])
+}
+
+model Holiday {
+  id         String    @id @default(cuid())
+  date       DateTime  @unique @db.Date
+  name       String
+  isNational Boolean   @default(true) // false = tambahan manual
+  deletedAt  DateTime? // soft delete: data tidak dihapus permanen (NFR v1.14)
+}
+
+// ---------------------------------------------------------------------
+// KESEHATAN
+// ---------------------------------------------------------------------
+
+model HealthCategory {
+  id       String  @id @default(cuid())
+  name     String  @unique // Rawat jalan dokter, Vitamin, Kacamata
+  isActive Boolean @default(true)
+
+  claims HealthClaim[]
+}
+
+model HealthPlafond {
+  id           String   @id @default(cuid())
+  employeeId   String
+  employee     Employee @relation(fields: [employeeId], references: [id])
+  year         Int
+  annualAmount BigInt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([employeeId, year])
+}
+
+model HealthClaim {
+  id              String         @id @default(cuid())
+  number          String         @unique // HC/YYYY/MM/NNNN
+  employeeId      String
+  employee        Employee       @relation(fields: [employeeId], references: [id])
+  categoryId      String
+  category        HealthCategory @relation(fields: [categoryId], references: [id])
+  claimDate       DateTime       @db.Date
+  amount          BigInt
+  invoiceFileKey  String
+  invoiceFileName String
+  note            String?
+  status          RequestStatus  @default(DRAFT)
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+  createdAt       DateTime       @default(now())
+
+  payouts        HealthPayout[]
+  /// Nominal disetujui approver (≤ nominal diajukan `amount`); null selama belum disetujui.
+  approvedAmount BigInt?
+
+  @@index([employeeId, status])
+}
+
+model HealthPayout {
+  id          String      @id @default(cuid())
+  claimId     String
+  claim       HealthClaim @relation(fields: [claimId], references: [id])
+  employeeId  String // denormalisasi untuk hitung pemakaian per bulan
+  periodMonth DateTime    @db.Date // tanggal 1 bulan pembayaran
+  amount      BigInt
+  paidAt      DateTime?
+
+  @@index([employeeId, periodMonth])
+}
+
+// ---------------------------------------------------------------------
+// KANDIDAT
+// ---------------------------------------------------------------------
+
+model Candidate {
+  id                  String          @id @default(cuid())
+  fullName            String
+  nik                 String?         @db.VarChar(16)
+  email               String
+  phone               String?
+  appliedPosition     String
+  status              CandidateStatus @default(APPLIED)
+  notes               String?
+  convertedEmployeeId String?         @unique
+  convertedEmployee   Employee?       @relation(fields: [convertedEmployeeId], references: [id])
+  documents           Document[]
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  deletedAt           DateTime? // soft delete: data tidak dihapus permanen (NFR v1.14)
+}
+
+// ---------------------------------------------------------------------
+// APPROVAL ENGINE
+// ---------------------------------------------------------------------
+
+model ApprovalFlow {
+  id                     String             @id @default(cuid())
+  module                 ApprovalModule?
+  division               Division? // null = berlaku untuk semua divisi
+  scope                  FlowScope          @default(REGULAR)
+  isActive               Boolean            @default(true)
+  steps                  ApprovalFlowStep[]
+  deletedAt              DateTime? // soft delete: data tidak dihapus permanen (NFR v1.14)
+  /// Semua level terlewati (pemohon = approver-nya sendiri) → langsung disetujui, bukan ke Fallback.
+  autoApproveWhenSkipped Boolean            @default(false)
+}
+
+model ApprovalFlowStep {
+  id        String                 @id @default(cuid())
+  flowId    String
+  flow      ApprovalFlow           @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  level     Int // 1, 2, ...
+  approvers ApprovalStepApprover[] // lebih dari satu = salah satu cukup
+
+  @@unique([flowId, level])
+}
+
+model ApprovalStepApprover {
+  stepId String
+  step   ApprovalFlowStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  userId String
+  user   User             @relation(fields: [userId], references: [id])
+
+  @@id([stepId, userId])
+}
+
+// Instance approval per pengajuan (snapshot dari flow saat submit)
+model ApprovalRequest {
+  id           String         @id @default(cuid())
+  module       ApprovalModule
+  entityId     String // id Reimbursement / LeaveRequest / HealthClaim / ...
+  entityNumber String // nomor dokumen, untuk tampilan & email
+  requesterId  String
+  requester    User           @relation("RequestRequester", fields: [requesterId], references: [id])
+  status       RequestStatus  @default(PENDING)
+  currentLevel Int?
+  createdAt    DateTime       @default(now())
+  completedAt  DateTime?
+
+  steps ApprovalRequestStep[]
+
+  @@unique([module, entityId])
+  @@index([status])
+}
+
+model ApprovalRequestStep {
+  id          String          @id @default(cuid())
+  requestId   String
+  request     ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  level       Int
+  approverIds String[] // snapshot user id approver
+  status      StepStatus      @default(WAITING)
+  actedById   String?
+  actedBy     User?           @relation("StepActor", fields: [actedById], references: [id])
+  actedAt     DateTime?
+  note        String?
+
+  @@unique([requestId, level])
+}
+
+// ---------------------------------------------------------------------
+// SISTEM
+// ---------------------------------------------------------------------
+
+model NumberSequence {
+  prefix    String // RMB, LV, HC, EXP, REV
+  year      Int
+  month     Int
+  lastValue Int    @default(0)
+
+  @@id([prefix, year, month])
+}
+
+model AppSetting {
+  key       String   @id // mis. "leave.maxCarryOver" = 3
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String // CREATE / UPDATE / DELETE / APPROVE / RESIGN / LOGIN ...
+  entity    String
+  entityId  String
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+}
+
+model EmailLog {
+  id        String      @id @default(cuid())
+  to        String
+  subject   String
+  template  String
+  status    EmailStatus @default(QUEUED)
+  error     String?
+  createdAt DateTime    @default(now())
+  sentAt    DateTime?
+}
+
+// Jejak reminder H-30 yang sudah dikirim (Tech Spec §7). Satu baris per item per tanggal
+// berakhir, supaya reminder tidak terkirim dua kali dan tidak hilang bila worker sempat mati.
+// Tanggal berakhir diubah (mis. sertifikat diperpanjang) → dueDate baru → reminder baru.
+enum ReminderKind {
+  CERTIFICATE
+  ASSET_SUPPORT
+  ASSET_WARRANTY
+}
+
+model ReminderLog {
+  id        String       @id @default(cuid())
+  kind      ReminderKind
+  entityId  String
+  dueDate   DateTime     @db.Date
+  createdAt DateTime     @default(now())
+
+  @@unique([kind, entityId, dueDate])
+}
+
+// ---------------------------------------------------------------------
+// ABSENSI (clock in / clock out) — keputusan user 2026-09-25
+// ---------------------------------------------------------------------
+
+// Satu baris per karyawan per hari kerja (tanggal Asia/Jakarta). Jam dari server saat klik.
+// lateMinutes / earlyLeaveMinutes = snapshot terhadap jam kerja (AppSetting) saat dicatat;
+// 0 di akhir pekan / hari libur. Koreksi Admin wajib alasan dan tercatat di audit.
+model Attendance {
+  id                String    @id @default(cuid())
+  employeeId        String
+  employee          Employee  @relation(fields: [employeeId], references: [id])
+  date              DateTime  @db.Date
+  clockIn           DateTime
+  clockOut          DateTime?
+  lateMinutes       Int       @default(0)
+  earlyLeaveMinutes Int       @default(0)
+  correctedById     String?
+  correctedBy       User?     @relation("AttendanceCorrector", fields: [correctedById], references: [id])
+  correctedAt       DateTime?
+  correctionNote    String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([employeeId, date])
+  @@index([date])
+}

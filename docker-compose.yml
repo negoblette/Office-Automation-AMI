@@ -1,0 +1,26 @@
+# Nama project tetap, supaya tidak bentrok dengan project lain di folder bernama "my-app"
+name: office-automation
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: oa
+      POSTGRES_PASSWORD: oa_password
+      POSTGRES_DB: office_automation
+      TZ: Asia/Jakarta
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  mailpit:
+    image: axllent/mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI untuk melihat email yang terkirim
+
+volumes:
+  pgdata:

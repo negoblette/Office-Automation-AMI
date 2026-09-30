@@ -1,0 +1,2 @@
+# Script shell harus LF agar jalan di container Linux
+*.sh text eol=lf

@@ -1,0 +1,80 @@
+# Compose PRODUKSI (Tahap 10.5). Dev tetap memakai docker-compose.yml (Postgres + Mailpit).
+#
+#   cp .env.production.example .env.production   # lalu isi secret, password DB & SMTP
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#   docker compose -f docker-compose.prod.yml --env-file .env.production run --rm migrate npx prisma db seed   # sekali, deploy pertama
+#
+# Alur start: db sehat → migrate (prisma migrate deploy) selesai → app & worker jalan.
+name: office-automation-prod
+
+x-app-env: &app-env
+  env_file: .env.production
+  environment:
+    DATABASE_URL: postgresql://${POSTGRES_USER:-oa}:${POSTGRES_PASSWORD:?isi POSTGRES_PASSWORD di .env.production}@db:5432/${POSTGRES_DB:-office_automation}?schema=public
+    TZ: Asia/Jakarta
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-oa}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?isi POSTGRES_PASSWORD di .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:-office_automation}
+      TZ: Asia/Jakarta
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    build: { context: ., target: migrate }
+    <<: *app-env
+    restart: "no"
+    depends_on:
+      db: { condition: service_healthy }
+
+  app:
+    build: { context: ., target: app }
+    <<: *app-env
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    volumes:
+      - uploads:/app/storage/uploads
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  worker:
+    build: { context: ., target: worker }
+    <<: *app-env
+    restart: unless-stopped
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  # Backup harian (NF-06): pg_dump + arsip file upload, disimpan di ./backups, retensi BACKUP_KEEP_DAYS.
+  backup:
+    image: postgres:17
+    restart: unless-stopped
+    entrypoint: ["/bin/bash", "/scripts/backup.sh"]
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-oa}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?isi POSTGRES_PASSWORD di .env.production}
+      PGDATABASE: ${POSTGRES_DB:-office_automation}
+      BACKUP_TIME: ${BACKUP_TIME:-01:00}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      TZ: Asia/Jakarta
+    volumes:
+      - ./scripts/backup.sh:/scripts/backup.sh:ro
+      - ./backups:/backups
+      - uploads:/uploads:ro
+    depends_on:
+      db: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  uploads:
