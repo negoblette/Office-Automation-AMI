@@ -20,11 +20,9 @@ describe("employeeSelfSchema (isi data mandiri, EMP-06)", () => {
   it("data valid dinormalisasi; string kosong → null", () => {
     const result = employeeSelfSchema.parse(validSelf);
     expect(result).toMatchObject({
-      fullName: "Andi Pratama",
       nik: "3171012345678901",
       phone: "+6281234567890",
       npwp: "012345678901000",
-      employeeNo: "AMI-0101",
       address: null,
       kkNo: null,
       gender: null,
@@ -40,7 +38,9 @@ describe("employeeSelfSchema (isi data mandiri, EMP-06)", () => {
       startDate: "2000-01-01",
       status: "ACTIVE",
     });
-    for (const key of ["division", "role", "email", "startDate", "status"]) {
+    // NIP juga khusus Admin (Fase 14).
+    // Nama, jabatan, level juga khusus Admin (2026-10-05).
+    for (const key of ["division", "role", "email", "startDate", "status", "employeeNo", "fullName", "position", "level"]) {
       expect(result).not.toHaveProperty(key);
     }
   });

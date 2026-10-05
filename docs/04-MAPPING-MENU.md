@@ -30,7 +30,7 @@ approval flow pengajuan tersebut.
 | **Project** | `/project` | ✔ | Lihat |
 | └ Customer & Project | `/project/customer` | Kelola | — |
 | └ Expense / Revenue | `/project/[id]` | Input + lihat | Lihat project terkait |
-| **Approval** | `/approval` | Antrian sendiri + monitor semua | — |
+| **Approval** | `/approval` | Antrian sendiri + monitor semua | — (role **Approver**: antrian sendiri + riwayat pengajuan yang melibatkannya) |
 | **Setting** | `/setting` | ✔ | — |
 | └ User & Role | `/setting/user` | ✔ | — |
 | └ Approval Flow | `/setting/approval` | ✔ | — |

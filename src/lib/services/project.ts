@@ -1,4 +1,5 @@
-// Customer, Project, Expense & Revenue — URD PRJ-01..04, Tech Spec §6.5. Dikelola Admin.
+// Customer, Project, Expense & Revenue — URD PRJ-01..04, Tech Spec §6.5. Dikelola Admin;
+// semua karyawan boleh MENAMBAH customer & project baru (Fase 14, `createOnly`), tidak mengubah/menghapus.
 // Expense & revenue lewat approval engine (flow sama dengan Reimburse) dengan nomor EXP/REV.
 import type { PrismaClient } from "@/generated/prisma/client";
 import { fromIsoDate } from "@/lib/format";
@@ -13,7 +14,10 @@ import { nextDocumentNumber } from "./numbering";
 // Customer & Project
 // ---------------------------------------------------------------------
 
-export async function saveCustomer(db: PrismaClient, actorId: string, customerId: string | null, name: string) {
+type SaveMasterOptions = { createOnly?: boolean };
+
+export async function saveCustomer(db: PrismaClient, actorId: string, customerId: string | null, name: string, options: SaveMasterOptions = {}) {
+  if (options.createOnly && customerId) throw new ServiceError("Hanya Admin yang bisa mengubah customer");
   return db.$transaction(async (tx) => {
     const duplicate = await tx.customer.findFirst({ where: { name: { equals: name, mode: "insensitive" }, id: customerId ? { not: customerId } : undefined } });
     // Customer baru dengan nama yang pernah dihapus (soft delete) → dipulihkan.
@@ -48,7 +52,10 @@ export async function deleteCustomer(db: PrismaClient, actorId: string, customer
   });
 }
 
-export async function saveProject(db: PrismaClient, actorId: string, projectId: string | null, input: ProjectInput) {
+export async function saveProject(db: PrismaClient, actorId: string, projectId: string | null, input: ProjectInput, options: SaveMasterOptions = {}) {
+  if (options.createOnly && projectId) throw new ServiceError("Hanya Admin yang bisa mengubah project");
+  // Project baru dari karyawan selalu aktif (nonaktifkan = wewenang Admin).
+  if (options.createOnly) input = { ...input, isActive: true };
   return db.$transaction(async (tx) => {
     const customer = await tx.customer.findUnique({ where: { id: input.customerId, deletedAt: null } });
     if (!customer) throw new ServiceError("Customer tidak ditemukan", "customerId");
@@ -56,6 +63,8 @@ export async function saveProject(db: PrismaClient, actorId: string, projectId: 
       where: { customerId: input.customerId, name: { equals: input.name, mode: "insensitive" }, id: projectId ? { not: projectId } : undefined },
     });
     if (duplicate) throw new ServiceError("Project dengan nama ini sudah ada untuk customer tersebut", "name");
+    const sameCode = await tx.project.findFirst({ where: { code: input.code, id: projectId ? { not: projectId } : undefined } });
+    if (sameCode) throw new ServiceError(`ID project ${input.code} sudah dipakai project lain`, "code");
 
     const before = projectId ? await tx.project.findUnique({ where: { id: projectId } }) : null;
     if (projectId && !before) throw new ServiceError("Project tidak ditemukan");

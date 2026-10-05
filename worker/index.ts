@@ -1,6 +1,6 @@
 // Worker pg-boss (`npm run worker`) — Tech Spec §7. Proses terpisah dari aplikasi web.
 // Job: `email.send` (on-demand), `leave.rollover` (harian 00:30 WIB),
-// `reminder.certificate` & `reminder.asset` (harian 07:00 WIB, H-30).
+// `reminder.certificate` & `reminder.asset` (harian 07:00 WIB, H-30), `invoice.purge` (harian 02:00 WIB), `attendance.deduct` (harian 01:00 WIB).
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PgBoss } from "pg-boss";
@@ -9,6 +9,10 @@ import { EMAIL_QUEUE, EMAIL_QUEUE_OPTIONS, type EmailJobData, enqueueEmails } fr
 import { createSmtpTransport, processEmailJob } from "@/lib/mail/send-email";
 import { rolloverLeaveBalances } from "@/lib/services/leave-balance";
 import { FEATURES } from "@/lib/features";
+import { deductUnexcusedAbsences } from "@/lib/services/attendance-appeal";
+import { purgeOldInvoices } from "@/lib/services/invoice-purge";
+// Adapter langsung (bukan "@/lib/storage" yang ber-"server-only" & tidak bisa dimuat di Node biasa).
+import { LocalStorage } from "@/lib/storage/local";
 import { assetReminders, certificateReminders } from "@/lib/services/reminder";
 
 const LEAVE_ROLLOVER_QUEUE = "leave.rollover";
@@ -41,6 +45,25 @@ async function main() {
     console.log(`[worker] leave.rollover: ${created} saldo periode baru dibuat`);
   });
 
+  // Fase 14: tidak hadir tanpa appeal > 7 hari → potong 1 hari cuti (harian 01:00 WIB).
+  const ATTENDANCE_DEDUCT_QUEUE = "attendance.deduct";
+  await boss.createQueue(ATTENDANCE_DEDUCT_QUEUE);
+  await boss.schedule(ATTENDANCE_DEDUCT_QUEUE, "0 1 * * *", null, { tz: "Asia/Jakarta" });
+  await boss.work(ATTENDANCE_DEDUCT_QUEUE, async () => {
+    const result = await deductUnexcusedAbsences(db);
+    console.log(`[worker] ${ATTENDANCE_DEDUCT_QUEUE}: ${result.deducted} hari tidak hadir dipotong dari saldo cuti`);
+  });
+
+  // Fase 14: file invoice/kwitansi lama hanya disimpan 2 tahun terakhir (harian 02:00 WIB).
+  const INVOICE_PURGE_QUEUE = "invoice.purge";
+  await boss.createQueue(INVOICE_PURGE_QUEUE);
+  await boss.schedule(INVOICE_PURGE_QUEUE, "0 2 * * *", null, { tz: "Asia/Jakarta" });
+  await boss.work(INVOICE_PURGE_QUEUE, async () => {
+    const storage = new LocalStorage(process.env.UPLOAD_DIR ?? "./storage/uploads");
+    const result = await purgeOldInvoices(db, (key) => storage.delete(key));
+    console.log(`[worker] ${INVOICE_PURGE_QUEUE}: ${result.receipts} kwitansi & ${result.invoices} invoice dihapus (> 2 tahun)`);
+  });
+
   // Modul Inventory ditunda → hapus jadwal reminder.asset yang mungkin tersimpan dari sebelumnya.
   if (!FEATURES.inventory) await boss.unschedule("reminder.asset").catch(() => undefined);
 
@@ -56,7 +79,7 @@ async function main() {
   }
 
   console.log(
-    `[worker] siap. Queue: ${EMAIL_QUEUE}, ${LEAVE_ROLLOVER_QUEUE} (00:30 WIB), ${Object.keys(REMINDER_JOBS).join(", ")} (07:00 WIB)`,
+    `[worker] siap. Queue: ${EMAIL_QUEUE}, ${LEAVE_ROLLOVER_QUEUE} (00:30 WIB), ${Object.keys(REMINDER_JOBS).join(", ")} (07:00 WIB), ${ATTENDANCE_DEDUCT_QUEUE} (01:00 WIB), ${INVOICE_PURGE_QUEUE} (02:00 WIB)`,
   );
 
   const shutdown = async () => {

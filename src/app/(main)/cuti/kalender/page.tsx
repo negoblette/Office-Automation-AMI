@@ -8,17 +8,21 @@ import { buttonVariants } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { formatDate, toJakartaIsoDate } from "@/lib/format";
-import { listDirectorLeaves, listHolidays } from "@/lib/services/leave-queries";
+import { LeaveCalendar } from "@/components/shared/leave-calendar";
+import { getLeaveCalendar, listDirectorLeaves, listHolidays } from "@/lib/services/leave-queries";
 import { CutiTabs } from "../leave-ui";
 import { DeleteHolidayButton, HolidayForms } from "./holiday-manager";
 
 export const metadata: Metadata = { title: "Kalender Libur" };
 
-export default async function KalenderLiburPage({ searchParams }: { searchParams: Promise<{ tahun?: string }> }) {
+export default async function KalenderLiburPage({ searchParams }: { searchParams: Promise<{ tahun?: string; bulan?: string }> }) {
   const user = await requireUser();
   const isAdmin = user.role === "ADMIN";
   const currentYear = Number(toJakartaIsoDate().slice(0, 4));
-  const requested = Number((await searchParams).tahun);
+  const params = await searchParams;
+  const requested = Number(params.tahun);
+  const todayIso = toJakartaIsoDate();
+  const yearMonth = params.bulan && /^\d{4}-(0[1-9]|1[0-2])$/.test(params.bulan) ? params.bulan : todayIso.slice(0, 7);
   const year = Number.isInteger(requested) && requested >= 2000 && requested <= 2100 ? requested : currentYear;
   const [holidays, directorLeaves] = await Promise.all([
     listHolidays(prisma, `${year}-01-01`, `${year}-12-31`),
@@ -33,6 +37,8 @@ export default async function KalenderLiburPage({ searchParams }: { searchParams
         breadcrumbs={[{ label: "Pengajuan & Keuangan" }, { label: "Cuti & Libur", href: "/cuti" }, { label: "Kalender Libur" }]}
       />
       <CutiTabs active="kalender" />
+
+      <LeaveCalendar weeks={await getLeaveCalendar(prisma, yearMonth)} yearMonth={yearMonth} todayIso={todayIso} hrefFor={(ym) => `/cuti/kalender?bulan=${ym}`} />
 
       {isAdmin && <HolidayForms />}
 

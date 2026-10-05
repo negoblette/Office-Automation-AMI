@@ -25,6 +25,7 @@ datasource db {
 enum Role {
   ADMIN // lihat & kelola semua data + Setting
   STAFF // hanya data sendiri; divisi (Sales/Engineer/Umum) dari Employee.division
+  APPROVER // seperti STAFF + menyetujui pengajuan yang ditugaskan (Fase 14, 2026-10-02)
 }
 
 enum Division {
@@ -119,6 +120,13 @@ enum ApprovalModule {
   HEALTH
   EXPENSE
   REVENUE
+  CERTIFICATE // verifikasi sertifikat (Fase 14, 2026-10-05)
+  ATTENDANCE_APPEAL // appeal tidak hadir: sakit / kunjungan keluar (Fase 14)
+}
+
+enum AppealReason {
+  SICK // sakit
+  VISIT // kunjungan keluar
 }
 
 enum FlowScope {
@@ -162,6 +170,8 @@ model User {
   auditLogs        AuditLog[]
   uploadedDocs     Document[]             @relation("DocUploader")
   attendanceFixes  Attendance[]           @relation("AttendanceCorrector")
+  corrections      ApprovalCorrection[]   @relation("CorrectionEditor")
+  leaveAdjustments LeaveAdjustment[]      @relation("LeaveAdjuster")
 }
 
 // ---------------------------------------------------------------------
@@ -169,43 +179,49 @@ model User {
 // ---------------------------------------------------------------------
 
 model Employee {
-  id            String         @id @default(cuid())
+  id                String         @id @default(cuid())
   // Admin membuat record minimal (nama, email, divisi, jabatan, tgl masuk, role);
   // data diri lainnya dilengkapi staf sendiri, jadi boleh kosong dulu.
-  employeeNo    String?        @unique // nomor induk karyawan internal
-  nik           String?        @unique @db.VarChar(16) // KTP, 16 digit; unik bila terisi
-  kkNo          String?        @db.VarChar(16)
-  fullName      String
-  birthPlace    String?
-  birthDate     DateTime?      @db.Date
-  gender        Gender?
-  maritalStatus MaritalStatus  @default(SINGLE)
-  address       String?
-  phone         String? // format +62...
-  email         String         @unique
-  npwp          String?        @db.VarChar(16) // 15/16 digit, tanpa tanda baca
-  bpjsTkNo      String?
-  bpjsKesNo     String?
-  division      Division
-  position      String // jabatan
-  level         String? // level/grade
-  status        EmployeeStatus @default(ACTIVE)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  employeeNo        String?        @unique // nomor induk karyawan internal
+  nik               String?        @unique @db.VarChar(16) // KTP, 16 digit; unik bila terisi
+  kkNo              String?        @db.VarChar(16)
+  fullName          String
+  birthPlace        String?
+  birthDate         DateTime?      @db.Date
+  gender            Gender?
+  maritalStatus     MaritalStatus  @default(SINGLE)
+  address           String?
+  phone             String? // format +62...
+  email             String         @unique
+  npwp              String?        @db.VarChar(16) // 15/16 digit, tanpa tanda baca
+  bpjsTkNo          String?
+  bpjsKesNo         String?
+  // Kontak darurat (Fase 14), diisi karyawan sendiri.
+  emergencyName     String?
+  emergencyRelation String?
+  emergencyPhone    String? // format +62...
+  division          Division
+  position          String // jabatan
+  level             String? // level/grade
+  status            EmployeeStatus @default(ACTIVE)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 
-  user             User?
-  periods          EmploymentPeriod[]
-  family           FamilyMember[]
-  documents        Document[]
-  certificates     Certificate[]
-  assetAssignments AssetAssignment[]
-  reimbursements   Reimbursement[]
-  leaveBalances    LeaveBalance[]
-  leaveRequests    LeaveRequest[]
-  healthPlafonds   HealthPlafond[]
-  healthClaims     HealthClaim[]
-  attendances      Attendance[]
-  fromCandidate    Candidate?
+  user              User?
+  periods           EmploymentPeriod[]
+  family            FamilyMember[]
+  documents         Document[]
+  certificates      Certificate[]
+  assetAssignments  AssetAssignment[]
+  assets            EmployeeAsset[]
+  reimbursements    Reimbursement[]
+  leaveBalances     LeaveBalance[]
+  leaveRequests     LeaveRequest[]
+  healthPlafonds    HealthPlafond[]
+  healthClaims      HealthClaim[]
+  attendances       Attendance[]
+  attendanceAppeals AttendanceAppeal[]
+  fromCandidate     Candidate?
 
   @@index([status, division])
 }
@@ -260,19 +276,22 @@ model Document {
 }
 
 model Certificate {
-  id         String          @id @default(cuid())
-  employeeId String
-  employee   Employee        @relation(fields: [employeeId], references: [id])
-  type       CertificateType
-  name       String
-  issuer     String?
-  number     String?
-  startDate  DateTime        @db.Date
-  endDate    DateTime?       @db.Date // null = berlaku seumur hidup
-  fileKey    String?
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
-  deletedAt  DateTime? // soft delete: data tidak dihapus permanen (NFR v1.14)
+  id                 String          @id @default(cuid())
+  employeeId         String
+  employee           Employee        @relation(fields: [employeeId], references: [id])
+  type               CertificateType
+  name               String
+  issuer             String?
+  number             String?
+  startDate          DateTime        @db.Date
+  endDate            DateTime?       @db.Date // null = berlaku seumur hidup
+  fileKey            String?
+  /// Verifikasi Ko Yosep → Bu Ika (Fase 14). Nomor CRT/YYYY/MM/NNNN untuk approval.
+  status             RequestStatus   @default(PENDING)
+  verificationNumber String?         @unique
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  deletedAt          DateTime? // soft delete: data tidak dihapus permanen (NFR v1.14)
 
   @@index([endDate])
 }
@@ -328,6 +347,8 @@ model Customer {
 
 model Project {
   id         String      @id @default(cuid())
+  /// ID project (Fase 14), tampil sebagai "ID - Nama Project".
+  code       String?     @unique
   name       String
   customerId String
   customer   Customer    @relation(fields: [customerId], references: [id])
@@ -415,6 +436,8 @@ model ReimbursementItem {
   customer        Customer?     @relation(fields: [customerId], references: [id])
   projectId       String?
   project         Project?      @relation(fields: [projectId], references: [id])
+  /// Prospek "New Acquisition" tanpa project (Fase 14, 2026-10-05).
+  newAcquisition  Boolean       @default(false)
   activity        String // Activities
   participants    String // Names – Position (multi-baris)
   location        String
@@ -449,9 +472,32 @@ model LeaveBalance {
   entitlement Int // jatah dari LeavePolicy
   carriedOver Int      @default(0) // maks 3 (AppSetting leave.maxCarryOver)
   used        Int      @default(0)
+  /// Total penyesuaian (Fase 14): + pemutihan/penambahan Admin, − potong cuti karena tidak hadir.
+  adjustment  Int      @default(0)
   createdAt   DateTime @default(now())
 
+  adjustments LeaveAdjustment[]
+
   @@unique([employeeId, periodStart])
+}
+
+// Riwayat penyesuaian saldo cuti (Fase 14). MANUAL = Admin (pemutihan / koreksi, alasan wajib);
+// ABSENCE = potong otomatis 1 hari karena tidak hadir tanpa appeal (14.7, unik per tanggal).
+model LeaveAdjustment {
+  id             String       @id @default(cuid())
+  balanceId      String
+  balance        LeaveBalance @relation(fields: [balanceId], references: [id])
+  employeeId     String
+  days           Int
+  reason         String
+  source         String // MANUAL | ABSENCE
+  attendanceDate DateTime?    @db.Date
+  createdById    String?
+  createdBy      User?        @relation("LeaveAdjuster", fields: [createdById], references: [id])
+  createdAt      DateTime     @default(now())
+
+  @@unique([employeeId, attendanceDate])
+  @@index([employeeId])
 }
 
 model LeaveRequest {
@@ -513,8 +559,9 @@ model HealthClaim {
   category        HealthCategory @relation(fields: [categoryId], references: [id])
   claimDate       DateTime       @db.Date
   amount          BigInt
-  invoiceFileKey  String
-  invoiceFileName String
+  /// Upload invoice dihapus (Fase 14, 2026-10-02); kolom tetap untuk file lama sampai di-purge (> 2 tahun).
+  invoiceFileKey  String?
+  invoiceFileName String?
   note            String?
   status          RequestStatus  @default(DRAFT)
   submittedAt     DateTime?
@@ -609,7 +656,8 @@ model ApprovalRequest {
   createdAt    DateTime       @default(now())
   completedAt  DateTime?
 
-  steps ApprovalRequestStep[]
+  steps       ApprovalRequestStep[]
+  corrections ApprovalCorrection[]
 
   @@unique([module, entityId])
   @@index([status])
@@ -718,4 +766,58 @@ model Attendance {
 
   @@unique([employeeId, date])
   @@index([date])
+}
+
+// Koreksi approver sebelum menyetujui (Fase 14, 2026-10-02): nominal & keterangan per baris.
+// Satu baris per field yang berubah; terlihat oleh pemohon.
+model ApprovalCorrection {
+  id         String          @id @default(cuid())
+  requestId  String
+  request    ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  level      Int
+  targetId   String // id ReimbursementItem / ProjectExpense / ProjectRevenue / HealthClaim
+  label      String // mis. "Baris 2 · 12 Sep · Tol Cikampek"
+  field      String // AMOUNT | TEXT
+  before     String
+  after      String
+  editedById String
+  editedBy   User            @relation("CorrectionEditor", fields: [editedById], references: [id])
+  createdAt  DateTime        @default(now())
+
+  @@index([requestId])
+}
+
+// Daftar aset sederhana per karyawan (Fase 14, 2026-10-05) — dicatat Admin, terlihat di profil.
+// Bukan modul Inventory (yang masih ditunda).
+model EmployeeAsset {
+  id           String    @id @default(cuid())
+  employeeId   String
+  employee     Employee  @relation(fields: [employeeId], references: [id])
+  name         String
+  serialNo     String?
+  receivedDate DateTime  @db.Date
+  returnedDate DateTime? @db.Date
+  note         String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime? // soft delete (NFR v1.14)
+
+  @@index([employeeId])
+}
+
+// Appeal untuk satu hari tidak hadir (tidak bisa clock in) — Fase 14. Approval Bu Ika; setelah
+// disetujui status hari itu menjadi Sakit / Kunjungan keluar. Maks 7 hari sejak tanggal tsb.
+model AttendanceAppeal {
+  id         String        @id @default(cuid())
+  number     String        @unique // APL/YYYY/MM/NNNN
+  employeeId String
+  employee   Employee      @relation(fields: [employeeId], references: [id])
+  date       DateTime      @db.Date
+  reason     AppealReason
+  note       String
+  status     RequestStatus @default(PENDING)
+  approvedAt DateTime?
+  createdAt  DateTime      @default(now())
+
+  @@unique([employeeId, date])
 }

@@ -116,20 +116,30 @@ export function countWorkingDays(startIso: string, endIso: string, holidays: Rea
   return count;
 }
 
-export type BalanceNumbers = { entitlement: number; carriedOver: number; used: number };
+export type BalanceNumbers = {
+  entitlement: number;
+  carriedOver: number;
+  used: number;
+  /** Penyesuaian Admin / potong cuti tidak hadir (Fase 14); boleh negatif. */
+  adjustment?: number;
+};
 
-/** Sisa saldo = jatah + carry over − terpakai − pengajuan lain yang masih menunggu (LV-07/08). */
+/** Sisa saldo = jatah + carry over + penyesuaian − terpakai − pengajuan lain yang masih menunggu (LV-07/08). */
 export function remainingDays(balance: BalanceNumbers, pendingDays = 0): number {
-  return balance.entitlement + balance.carriedOver - balance.used - pendingDays;
+  return balance.entitlement + balance.carriedOver + (balance.adjustment ?? 0) - balance.used - pendingDays;
 }
 
 /**
  * Carry over untuk tahun berikutnya (keputusan user 2026-09-24, OI-02): berlaku sepanjang tahun
- * berikutnya lalu hangus 31 Des. Carry over dipakai lebih dulu, jadi yang tersisa dari
- * periode ini dihitung dari jatah saja; sisa carry over lama hangus. Maks `maxCarryOver` (LV-03).
+ * berikutnya lalu hangus 31 Des. Carry over (positif) dipakai lebih dulu, jadi yang tersisa dari
+ * periode ini dihitung dari jatah + penyesuaian saja; sisa carry over lama hangus. Maks `maxCarryOver` (LV-03).
+ * Saldo minus (mis. potong cuti karena tidak hadir, Fase 14) terbawa penuh dan mengurangi jatah berikutnya.
  */
 export function nextCarryOver(balance: BalanceNumbers, maxCarryOver: number): number {
-  const usedFromEntitlement = Math.max(0, balance.used - balance.carriedOver);
-  const leftoverEntitlement = Math.max(0, balance.entitlement - usedFromEntitlement);
-  return Math.min(leftoverEntitlement, maxCarryOver);
+  const adjustment = balance.adjustment ?? 0;
+  const leftover =
+    balance.carriedOver > 0
+      ? balance.entitlement + adjustment - Math.max(0, balance.used - balance.carriedOver)
+      : balance.entitlement + balance.carriedOver + adjustment - balance.used;
+  return leftover < 0 ? leftover : Math.min(leftover, maxCarryOver);
 }

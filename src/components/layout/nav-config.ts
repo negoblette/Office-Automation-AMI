@@ -1,3 +1,4 @@
+import type { Role } from "@/generated/prisma/enums";
 import {
   Briefcase,
   CalendarDays,
@@ -14,8 +15,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { FEATURES } from "@/lib/features";
+import { canApprove } from "@/lib/roles";
 
-export type AppRole = "ADMIN" | "STAFF";
+export type AppRole = Role;
 
 export type NavChild = {
   label: string;
@@ -28,6 +30,8 @@ export type NavItem = {
   href: string;
   icon: LucideIcon;
   adminOnly?: boolean;
+  /** Bisa dilihat Admin & Approver (mis. halaman Approval). */
+  approverOnly?: boolean;
   /** Label pengganti untuk Staf, mis. "Project" (Staf hanya melihat, tanpa Customer). */
   staffLabel?: string;
   children?: NavChild[];
@@ -56,6 +60,7 @@ export const NAV_GROUPS: NavGroup[] = [
           { label: "Data Diri", href: "/profil" },
           { label: "Dokumen & Keluarga", href: "/profil/dokumen" },
           { label: "Sertifikat & Ijazah", href: "/profil/sertifikat" },
+          { label: "Aset Saya", href: "/profil/aset" },
           ...(FEATURES.inventory ? [{ label: "Inventory Saya", href: "/profil/inventory" }] : []),
         ],
       },
@@ -130,7 +135,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Kontrol & Sistem",
     items: [
       // Badge jumlah approval pending: dihitung di (main)/layout.tsx.
-      { label: "Approval", href: "/approval", icon: CheckCheck, adminOnly: true },
+      { label: "Approval", href: "/approval", icon: CheckCheck, approverOnly: true },
       {
         label: "Setting",
         href: "/setting",
@@ -155,7 +160,7 @@ export function getNavForRole(role: AppRole): NavGroup[] {
   return NAV_GROUPS.map((group) => ({
     ...group,
     items: group.items
-      .filter((item) => isAdmin || !item.adminOnly)
+      .filter((item) => (isAdmin || !item.adminOnly) && (!item.approverOnly || canApprove(role)))
       .map((item) => {
         const children = item.children?.filter((child) => isAdmin || !child.adminOnly);
         // Sub-menu dengan satu isi saja tidak perlu ditampilkan.

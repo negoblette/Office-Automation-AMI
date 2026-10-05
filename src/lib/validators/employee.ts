@@ -1,6 +1,7 @@
 // Schema karyawan — URD EMP-01..06, Tech Spec §6.1.
 // Admin membuat akun minimal; staf melengkapi data dirinya sendiri (EMP-06).
-// Divisi, role, email login, dan tanggal masuk/keluar HANYA ada di schema Admin.
+// Divisi, role, email login, tanggal masuk/keluar, NIP, nama lengkap, jabatan, dan level HANYA ada di
+// schema Admin (nama/jabatan/level: permintaan 2026-10-05).
 import { z } from "zod";
 import { Division, Gender, MaritalStatus, Role } from "@/generated/prisma/enums";
 import {
@@ -22,12 +23,15 @@ const divisionSchema = z.enum(Division, { error: "Divisi wajib dipilih" });
 const roleSchema = z.enum(Role, { error: "Role wajib dipilih" });
 const positionSchema = textSchema("Jabatan", { min: 2, max: 100 });
 
-/** Data diri yang boleh diisi/diubah staf sendiri (juga bisa diubah Admin). */
-const selfFields = {
+/** Akun & pekerjaan yang hanya diisi/diubah Admin. */
+const jobFields = {
   fullName: personNameSchema,
   position: positionSchema,
-  employeeNo: optionalField(textSchema("Nomor karyawan", { max: 30 }).toUpperCase()),
   level: optionalField(textSchema("Level", { max: 50 })),
+};
+
+/** Data diri yang boleh diisi/diubah staf sendiri (juga bisa diubah Admin). */
+const selfFields = {
   nik: optionalField(nikSchema),
   kkNo: optionalField(kkSchema),
   birthPlace: optionalField(textSchema("Tempat lahir", { max: 100 })),
@@ -39,10 +43,14 @@ const selfFields = {
   npwp: optionalField(npwpSchema),
   bpjsTkNo: optionalField(bpjsTkSchema),
   bpjsKesNo: optionalField(bpjsKesSchema),
+  // Kontak darurat (Fase 14).
+  emergencyName: optionalField(personNameSchema),
+  emergencyRelation: optionalField(textSchema("Hubungan", { max: 50 })),
+  emergencyPhone: optionalField(phoneSchema),
 };
 
 /**
- * Staf mengubah data dirinya. Field lain (divisi, role, email, tanggal masuk) tidak ada
+ * Staf mengubah data dirinya. Field lain (nama, jabatan, level, NIP, divisi, role, email, tanggal masuk) tidak ada
  * di schema ini, jadi otomatis dibuang walau dikirim lewat request langsung.
  */
 export const employeeSelfSchema = z.object(selfFields);
@@ -62,7 +70,10 @@ export type EmployeeCreateInput = z.infer<typeof employeeCreateSchema>;
 
 /** Admin mengubah semua data, termasuk divisi, role, email, dan tanggal masuk periode aktif. */
 export const employeeAdminUpdateSchema = z.object({
+  ...jobFields,
   ...selfFields,
+  /** NIP: hanya Admin (Fase 14) — karyawan baru boleh belum punya NIP. */
+  employeeNo: optionalField(textSchema("NIP", { max: 30 }).toUpperCase()),
   email: emailSchema,
   division: divisionSchema,
   role: roleSchema,

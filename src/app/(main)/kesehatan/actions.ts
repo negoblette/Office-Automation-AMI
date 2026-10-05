@@ -6,9 +6,7 @@ import { type ActionResult, toActionError } from "@/lib/actions";
 import { requireAdmin, requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { enqueueApprovalNotifications } from "@/lib/mail/approval-emails";
-import { ServiceError } from "@/lib/services/errors";
 import { setHealthPlafond, setPayoutPaid, submitHealthClaim } from "@/lib/services/health";
-import { inspectStoredFile } from "@/lib/storage";
 import { healthClaimSchema, healthPlafondSchema } from "@/lib/validators/health";
 
 function revalidateHealth() {
@@ -22,9 +20,6 @@ export async function submitHealthClaimAction(values: unknown): Promise<ActionRe
   const user = await requireUser();
   try {
     const input = healthClaimSchema.parse(values);
-    if (!(await inspectStoredFile(input.invoiceFileKey))) {
-      throw new ServiceError("File invoice tidak ditemukan, silakan upload ulang", "invoiceFileKey");
-    }
     const result = await submitHealthClaim(prisma, user, input);
     await enqueueApprovalNotifications(prisma, result.notifications);
     revalidateHealth();

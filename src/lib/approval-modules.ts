@@ -7,4 +7,6 @@ export const APPROVAL_MODULE_META: Record<ApprovalModule, { label: string; path:
   HEALTH: { label: "Klaim Kesehatan", path: () => "/kesehatan" },
   EXPENSE: { label: "Expense Project", path: () => "/project" },
   REVENUE: { label: "Revenue Project", path: () => "/project" },
+  CERTIFICATE: { label: "Sertifikat", path: () => "/profil/sertifikat" },
+  ATTENDANCE_APPEAL: { label: "Appeal Absensi", path: () => "/absensi" },
 };

@@ -28,9 +28,9 @@ export type SeedPerson = {
 
 export const PEOPLE: SeedPerson[] = [
   // Admin
-  { key: "yosep", fullName: "Yosep", division: "ENGINEER", position: "Kepala Divisi Engineer", role: "ADMIN", startDate: "2015-01-05" },
+  { key: "yosep", fullName: "Yosep", division: "ENGINEER", position: "Kepala Divisi Engineer", role: "APPROVER", startDate: "2015-01-05" },
   { key: "rudy", fullName: "Rudy", division: "DIRECTOR", position: "Direktur", role: "ADMIN", startDate: "2010-01-04" },
-  { key: "darwin", fullName: "Darwin", division: "SALES", position: "Kepala Divisi Sales", role: "ADMIN", startDate: "2016-03-01" },
+  { key: "darwin", fullName: "Darwin", division: "SALES", position: "Kepala Divisi Sales", role: "APPROVER", startDate: "2016-03-01" },
   { key: "leonard", fullName: "Leonard", division: "DIRECTOR", position: "Direktur", role: "ADMIN", startDate: "2010-01-04" },
   { key: "ika", fullName: "Ika", division: "UMUM", position: "HR & Finance", role: "ADMIN", startDate: "2018-07-02" },
   // Staf contoh per divisi
@@ -86,12 +86,13 @@ export async function seedPeople(prisma: PrismaClient, passwordHash: string) {
 // Master data di bawah bisa diubah Admin lewat Setting, jadi seed hanya membuat
 // yang belum ada dan tidak pernah menimpa perubahan Admin.
 
-// URD LV-02: 0 th = 0 hari; 1–5 th = 12; 6–15 th = 15; >15 th = 18.
+// URD LV-02: masa kerja (tahun penuh) per 1 Januari — 0 = 0 hari; 1–4 = 12; 5–14 = 15; ≥15 = 18
+// (per 1 Jan masa kerja ≥5 / ≥15 th penuh dianggap sudah >5 / >15 th, keputusan user 2026-10-02).
 const LEAVE_POLICIES = [
   { minYears: 0, maxYears: 0, days: 0 },
-  { minYears: 1, maxYears: 5, days: 12 },
-  { minYears: 6, maxYears: 15, days: 15 },
-  { minYears: 16, maxYears: null, days: 18 },
+  { minYears: 1, maxYears: 4, days: 12 },
+  { minYears: 5, maxYears: 14, days: 15 },
+  { minYears: 15, maxYears: null, days: 18 },
 ];
 
 const APP_SETTINGS: Record<string, Prisma.InputJsonValue> = {
@@ -150,9 +151,10 @@ type SeedFlow = {
 // Reimburse; Expense & Revenue project sama dengan reimburse.
 const REGULAR_MODULES: ApprovalModule[] = ["REIMBURSE", "EXPENSE", "REVENUE"];
 const DIVISION_STEPS: Record<Division, string[][]> = {
-  SALES: [["darwin"], ["leonard"]],
+  // Fase 14 (2026-10-02): Sales satu level (salah satu cukup); Umum Bu Ika / Ko Leonard.
+  SALES: [["darwin", "leonard"]],
   ENGINEER: [["yosep"], ["rudy"]],
-  UMUM: [["ika"]],
+  UMUM: [["ika", "leonard"]],
   DIRECTOR: [["ika"]],
 };
 
@@ -163,13 +165,18 @@ export const APPROVAL_FLOWS: SeedFlow[] = [
       module,
       division: division as Division,
       steps,
-      // Reimburse Bu Ika sendiri: otomatis disetujui (keputusan user 2026-09-29).
-      autoApproveWhenSkipped: division === "UMUM",
+      // Pemohon dikeluarkan dari levelnya sendiri (Ika → Leonard, Darwin → Leonard), jadi tidak
+      // perlu auto-approve (keputusan user 2026-10-02).
+      autoApproveWhenSkipped: false,
     })),
   ),
   // Cuti: semua divisi -> Ko Rudy; divisi Direktur tanpa approval (BR-CUT-11).
   { scope: "REGULAR", module: "LEAVE", division: null, steps: [["rudy"]] },
   { scope: "REGULAR", module: "LEAVE", division: "DIRECTOR", steps: [] },
+  // Verifikasi sertifikat: Ko Yosep -> Bu Ika (Fase 14, 2026-10-05).
+  { scope: "REGULAR", module: "CERTIFICATE", division: null, steps: [["yosep"], ["ika"]] },
+  // Appeal absensi (sakit / kunjungan keluar) -> Bu Ika; appeal Bu Ika -> Fallback (Fase 14).
+  { scope: "REGULAR", module: "ATTENDANCE_APPEAL", division: null, steps: [["ika"]] },
   // Klaim kesehatan -> Bu Ika; klaim Bu Ika sendiri -> Fallback.
   { scope: "REGULAR", module: "HEALTH", division: null, steps: [["ika"]] },
   { scope: "FALLBACK", module: null, division: null, steps: [["rudy", "leonard"]] },

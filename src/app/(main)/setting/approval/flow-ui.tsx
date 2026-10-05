@@ -15,7 +15,10 @@ import type { FlowView } from "@/lib/services/approval-flow";
 import { approvalFlowSchema, fallbackFlowSchema } from "@/lib/validators/setting";
 import { deleteFlowAction, saveFlowAction, setFlowActiveAction } from "./actions";
 
-const MODULE_OPTIONS = Object.entries(APPROVAL_MODULE_META).map(([value, meta]) => ({ value, label: meta.label }));
+// Revenue project tidak dipakai lagi (permintaan 2026-10-05) → tidak ditawarkan untuk alur baru.
+const MODULE_OPTIONS = Object.entries(APPROVAL_MODULE_META)
+  .filter(([value]) => value !== "REVENUE")
+  .map(([value, meta]) => ({ value, label: meta.label }));
 
 /** Editor level approval: tiap level berisi satu atau beberapa approver (salah satu cukup). */
 function StepsEditor({ approvers }: { approvers: SelectOption[] }) {

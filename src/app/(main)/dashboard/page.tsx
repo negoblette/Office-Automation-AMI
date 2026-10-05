@@ -12,18 +12,28 @@ import { buttonVariants } from "@/components/ui/button";
 import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
 import { type CurrentUser, requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
+import { canApprove } from "@/lib/roles";
+import { listMyApprovalQueue } from "@/lib/services/approval-queries";
 import { getTodayAttendance } from "@/lib/services/attendance-queries";
 import { getAdminDashboard, getStaffDashboard } from "@/lib/services/dashboard-queries";
-import { DashboardCard, ExpiringCard, MyRequestsList, StaffReminderCard, WeekCard } from "./dashboard-ui";
+import { LeaveCalendar } from "@/components/shared/leave-calendar";
+import { toJakartaIsoDate } from "@/lib/format";
+import { getLeaveCalendar } from "@/lib/services/leave-queries";
+import { DashboardCard, ExpiringCard, MyRequestsList, StaffReminderCard } from "./dashboard-ui";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ kal?: string }> }) {
   const user = await requireUser();
-  return user.role === "ADMIN" ? <AdminDashboard user={user} /> : <StaffDashboard user={user} />;
+  const { kal } = await searchParams;
+  const todayIso = toJakartaIsoDate();
+  const yearMonth = kal && /^\d{4}-(0[1-9]|1[0-2])$/.test(kal) ? kal : todayIso.slice(0, 7);
+  // Kalender cuti bulanan (Fase 14): semua karyawan melihat cuti semua karyawan.
+  const calendar = <LeaveCalendar weeks={await getLeaveCalendar(prisma, yearMonth)} yearMonth={yearMonth} todayIso={todayIso} hrefFor={(ym) => `/dashboard?kal=${ym}`} />;
+  return user.role === "ADMIN" ? <AdminDashboard user={user} calendar={calendar} /> : <StaffDashboard user={user} calendar={calendar} />;
 }
 
-async function AdminDashboard({ user }: { user: CurrentUser }) {
+async function AdminDashboard({ user, calendar }: { user: CurrentUser; calendar: React.ReactNode }) {
   const [data, today] = await Promise.all([
     getAdminDashboard(prisma, user.id),
     user.employeeId ? getTodayAttendance(prisma, user.employeeId) : null,
@@ -111,17 +121,19 @@ async function AdminDashboard({ user }: { user: CurrentUser }) {
         <ApprovalQueueTable rows={data.queue} />
       </DashboardCard>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <WeekCard week={data.week} />
-        <ExpiringCard items={data.expiring} includeAssets={data.assets !== null} />
-      </div>
+      {calendar}
+      <ExpiringCard items={data.expiring} includeAssets={data.assets !== null} />
     </div>
   );
 }
 
-async function StaffDashboard({ user }: { user: CurrentUser }) {
+async function StaffDashboard({ user, calendar }: { user: CurrentUser; calendar: React.ReactNode }) {
   const [data, today] = await Promise.all([
-    getStaffDashboard(prisma, user),
+    getStaffDashboard(prisma, user).then(async (staff) => ({
+      ...staff,
+      // Role APPROVER: dashboard Staf + antrian approval miliknya.
+      queue: canApprove(user.role) ? await listMyApprovalQueue(prisma, user.id) : null,
+    })),
     user.employeeId ? getTodayAttendance(prisma, user.employeeId) : null,
   ]);
   return (
@@ -147,6 +159,21 @@ async function StaffDashboard({ user }: { user: CurrentUser }) {
 
       <ClockCard today={today} />
 
+      {data.queue && (
+        <DashboardCard
+          title="Antrian Persetujuan Anda"
+          description="Pengajuan yang menunggu persetujuan Anda sebagai Approver"
+          icon={ClipboardCheck}
+          action={
+            <Link href="/approval" className="text-sm font-medium text-primary hover:underline">
+              Buka Approval Center
+            </Link>
+          }
+        >
+          <ApprovalQueueTable rows={data.queue} />
+        </DashboardCard>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-2">
         {data.balance && <LeaveBalanceCard balance={data.balance} />}
         {data.health && <HealthSummaryCard summary={data.health} />}
@@ -156,10 +183,8 @@ async function StaffDashboard({ user }: { user: CurrentUser }) {
         <MyRequestsList rows={data.requests} />
       </DashboardCard>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <StaffReminderCard documentMissing={data.documentMissing} certificates={data.certificates} />
-        <WeekCard week={data.week} />
-      </div>
+      {calendar}
+      <StaffReminderCard documentMissing={data.documentMissing} certificates={data.certificates} />
     </div>
   );
 }

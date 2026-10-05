@@ -22,3 +22,11 @@ export const attendanceCorrectionSchema = z
   })
   .refine((v) => !v.clockOut || v.clockOut > v.clockIn, { path: ["clockOut"], error: "Jam pulang harus setelah jam masuk" });
 export type AttendanceCorrectionInput = z.infer<typeof attendanceCorrectionSchema>;
+
+/** Appeal tidak hadir (Fase 14): tanggal, alasan Sakit / Kunjungan keluar, keterangan. */
+export const appealSchema = z.object({
+  date: isoDateSchema,
+  reason: z.enum(["SICK", "VISIT"], { error: "Alasan wajib dipilih" }),
+  note: textSchema("Keterangan", { min: 3, max: 300 }),
+});
+export type AppealFormInput = z.infer<typeof appealSchema>;

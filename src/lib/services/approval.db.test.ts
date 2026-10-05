@@ -60,20 +60,15 @@ describe("Tech Spec §4.5 — pembentukan approval", () => {
     }
   });
 
-  it("Staf Sales REIMBURSE → Darwin → Leonard", async () => {
+  // Fase 14 (2026-10-02): Sales satu level Darwin / Leonard; pemohon dikeluarkan dari levelnya.
+  it("Staf Sales REIMBURSE → Darwin / Leonard (salah satu)", async () => {
     const { requestId } = await submit("sinta", "REIMBURSE");
-    expect((await stepsOf(requestId)).steps).toEqual([
-      [1, "darwin", "PENDING"],
-      [2, "leonard", "WAITING"],
-    ]);
+    expect((await stepsOf(requestId)).steps).toEqual([[1, "darwin/leonard", "PENDING"]]);
   });
 
-  it("Darwin REIMBURSE → dilewati → Leonard", async () => {
+  it("Darwin REIMBURSE → Leonard", async () => {
     const { requestId } = await submit("darwin", "REIMBURSE");
-    expect((await stepsOf(requestId)).steps).toEqual([
-      [1, "darwin", "SKIPPED"],
-      [2, "leonard", "PENDING"],
-    ]);
+    expect((await stepsOf(requestId)).steps).toEqual([[1, "leonard", "PENDING"]]);
   });
 
   // Matriks persetujuan v1.14.
@@ -83,7 +78,8 @@ describe("Tech Spec §4.5 — pembentukan approval", () => {
       expect(status).toBe("APPROVED");
       expect(await stepsOf(requestId)).toEqual({ status: "APPROVED", currentLevel: null, steps: [] });
       expect(notifications[0].template).toBe("approval-final");
-      expect([...notifications[0].recipientIds].sort()).toEqual([u.yosep, u.rudy, u.darwin, u.leonard, u.ika].sort());
+      // Admin = Ika, Rudy, Leonard (Darwin & Yosep kini Approver).
+      expect([...notifications[0].recipientIds].sort()).toEqual([u.rudy, u.leonard, u.ika].sort());
     }
   });
 
@@ -92,16 +88,22 @@ describe("Tech Spec §4.5 — pembentukan approval", () => {
     expect(await stepsOf(requestId)).toEqual({ status: "PENDING", currentLevel: 1, steps: [[1, "ika", "PENDING"]] });
   });
 
-  it("Bu Devi (Umum) REIMBURSE → Bu Ika", async () => {
+  it("Bu Devi (Umum) REIMBURSE → Bu Ika / Ko Leonard", async () => {
     const { requestId, notifications } = await submit("devi", "REIMBURSE");
-    expect((await stepsOf(requestId)).steps).toEqual([[1, "ika", "PENDING"]]);
-    expect(notifications[0].recipientIds).toEqual([u.ika]);
+    expect((await stepsOf(requestId)).steps).toEqual([[1, "ika/leonard", "PENDING"]]);
+    expect([...notifications[0].recipientIds].sort()).toEqual([u.ika, u.leonard].sort());
   });
 
-  it.each(["REIMBURSE", "EXPENSE", "REVENUE"] as const)("Bu Ika %s sendiri → langsung disetujui (level dirinya dilewati)", async (module) => {
+  it.each(["REIMBURSE", "EXPENSE", "REVENUE"] as const)("Bu Ika %s sendiri → Ko Leonard", async (module) => {
     const { requestId, status } = await submit("ika", module);
-    expect(status).toBe("APPROVED");
-    expect(await stepsOf(requestId)).toEqual({ status: "APPROVED", currentLevel: null, steps: [[1, "ika", "SKIPPED"]] });
+    expect(status).toBe("PENDING");
+    expect((await stepsOf(requestId)).steps).toEqual([[1, "leonard", "PENDING"]]);
+  });
+
+  it("Approver (role APPROVER) bisa menyetujui; Staf tidak", async () => {
+    const { requestId } = await submit("andi", "REIMBURSE");
+    expect((await testDb.user.findUniqueOrThrow({ where: { id: u.yosep } })).role).toBe("APPROVER");
+    expect((await approve(requestId, "yosep")).status).toBe("PENDING");
   });
 
   it("Bu Devi HEALTH → Ika", async () => {
@@ -155,7 +157,7 @@ describe("Tech Spec §4.2 — approve", () => {
     expect(final.status).toBe("APPROVED");
     expect(final.notifications[0].template).toBe("approval-final");
     expect([...final.notifications[0].recipientIds].sort()).toEqual(
-      [u.andi, u.yosep, u.rudy, u.darwin, u.leonard, u.ika].sort(),
+      [u.andi, u.rudy, u.leonard, u.ika].sort(),
     );
 
     const request = await testDb.approvalRequest.findUniqueOrThrow({ where: { id: requestId }, include: { steps: true } });

@@ -1,17 +1,16 @@
 // Nilai awal form reimburse. Sengaja BUKAN modul "use client": dipakai halaman server
-// (/reimburse/baru) maupun form di client (tombol Tambah Baris).
+// (/reimburse/baru, edit) maupun form di client (tombol Tambah Baris / Tambah Kunjungan).
 import type { z } from "zod";
 import { toJakartaIsoDate } from "@/lib/format";
-import type { reimbursementSchema } from "@/lib/validators/reimbursement";
+import type { reimbursementFormSchema } from "@/lib/validators/reimbursement";
 
-export type ReimbursementFormValues = z.input<typeof reimbursementSchema>;
+export type ReimbursementFormValues = z.input<typeof reimbursementFormSchema>;
+export type ReimbursementVisitValues = ReimbursementFormValues["visits"][number];
+export type ReimbursementLineValues = ReimbursementVisitValues["lines"][number];
 
-/** Satu baris kosong: tanggal hari ini (WIB), payment Cash, tanpa kwitansi. */
-export function emptyItem(): ReimbursementFormValues["items"][number] {
+/** Satu baris kosong: payment Cash, tanpa kwitansi. */
+export function emptyLine(): ReimbursementLineValues {
   return {
-    date: toJakartaIsoDate(),
-    customerName: "",
-    projectId: "",
     activity: "",
     participants: "",
     location: "",
@@ -19,7 +18,10 @@ export function emptyItem(): ReimbursementFormValues["items"][number] {
     hasReceipt: false,
     paymentMethod: "CASH",
     amount: null as unknown as number,
-    receiptFileKey: "",
-    receiptFileName: "",
   };
+}
+
+/** Satu kunjungan kosong: tanggal hari ini (WIB), company & project belum dipilih, 1 baris. */
+export function emptyVisit(date = toJakartaIsoDate()): ReimbursementVisitValues {
+  return { date, customerId: "", project: "", lines: [emptyLine()] };
 }

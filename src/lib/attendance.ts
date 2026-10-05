@@ -49,6 +49,9 @@ export type DayStatus =
   | "HOLIDAY" // hari libur
   | "WEEKEND"
   | "ABSENT" // hari kerja tanpa absen & tanpa cuti
+  | "SICK" // appeal disetujui: sakit (Fase 14)
+  | "VISIT" // appeal disetujui: kunjungan keluar
+  | "APPEAL_PENDING" // appeal menunggu persetujuan
   | "NOT_YET" // hari ini belum clock in
   | "NOT_EMPLOYED"; // di luar periode kerja
 
@@ -61,6 +64,9 @@ export const DAY_STATUS_LABEL: Record<DayStatus, string> = {
   HOLIDAY: "Libur",
   WEEKEND: "Akhir pekan",
   ABSENT: "Tidak hadir",
+  SICK: "Sakit",
+  VISIT: "Kunjungan keluar",
+  APPEAL_PENDING: "Appeal menunggu",
   NOT_YET: "Belum clock in",
   NOT_EMPLOYED: "—",
 };
@@ -78,16 +84,30 @@ export function dayStatus(input: {
   record: DayRecord;
   onLeave: boolean;
   holiday: boolean;
+  /** Appeal hari itu (Fase 14); REJECTED diabaikan. */
+  appeal?: { reason: "SICK" | "VISIT"; status: string } | null;
 }): DayStatus {
-  const { dateIso, todayIso, employed, record, onLeave, holiday } = input;
+  const { dateIso, todayIso, employed, record, onLeave, holiday, appeal } = input;
   if (record) {
     if (!record.clockOut) return dateIso === todayIso ? "WORKING" : "NO_CLOCK_OUT";
     return record.lateMinutes > 0 ? "LATE" : "PRESENT";
   }
   if (!employed) return "NOT_EMPLOYED";
+  if (appeal?.status === "APPROVED") return appeal.reason;
+  if (appeal?.status === "PENDING") return "APPEAL_PENDING";
   if (onLeave) return "LEAVE";
   const weekday = new Date(`${dateIso}T00:00:00Z`).getUTCDay();
   if (weekday === 0 || weekday === 6) return "WEEKEND";
   if (holiday) return "HOLIDAY";
   return dateIso === todayIso ? "NOT_YET" : "ABSENT";
 }
+
+/** Batas appeal: maks 7 hari sejak tanggal tidak hadir (Fase 14). Lewat dari ini → potong cuti. */
+export const APPEAL_WINDOW_DAYS = 7;
+
+/** Tanggal terakhir boleh mengajukan appeal untuk `dateIso`. */
+export function appealDeadline(dateIso: string): string {
+  return new Date(Date.parse(`${dateIso}T00:00:00Z`) + APPEAL_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10);
+}
+
+export const APPEAL_REASON_LABEL = { SICK: "Sakit", VISIT: "Kunjungan keluar" } as const;

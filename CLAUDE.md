@@ -130,16 +130,16 @@ Satu schema Zod dipakai di client dan server. Normalisasi sebelum simpan.
 
 ## 7. Aturan Bisnis Kunci (ringkas — detail di docs/02-TECH-SPEC.md)
 
-**Role:** `ADMIN` (lihat & kelola semua data + Setting) dan `STAFF` (hanya data
-sendiri). Divisi (SALES / ENGINEER / UMUM / DIRECTOR) disimpan di `Employee.division` dan
-menentukan tipe reimburse serta approval flow. Admin: Ko Yosep (Engineer), Ko Darwin (Sales),
-Ci Ika (Umum), Ko Rudy & Ko Leonard (Direktur).
+**Role:** `ADMIN` (kendali penuh: semua data + Setting) = Bu Ika, Ko Rudy, Ko Leonard; `APPROVER`
+(data sendiri + halaman Approval untuk pengajuan yang ditugaskan) = Ko Darwin, Ko Yosep; `STAFF`
+(hanya data sendiri). Approver di flow = user aktif ber-role ADMIN/APPROVER (`canApprove`, `src/lib/roles.ts`).
+Divisi (SALES / ENGINEER / UMUM / DIRECTOR) disimpan di `Employee.division` dan menentukan approval flow.
 Hak approve ditentukan oleh **Approval Flow**, bukan oleh role saja.
 
 **Approval (dipakai Reimburse, Cuti, Kesehatan, Expense/Revenue):**
 1. Ambil flow REGULAR sesuai `module` + `division` pemohon (division null = semua).
 2. Flow tanpa level → langsung APPROVED (mis. cuti divisi Direktur).
-3. Step yang approver-nya mencakup pemohon sendiri → SKIPPED.
+3. Pemohon dikeluarkan dari level yang memuat dirinya (Darwin → Leonard, Ika → Leonard); level tanpa approver lain → SKIPPED.
 4. Jika semua step ter-skip → langsung APPROVED bila flow `autoApproveWhenSkipped`, selain itu flow FALLBACK.
 5. Step berurutan; step dengan beberapa approver = salah satu cukup.
 6. Step terakhir yang disetujui = APPROVED (final).
@@ -148,9 +148,9 @@ Hak approve ditentukan oleh **Approval Flow**, bukan oleh role saja.
 Flow awal (seed, matriks v1.14):
 | Module | Divisi | L1 | L2 | Catatan |
 |---|---|---|---|---|
-| REIMBURSE, EXPENSE, REVENUE | SALES | Ko Darwin | Ko Leonard | |
+| REIMBURSE, EXPENSE, REVENUE | SALES | Ko Darwin / Ko Leonard | — | satu level, salah satu cukup |
 | REIMBURSE, EXPENSE, REVENUE | ENGINEER | Ko Yosep | Ko Rudy | |
-| REIMBURSE, EXPENSE, REVENUE | UMUM | Bu Ika | — | autoApproveWhenSkipped (milik Bu Ika langsung disetujui) |
+| REIMBURSE, EXPENSE, REVENUE | UMUM | Bu Ika / Ko Leonard | — | milik Bu Ika → Ko Leonard |
 | REIMBURSE, EXPENSE, REVENUE | DIRECTOR | Bu Ika | — | |
 | LEAVE (cuti) | semua | Ko Rudy | — | |
 | LEAVE (cuti) | DIRECTOR | — | — | tanpa approval, tampil "Direktur cuti" di kalender |
@@ -166,9 +166,11 @@ bulan via `NumberSequence` dengan row lock di dalam transaksi.
 **Cuti:** periode = **tahun kalender** (Jan–Des, cutoff 31 Des). Cuti bisa dipakai setelah
 genap 1 tahun masa kerja. Tahun genap 1 tahun: jatah prorata = 12 − bulan genap 1 tahun (masuk Feb → 10 hari,
 masuk Des → 0, baru dapat Januari berikutnya). Tahun-tahun berikutnya jatah menurut masa kerja per 1 Januari:
-1–5 th = 12, 6–15 th = 15, >15 th = 18 (tabel `LeavePolicy`). Carry over maks 3 hari
+1–4 th = 12, 5–14 th = 15, ≥15 th = 18 (tahun penuh; tabel `LeavePolicy`). Carry over maks 3 hari
 (`AppSetting leave.maxCarryOver`), berlaku sepanjang tahun berikutnya lalu hangus. Hari cuti = hari kerja
-(tanpa Sabtu, Minggu, `Holiday`).
+(tanpa Sabtu, Minggu, `Holiday`). Penyesuaian saldo (Fase 14): `LeaveAdjustment` + `LeaveBalance.adjustment`
+(pemutihan Admin ±, potong cuti tidak hadir −1); saldo boleh minus dan minusnya terbawa ke tahun berikutnya.
+Kalender cuti bulanan (`LeaveCalendar`) tampil di dashboard & `/cuti/kalender`; semua karyawan melihat cuti semua karyawan.
 
 **Kesehatan:** plafon **hanya tahunan** per karyawan per tahun (tidak ada plafon bulanan). Klaim >
 sisa plafon tahunan ditolak saat submit. Approver mengisi nominal disetujui (≤ diajukan, `approvedAmount`);
@@ -179,10 +181,36 @@ Holiday, Reimbursement (draft), ApprovalFlow, Asset. Setiap query WAJIB memfilte
 include relasi); file di storage tidak dihapus. Tambah ulang libur/customer yang pernah dihapus → dipulihkan.
 Reimburse: 6 tipe untuk semua divisi. Dokumen: Kelompok I & II (`DOCUMENT_GROUP_I/II`).
 
+**Koreksi approver:** approver step aktif boleh mengoreksi nominal & keterangan (reimburse per baris,
+expense/revenue, keterangan klaim) sebelum menyetujui → `ApprovalCorrection` (sebelum → sesudah), terlihat pemohon.
+
+**Invoice/kwitansi:** upload dihapus (Fase 14). File lama hanya disimpan 2 tahun: job `invoice.purge`
+(harian 02:00 WIB) menghapus file & referensinya, data nominal tetap — pengecualian dari aturan soft delete.
+
+**Sertifikat:** setiap sertifikat baru diverifikasi lewat approval engine (modul CERTIFICATE, `CRT/…`, flow
+Ko Yosep → Bu Ika); terverifikasi → hanya Admin yang bisa mengubah. Masa berlaku wajib untuk sertifikat profesional.
+
+**Profil (Fase 14):** NIP (`employeeNo`) hanya diisi Admin; kontak darurat diisi karyawan; aset sederhana per
+karyawan (`EmployeeAsset`, dicatat Admin); biodata cetak di `/biodata/[employeeId]` (print browser → PDF).
+
+**Revenue project tidak dipakai (2026-10-05):** tampilan, tombol "Input Revenue", kolom Revenue/Selisih, dan
+pilihan modul REVENUE di Setting Approval dihapus. Model `ProjectRevenue`, service, dan modul approval REVENUE
+sengaja dibiarkan (data lama / approval yang masih berjalan) — jangan tambah fitur revenue baru.
+
+**Reimburse (Fase 14):** Form = beberapa **kunjungan** (tanggal + company + project), masing-masing berisi
+beberapa **baris** (tipe, payment, total, lokasi, nama – jabatan, aktivitas) — `reimbursementFormSchema`
+meratakannya jadi `items` (`reimbursementSchema`, yang diparse action); form edit memakai `itemsToVisits`.
+Company **wajib dari master** (tidak dibuat otomatis dari form), tapi **semua karyawan boleh menambah customer &
+project baru** (dialog di form reimburse & halaman Project; service `createOnly` — ubah/hapus/nonaktifkan tetap Admin;
+project baru dari staf selalu aktif, ID disarankan `nextProjectCode`); project harus milik company itu (dicek
+server) atau **New Acquisition** = flag `ReimbursementItem.newAcquisition` tanpa project (prospek). Project
+tampil "ID - Nama" (`Project.code`, `projectLabel`); subtotal per kunjungan & per tanggal; rekap cetak per
+orang per bulan di `/cetak/reimburse` (route group `(print)`, print browser → PDF).
+
 **Isi data mandiri:** Admin hanya membuat akun minimal (nama, email, divisi,
 jabatan, tanggal masuk, role); staf melengkapi sendiri data diri, keluarga, dokumen,
-sertifikat. Divisi, role, email, dan tanggal masuk/keluar hanya boleh diubah
-Admin (dicek di server).
+sertifikat. Seluruh "Akun & Pekerjaan" — nama lengkap, jabatan, level, NIP, divisi, role, email, dan
+tanggal masuk/keluar — hanya boleh diisi/diubah Admin (tidak ada di `employeeSelfSchema`; dicek di server).
 `nik` & `employeeNo` nullable. Seed tidak mengisi data diri.
 
 **Reminder H-30:** job worker `reminder.certificate` & `reminder.asset` (07:00 WIB). Dicatat di
@@ -196,6 +224,9 @@ berjalan tidak bisa dinonaktifkan, diturunkan ke Staf, atau di-resign (`assertCa
 **Absensi:** clock in / clock out oleh tiap karyawan, jam dari server (WIB), satu baris `Attendance` per
 karyawan per hari. Terlambat / pulang cepat terhadap jam kerja `AppSetting attendance.workHours`
 (default 08:00–17:00), tidak dihitung di akhir pekan & libur. Admin mengoreksi dengan alasan wajib (audit).
+Appeal (Fase 14): hari kerja tidak hadir → appeal Sakit / Kunjungan keluar maks 7 hari (modul ATTENDANCE_APPEAL,
+`APL/…`, Bu Ika; milik Bu Ika → Fallback). Lewat 7 hari tanpa appeal → job `attendance.deduct` (01:00 WIB) memotong
+1 hari cuti (`LeaveAdjustment` ABSENCE), hanya untuk tanggal ≥ `attendance.deductionStartDate`.
 
 **Modul ditunda:** Inventory / Demo Unit (`FEATURES.inventory = false` di `src/lib/features.ts`) —
 menu, halaman, aksi, dashboard & job `reminder.asset` nonaktif; kode & data tetap ada.

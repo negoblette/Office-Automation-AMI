@@ -5,7 +5,8 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { formatDate } from "@/lib/format";
-import { getAllCurrentBalances, getCurrentBalances } from "@/lib/services/leave-queries";
+import { getAllCurrentBalances, getCurrentBalances, type LeaveAdjustmentView, listLeaveAdjustments } from "@/lib/services/leave-queries";
+import { AdjustLeaveDialog } from "./adjust-dialog";
 import { CutiTabs, LeaveBalanceCard } from "../leave-ui";
 
 export const metadata: Metadata = { title: "Saldo Cuti" };
@@ -34,18 +35,24 @@ export default async function SaldoCutiPage() {
 }
 
 async function OwnBalance({ employeeId }: { employeeId: string }) {
-  const [balance] = await getCurrentBalances(prisma, [employeeId]);
-  return <LeaveBalanceCard balance={balance} />;
+  const [[balance], adjustments] = await Promise.all([getCurrentBalances(prisma, [employeeId]), listLeaveAdjustments(prisma, employeeId)]);
+  return (
+    <>
+      <LeaveBalanceCard balance={balance} />
+      <AdjustmentHistory rows={adjustments} showEmployee={false} />
+    </>
+  );
 }
 
 async function AllBalances() {
-  const balances = await getAllCurrentBalances(prisma);
+  const [balances, adjustments] = await Promise.all([getAllCurrentBalances(prisma), listLeaveAdjustments(prisma)]);
   return (
+    <>
     <section className="overflow-x-auto rounded-2xl bg-card shadow-card">
       <table className="w-full min-w-[820px] text-sm">
         <thead className="bg-muted/60 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
           <tr>
-            {["Karyawan", "Periode", "Jatah", "Carry over", "Terpakai", "Menunggu", "Sisa"].map((h, i) => (
+            {["Karyawan", "Periode", "Jatah", "Carry over", "Penyesuaian", "Terpakai", "Menunggu", "Sisa", ""].map((h, i) => (
               <th key={h} className={i > 1 ? "px-4 py-3 text-right" : "px-4 py-3"}>
                 {h}
               </th>
@@ -66,17 +73,51 @@ async function AllBalances() {
               </td>
               <td className="px-4 py-3 text-right tabular-nums">{b.entitlement}</td>
               <td className="px-4 py-3 text-right tabular-nums">{b.carriedOver}</td>
+              <td className="px-4 py-3 text-right tabular-nums">{b.adjustment > 0 ? `+${b.adjustment}` : b.adjustment}</td>
               <td className="px-4 py-3 text-right tabular-nums">{b.used}</td>
               <td className="px-4 py-3 text-right tabular-nums">{b.pending}</td>
               <td className="px-4 py-3 text-right">
-                <StatusBadge variant={b.remaining > 0 ? "success" : "neutral"} dot={false}>
+                <StatusBadge variant={b.remaining > 0 ? "success" : b.remaining < 0 ? "danger" : "neutral"} dot={false}>
                   {b.remaining} hari
                 </StatusBadge>
+              </td>
+              <td className="px-2 py-3 text-right">
+                <AdjustLeaveDialog employeeId={b.employeeId} employeeName={b.employeeName} />
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+    </section>
+    <AdjustmentHistory rows={adjustments} showEmployee />
+    </>
+  );
+}
+
+/** Riwayat pemutihan / penyesuaian / potong cuti (Fase 14). */
+function AdjustmentHistory({ rows, showEmployee }: { rows: LeaveAdjustmentView[]; showEmployee: boolean }) {
+  if (rows.length === 0) return null;
+  return (
+    <section className="rounded-2xl bg-card p-5 shadow-card">
+      <h2 className="mb-3 text-base font-semibold">Riwayat Penyesuaian Saldo</h2>
+      <ul className="divide-y divide-border text-sm">
+        {rows.map((r) => (
+          <li key={r.id} className="flex flex-wrap items-baseline justify-between gap-2 py-2">
+            <div className="min-w-0">
+              <p className="font-medium">
+                {showEmployee && `${r.employeeName} · `}
+                {r.source === "ABSENCE" ? `Potong cuti — tidak hadir ${r.attendanceDate ? date(r.attendanceDate) : ""}` : r.reason}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {r.createdBy ? `oleh ${r.createdBy}` : "otomatis oleh sistem"} · {formatDate(r.createdAt, "short")}
+              </p>
+            </div>
+            <StatusBadge variant={r.days > 0 ? "success" : "danger"} dot={false}>
+              {r.days > 0 ? `+${r.days}` : r.days} hari
+            </StatusBadge>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

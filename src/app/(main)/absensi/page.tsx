@@ -72,7 +72,7 @@ async function Mine({ employeeId, yearMonth, thisMonth }: { employeeId: string |
         />
         <StatCard label="Tidak hadir / tidak clock out" value={days.filter((d) => d.status === "ABSENT" || d.status === "NO_CLOCK_OUT").length} unit="hari" icon={CalendarX} tone="danger" />
       </div>
-      <AttendanceDaysTable days={days} />
+      <AttendanceDaysTable days={days} appealable />
     </>
   );
 }
@@ -97,7 +97,7 @@ async function Recap({ yearMonth, thisMonth, todayIso }: { yearMonth: string; th
         <MonthNav yearMonth={yearMonth} baseHref="/absensi?tab=rekap" maxMonth={thisMonth} />
       </div>
       <div className="overflow-x-auto rounded-2xl bg-card shadow-card">
-        <table className="w-full min-w-[760px] text-sm">
+        <table className="w-full min-w-[900px] text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs tracking-wider text-muted-foreground uppercase">
               <th className="px-4 py-3 font-semibold">Karyawan</th>
@@ -106,7 +106,10 @@ async function Recap({ yearMonth, thisMonth, todayIso }: { yearMonth: string; th
               <th className="px-4 py-3 text-right font-semibold">Terlambat</th>
               <th className="px-4 py-3 text-right font-semibold">Tidak clock out</th>
               <th className="px-4 py-3 text-right font-semibold">Cuti</th>
+              <th className="px-4 py-3 text-right font-semibold">Sakit</th>
+              <th className="px-4 py-3 text-right font-semibold">Kunjungan</th>
               <th className="px-4 py-3 text-right font-semibold">Tidak hadir</th>
+              <th className="px-4 py-3 text-right font-semibold">Cuti dipotong</th>
             </tr>
           </thead>
           <tbody>
@@ -139,7 +142,10 @@ async function Recap({ yearMonth, thisMonth, todayIso }: { yearMonth: string; th
                 </td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{row.noClockOut}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{row.leave}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{row.sick}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{row.visit}</td>
                 <td className={`px-4 py-2.5 text-right tabular-nums ${row.absent ? "font-semibold text-danger" : ""}`}>{row.absent}</td>
+                <td className={`px-4 py-2.5 text-right tabular-nums ${row.deducted ? "font-semibold text-danger" : ""}`}>{row.deducted}</td>
               </tr>
             ))}
           </tbody>

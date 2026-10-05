@@ -7,6 +7,7 @@ import type { ApprovalModule, Prisma, PrismaClient } from "@/generated/prisma/cl
 import { FINAL_EFFECTS, type FinalEffectOptions } from "./approval-effects";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
+import { canApprove } from "@/lib/roles";
 
 type Tx = Prisma.TransactionClient;
 
@@ -42,13 +43,13 @@ async function adminIds(tx: Tx) {
 // ---------------------------------------------------------------------
 
 type FlowWithSteps = Prisma.ApprovalFlowGetPayload<{
-  include: { steps: { include: { approvers: { include: { user: { select: { id: true; isActive: true } } } } } } };
+  include: { steps: { include: { approvers: { include: { user: { select: { id: true; isActive: true; role: true } } } } } } };
 }>;
 
 const flowInclude = {
   steps: {
     orderBy: { level: "asc" as const },
-    include: { approvers: { include: { user: { select: { id: true, isActive: true } } } } },
+    include: { approvers: { include: { user: { select: { id: true, isActive: true, role: true } } } } },
   },
 };
 
@@ -56,12 +57,14 @@ type PlannedStep = { approverIds: string[]; skipped: boolean };
 
 function planSteps(flow: FlowWithSteps, requesterId: string): PlannedStep[] {
   return flow.steps.map((step) => {
-    const approverIds = step.approvers.filter((a) => a.user.isActive).map((a) => a.userId);
+    const approverIds = step.approvers.filter((a) => a.user.isActive && canApprove(a.user.role)).map((a) => a.userId);
     if (approverIds.length === 0) {
       throw new ServiceError(`Approver level ${step.level} tidak aktif. Perbarui Approval Flow di Setting.`);
     }
-    // Step yang approver-nya mencakup pemohon sendiri → dilewati.
-    return { approverIds, skipped: approverIds.includes(requesterId) };
+    // Pemohon tidak menyetujui pengajuannya sendiri: dikeluarkan dari level itu (keputusan user
+    // 2026-10-02: Darwin → Leonard, Ika → Leonard). Level tanpa approver lain → dilewati.
+    const others = approverIds.filter((id) => id !== requesterId);
+    return others.length > 0 ? { approverIds: others, skipped: false } : { approverIds, skipped: true };
   });
 }
 
@@ -193,7 +196,7 @@ export async function approveRequest(
 
     // 1. Validasi: user ADMIN aktif DAN termasuk approver step PENDING.
     const actor = await tx.user.findUnique({ where: { id: input.actorId }, select: { role: true, isActive: true } });
-    if (!actor?.isActive || actor.role !== "ADMIN" || !current.approverIds.includes(input.actorId)) {
+    if (!actor?.isActive || !canApprove(actor.role) || !current.approverIds.includes(input.actorId)) {
       throw new ForbiddenError();
     }
 

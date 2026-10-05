@@ -74,7 +74,7 @@ Approval bersifat berurutan. Approval Level 2 (atau level terakhir) adalah final
 | EMP-03 | Setiap karyawan memiliki tombol **Resign**: status menjadi Resign, masuk Arsip, data tidak dihapus |
 | EMP-04 | Rehire dilakukan Admin dari halaman Arsip ("Aktifkan kembali") → memakai record lama + periode kerja baru. NIK yang sudah dipakai karyawan lain ditolak saat disimpan |
 | EMP-05 | Admin melihat semua karyawan (aktif & arsip); Staf hanya data sendiri |
-| EMP-06 | **Isi data mandiri:** Admin hanya membuat akun minimal (nama, email, divisi, jabatan, tanggal masuk, role); staf melengkapi sendiri data diri (NIK, KK, NPWP, alamat, dll.), keluarga, dokumen, dan sertifikat. Divisi, role, email login, serta tanggal masuk/keluar hanya bisa diubah Admin *(keputusan user 2026-09-24)* |
+| EMP-06 | **Isi data mandiri:** Admin hanya membuat akun minimal (nama, email, divisi, jabatan, tanggal masuk, role); staf melengkapi sendiri data diri (NIK, KK, NPWP, alamat, dll.), keluarga, dokumen, dan sertifikat. Nama lengkap, jabatan, level, NIP, divisi, role, email login, serta tanggal masuk/keluar hanya bisa diisi/diubah Admin *(keputusan user 2026-09-24; nama/jabatan/level 2026-10-05)* |
 
 ### 3.2 Dokumen Karyawan & Keluarga (DOC)
 | ID | Requirement |
@@ -106,8 +106,8 @@ Approval bersifat berurutan. Approval Level 2 (atau level terakhir) adalah final
 | ID | Requirement |
 |---|---|
 | RMB-01 | Nomor reimburse otomatis & unik (`RMB/YYYY/MM/NNNN`) |
-| RMB-02 | Satu pengajuan berisi banyak baris transaksi |
-| RMB-03 | Field per baris: Date, Company/Customer, Names–Position, Activities/Project, Location, Type, Receipt (Ya/Tidak), Payment By (Cash/CC), Total |
+| RMB-02 | Satu pengajuan berisi banyak baris transaksi, dikelompokkan per kunjungan (tanggal + company + project / New Acquisition) *(Fase 14)* |
+| RMB-03 | Per kunjungan: Date, Company/Customer (dropdown dari master), Project (dropdown project company itu, atau New Acquisition). Per baris: Names–Position, Activities, Location, Type, Receipt (Ya/Tidak), Payment By (Cash/CC), Total |
 | RMB-04 | 6 tipe bebas dipilih semua divisi *(v1.14)*. Parkir masuk Allowance; bensin & tol masuk Transport. Tidak ada batas nominal (BR-RMB-14) |
 | RMB-05 | Upload kwitansi per baris |
 | RMB-06 | Total, subtotal CC, subtotal Cash dihitung otomatis |
@@ -119,7 +119,7 @@ Approval bersifat berurutan. Approval Level 2 (atau level terakhir) adalah final
 | ID | Requirement |
 |---|---|
 | LV-01 | Menu Setting jatah cuti berdasarkan masa kerja; sistem otomatis menghitung jatah tiap karyawan |
-| LV-02 | 0 tahun = 0 hari; 1–5 tahun = 12 hari; 6–15 tahun = 15 hari; >15 tahun = 18 hari |
+| LV-02 | Masa kerja (tahun penuh) per 1 Januari: 0 tahun = 0 hari; 1–4 tahun = 12 hari; 5–14 tahun = 15 hari; ≥15 tahun = 18 hari (per 1 Jan, 5 / 15 tahun penuh sudah termasuk >5 / >15 tahun — keputusan user 2026-10-02) |
 | LV-03 | Carry over maksimal 3 hari per tahun |
 | LV-04 | Kalender libur nasional + tambahan libur manual oleh Admin |
 | LV-05 | Durasi cuti dihitung dalam hari kerja (tanpa Sabtu, Minggu, hari libur) |
@@ -150,10 +150,10 @@ Approval bersifat berurutan. Approval Level 2 (atau level terakhir) adalah final
 ### 3.9 Expense & Revenue Project (PRJ)
 | ID | Requirement |
 |---|---|
-| PRJ-01 | Master Customer & Project, jenis: Berjalan / New Acquisition |
+| PRJ-01 | Master Customer & Project, jenis: Berjalan / New Acquisition. Semua karyawan boleh menambah customer & project baru; ubah/hapus/nonaktifkan hanya Admin *(Fase 14)* |
 | PRJ-02 | Expense per project, kategori CC/Cash, dengan nama customer |
 | PRJ-03 | Baris reimburse yang memilih project otomatis terhitung sebagai expense project tersebut |
-| PRJ-04 | Expense & revenue membutuhkan approval (flow sama dengan Reimburse) |
+| PRJ-04 | Expense membutuhkan approval (flow sama dengan Reimburse). **Revenue tidak dipakai** — dihapus dari tampilan & input *(2026-10-05)*; tabel/approval lama tetap ada untuk data historis |
 
 ### 3.9a Absensi (ATT) — ditambahkan 2026-09-25
 | ID | Requirement |
@@ -163,6 +163,9 @@ Approval bersifat berurutan. Approval Level 2 (atau level terakhir) adalah final
 | ATT-03 | Karyawan melihat riwayat absensi per bulan (hadir, terlambat, tidak clock out, cuti, libur, tidak hadir) |
 | ATT-04 | Admin melihat status hari ini & rekap bulanan semua karyawan |
 | ATT-05 | Admin dapat mengoreksi / menambah absen (lupa clock in/out) dengan alasan wajib; tercatat di audit log |
+| ATT-06 | Appeal untuk satu hari tidak masuk: alasan Sakit / Kunjungan keluar + keterangan, maks 7 hari; approval Bu Ika; setelah disetujui status hari itu berganti sesuai alasan (Fase 14, 2026-10-02) |
+| ATT-07 | Tidak hadir tanpa appeal lewat 7 hari → saldo cuti dipotong 1 hari per hari (boleh minus, mengurangi jatah berikutnya) |
+| ATT-08 | GPS (absen di dalam/luar kantor) — **ditunda** |
 
 ### 3.10 Setting (SET)
 | ID | Requirement |
@@ -194,7 +197,7 @@ Approval bersifat berurutan. Approval Level 2 (atau level terakhir) adalah final
 | NF-06 | Backup database harian |
 
 ## 5. Ringkasan Aturan Bisnis
-- Cuti: 0 th → 0; 1–5 th → 12; 6–15 th → 15; >15 th → 18 hari. Carry over maks 3 hari.
+- Cuti (tahun penuh per 1 Jan): 0 th → 0; 1–4 th → 12; 5–14 th → 15; ≥15 th → 18 hari. Carry over maks 3 hari.
 - Approval berurutan; level terakhir final; Ko Rudy & Ko Leonard auto-approve.
 - Data karyawan resign tidak pernah dihapus.
 

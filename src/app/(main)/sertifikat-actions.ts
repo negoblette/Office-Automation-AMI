@@ -6,6 +6,7 @@ import { z } from "zod";
 import { type ActionResult, toActionError } from "@/lib/actions";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
+import { enqueueApprovalNotifications } from "@/lib/mail/approval-emails";
 import { addCertificate, deleteCertificate, updateCertificate } from "@/lib/services/certificate";
 import { ServiceError } from "@/lib/services/errors";
 import { inspectStoredFile } from "@/lib/storage";
@@ -28,8 +29,11 @@ async function parseInput(values: unknown): Promise<CertificateInput> {
 export async function addCertificateAction(employeeId: string, values: unknown): Promise<ActionResult> {
   const user = await requireUser();
   try {
-    await addCertificate(prisma, user, z.string().min(1).parse(employeeId), await parseInput(values));
+    const certificate = await addCertificate(prisma, user, z.string().min(1).parse(employeeId), await parseInput(values));
+    // Email ke verifikator di-enqueue setelah transaksi commit.
+    await enqueueApprovalNotifications(prisma, certificate.notifications);
     revalidateCertificates();
+    revalidatePath("/approval");
     return { ok: true, data: undefined };
   } catch (error) {
     return toActionError(error);

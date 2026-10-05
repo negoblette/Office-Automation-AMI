@@ -5,7 +5,7 @@ describe("profileCompleteness", () => {
   it("akun baru (hanya data minimal dari Admin) → 0%", () => {
     expect(profileCompleteness({ nik: null, phone: null })).toEqual({
       filled: 0,
-      total: 10,
+      total: 12,
       percent: 0,
       missing: [
         "NIK",
@@ -18,6 +18,8 @@ describe("profileCompleteness", () => {
         "NPWP",
         "BPJS Ketenagakerjaan",
         "BPJS Kesehatan",
+        "Nama kontak darurat",
+        "No HP kontak darurat",
       ],
     });
   });
@@ -32,14 +34,17 @@ describe("profileCompleteness", () => {
       address: "",
       phone: "+6281234567890",
     });
-    expect(result).toMatchObject({ filled: 6, percent: 60 });
-    expect(result.missing).toEqual(["Alamat", "NPWP", "BPJS Ketenagakerjaan", "BPJS Kesehatan"]);
+    expect(result).toMatchObject({ filled: 6, percent: 50 });
+    expect(result.missing).toEqual(["Alamat", "NPWP", "BPJS Ketenagakerjaan", "BPJS Kesehatan", "Nama kontak darurat", "No HP kontak darurat"]);
   });
 
   it("semua terisi → 100%", () => {
     const full = Object.fromEntries(
-      ["nik", "kkNo", "birthPlace", "birthDate", "gender", "address", "phone", "npwp", "bpjsTkNo", "bpjsKesNo"].map((k) => [k, "x"]),
+      ["nik", "kkNo", "birthPlace", "birthDate", "gender", "address", "phone", "npwp", "bpjsTkNo", "bpjsKesNo", "emergencyName", "emergencyPhone"].map((k) => [
+        k,
+        "x",
+      ]),
     );
-    expect(profileCompleteness(full)).toMatchObject({ filled: 10, percent: 100, missing: [] });
+    expect(profileCompleteness(full)).toMatchObject({ filled: 12, percent: 100, missing: [] });
   });
 });

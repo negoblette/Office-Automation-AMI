@@ -5,6 +5,7 @@ import type { ApprovalFlowInput } from "@/lib/validators/setting";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { flowLabel } from "./user-admin";
+import { APPROVER_ROLES, canApprove } from "@/lib/roles";
 
 type Tx = Prisma.TransactionClient;
 
@@ -38,16 +39,16 @@ export async function listFlows(db: PrismaClient): Promise<FlowView[]> {
       approvers: step.approvers.map((a) => ({
         id: a.user.id,
         name: a.user.employee?.fullName ?? a.user.email,
-        usable: a.user.isActive && a.user.role === "ADMIN",
+        usable: a.user.isActive && canApprove(a.user.role),
       })),
     })),
   }));
 }
 
-/** Approver yang bisa dipilih: Admin aktif (approver selalu Admin, Tech Spec §4.2). */
+/** Approver yang bisa dipilih: user aktif ber-role Admin / Approver. */
 export async function listApproverOptions(db: PrismaClient) {
   const admins = await db.user.findMany({
-    where: { role: "ADMIN", isActive: true },
+    where: { role: { in: [...APPROVER_ROLES] }, isActive: true },
     select: { id: true, email: true, employee: { select: { fullName: true } } },
     orderBy: { email: "asc" },
   });
@@ -58,8 +59,8 @@ async function assertValidSteps(tx: Tx, steps: ApprovalFlowInput["steps"]) {
   const all = steps.flatMap((s) => s.approverIds);
   if (all.length === 0) return;
   if (new Set(all).size !== all.length) throw new ServiceError("Satu approver tidak boleh muncul di lebih dari satu level", "steps");
-  const valid = await tx.user.count({ where: { id: { in: all }, role: "ADMIN", isActive: true } });
-  if (valid !== all.length) throw new ServiceError("Approver harus Admin yang aktif", "steps");
+  const valid = await tx.user.count({ where: { id: { in: all }, role: { in: [...APPROVER_ROLES] }, isActive: true } });
+  if (valid !== all.length) throw new ServiceError("Approver harus Admin / Approver yang aktif", "steps");
 }
 
 async function assertNoDuplicateFlow(tx: Tx, module: ApprovalFlowInput["module"], division: ApprovalFlowInput["division"], exceptId?: string) {

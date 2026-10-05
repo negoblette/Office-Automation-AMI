@@ -1,13 +1,15 @@
 // Query halaman Project & Setting Master Data. Nominal → number (aman ke client).
+import type { Role } from "@/generated/prisma/enums";
 import type { PaymentMethod, PrismaClient, ProjectType, RequestStatus } from "@/generated/prisma/client";
 import { toJakartaIsoDate } from "@/lib/format";
 import { projectTotals } from "./project";
 
-type Viewer = { role: "ADMIN" | "STAFF"; employeeId: string | null };
+type Viewer = { role: Role; employeeId: string | null };
 export type ProjectTotals = Awaited<ReturnType<typeof projectTotals>>;
 
 export type ProjectRow = {
   id: string;
+  code: string | null;
   name: string;
   type: ProjectType;
   isActive: boolean;
@@ -28,6 +30,7 @@ export async function listProjects(db: PrismaClient, viewer: Viewer): Promise<Pr
   return Promise.all(
     projects.map(async (p) => ({
       id: p.id,
+      code: p.code,
       name: p.name,
       type: p.type,
       isActive: p.isActive,
@@ -51,7 +54,7 @@ export async function listCustomersWithProjects(db: PrismaClient) {
     id: c.id,
     name: c.name,
     reimburseCount: c._count.reimbursementItems,
-    projects: c.projects.map((p) => ({ id: p.id, name: p.name, type: p.type, isActive: p.isActive, customerId: c.id })),
+    projects: c.projects.map((p) => ({ id: p.id, code: p.code, name: p.name, type: p.type, isActive: p.isActive, customerId: c.id })),
   }));
 }
 export type CustomerWithProjects = Awaited<ReturnType<typeof listCustomersWithProjects>>[number];
@@ -139,6 +142,7 @@ export async function getProjectDetail(db: PrismaClient, projectId: string, view
 
   return {
     id: project.id,
+    code: project.code,
     name: project.name,
     type: project.type,
     isActive: project.isActive,
@@ -162,3 +166,10 @@ export async function listMasterData(db: PrismaClient) {
   };
 }
 export type MasterData = Awaited<ReturnType<typeof listMasterData>>;
+
+/** Saran ID project berikutnya (PRJ-0001, PRJ-0002, …) dari ID berpola PRJ-<angka> terbesar. */
+export async function nextProjectCode(db: PrismaClient) {
+  const codes = await db.project.findMany({ where: { code: { startsWith: "PRJ-" } }, select: { code: true } });
+  const max = codes.reduce((n, { code }) => Math.max(n, Number(/^PRJ-(\d+)$/.exec(code ?? "")?.[1] ?? 0)), 0);
+  return `PRJ-${String(max + 1).padStart(4, "0")}`;
+}

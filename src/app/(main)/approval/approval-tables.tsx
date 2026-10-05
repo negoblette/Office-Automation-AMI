@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ApprovalStepper } from "@/components/shared/approval-stepper";
 import { requestStatusBadge } from "@/components/shared/approval-status";
+import { FileChip } from "@/components/shared/file-chip";
 import { FilterPills } from "@/components/shared/filter-pills";
 import { PersonCell } from "@/components/shared/person-cell";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -13,6 +14,7 @@ import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
 import { formatDateTime } from "@/lib/format";
 import type { ApprovalRow } from "@/lib/services/approval-queries";
 import { ApproveButton } from "./approve-button";
+import { CorrectionButton, CorrectionList } from "./correction-ui";
 
 const col = dataTableColumnHelper<ApprovalRow>();
 
@@ -36,9 +38,17 @@ const moduleColumn = col.accessor((row) => APPROVAL_MODULE_META[row.module].labe
 const numberColumn = col.accessor("entityNumber", {
   header: "Nomor",
   cell: ({ row }) => (
-    <Link href={APPROVAL_MODULE_META[row.original.module].path(row.original.entityId)} className="font-medium whitespace-nowrap hover:underline">
-      {row.original.entityNumber}
-    </Link>
+    <div className="flex max-w-72 flex-col gap-1">
+      {row.original.module === "CERTIFICATE" || row.original.module === "ATTENDANCE_APPEAL" ? (
+        <span className="font-medium whitespace-nowrap">{row.original.entityNumber}</span>
+      ) : (
+        <Link href={APPROVAL_MODULE_META[row.original.module].path(row.original.entityId)} className="font-medium whitespace-nowrap hover:underline">
+          {row.original.entityNumber}
+        </Link>
+      )}
+      {row.original.summary && <span className="text-xs text-muted-foreground">{row.original.summary}</span>}
+      {row.original.file && <FileChip fileKey={row.original.file.key} fileName={row.original.file.name} className="max-w-60" />}
+    </div>
   ),
 });
 
@@ -51,7 +61,12 @@ const submittedColumn = col.accessor("createdAt", {
 const flowColumn = col.display({
   id: "flow",
   header: "Alur Approval",
-  cell: ({ row }) => <ApprovalStepper compact steps={row.original.steps} requestStatus={row.original.status} />,
+  cell: ({ row }) => (
+    <div className="flex flex-col gap-1">
+      <ApprovalStepper compact steps={row.original.steps} requestStatus={row.original.status} />
+      <CorrectionList corrections={row.original.corrections} />
+    </div>
+  ),
 });
 
 const queueColumns = col.columns([
@@ -65,11 +80,16 @@ const queueColumns = col.columns([
     header: () => <span className="sr-only">Aksi</span>,
     cell: ({ row }) =>
       row.original.canApprove && (
-        <ApproveButton
-          requestId={row.original.id}
-          label={`${APPROVAL_MODULE_META[row.original.module].label} ${row.original.entityNumber}`}
-          requestedAmount={row.original.requestedAmount}
-        />
+        <div className="flex items-center justify-end gap-1">
+          {row.original.correctable && (
+            <CorrectionButton requestId={row.original.id} label={`${APPROVAL_MODULE_META[row.original.module].label} ${row.original.entityNumber}`} />
+          )}
+          <ApproveButton
+            requestId={row.original.id}
+            label={`${APPROVAL_MODULE_META[row.original.module].label} ${row.original.entityNumber}`}
+            requestedAmount={row.original.requestedAmount}
+          />
+        </div>
       ),
   }),
 ]);
@@ -93,11 +113,16 @@ const monitorColumns = col.columns([
     header: () => <span className="sr-only">Aksi</span>,
     cell: ({ row }) =>
       row.original.canApprove && (
-        <ApproveButton
-          requestId={row.original.id}
-          label={`${APPROVAL_MODULE_META[row.original.module].label} ${row.original.entityNumber}`}
-          requestedAmount={row.original.requestedAmount}
-        />
+        <div className="flex items-center justify-end gap-1">
+          {row.original.correctable && (
+            <CorrectionButton requestId={row.original.id} label={`${APPROVAL_MODULE_META[row.original.module].label} ${row.original.entityNumber}`} />
+          )}
+          <ApproveButton
+            requestId={row.original.id}
+            label={`${APPROVAL_MODULE_META[row.original.module].label} ${row.original.entityNumber}`}
+            requestedAmount={row.original.requestedAmount}
+          />
+        </div>
       ),
   }),
 ]);

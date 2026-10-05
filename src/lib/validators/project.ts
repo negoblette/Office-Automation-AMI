@@ -8,6 +8,10 @@ export const customerSchema = z.object({ name: textSchema("Nama customer", { min
 /** Master Project (PRJ-01): Berjalan / New Acquisition. */
 export const projectSchema = z.object({
   customerId: z.string({ error: "Customer wajib dipilih" }).min(1, { error: "Customer wajib dipilih" }),
+  /** ID project (Fase 14), mis. PRJ-0012 — unik, huruf besar. */
+  code: textSchema("ID project", { min: 2, max: 30 })
+    .toUpperCase()
+    .pipe(z.string().regex(/^[A-Z0-9][A-Z0-9._/-]*$/, { error: "ID hanya huruf, angka, titik, garis miring, atau strip" })),
   name: textSchema("Nama project", { min: 2, max: 150 }),
   type: z.enum(ProjectType, { error: "Jenis wajib dipilih" }),
   isActive: z.boolean(),

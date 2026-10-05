@@ -4,7 +4,7 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import { formatRupiah, fromIsoDate } from "@/lib/format";
 import { remainingPlafond } from "@/lib/health";
 import type { HealthClaimInput, HealthPlafondInput } from "@/lib/validators/health";
-import { type Actor, assertFileKeyAvailable } from "./access";
+import { type Actor, } from "./access";
 import { type ApprovalNotification, buildApproval } from "./approval";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
@@ -49,7 +49,6 @@ export async function submitHealthClaim(
 
     const category = await tx.healthCategory.findUnique({ where: { id: input.categoryId } });
     if (!category?.isActive) throw new ServiceError("Kategori klaim tidak tersedia", "categoryId");
-    await assertFileKeyAvailable(tx, input.invoiceFileKey);
 
     // HC-07: total klaim dibatasi plafon tahunan (tahun tanggal klaim).
     const year = Number(input.claimDate.slice(0, 4));
@@ -67,8 +66,6 @@ export async function submitHealthClaim(
         categoryId: input.categoryId,
         claimDate: fromIsoDate(input.claimDate),
         amount: BigInt(input.amount),
-        invoiceFileKey: input.invoiceFileKey,
-        invoiceFileName: input.invoiceFileName,
         note: input.note,
         status: "PENDING",
         submittedAt: new Date(),

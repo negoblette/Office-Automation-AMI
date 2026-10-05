@@ -6,7 +6,9 @@ import { type ActionResult, toActionError } from "@/lib/actions";
 import { requireAdmin, requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { clockIn, clockOut, correctAttendance, saveWorkHours } from "@/lib/services/attendance";
-import { attendanceCorrectionSchema, workHoursSchema } from "@/lib/validators/attendance";
+import { appealSchema, attendanceCorrectionSchema, workHoursSchema } from "@/lib/validators/attendance";
+import { submitAppeal } from "@/lib/services/attendance-appeal";
+import { enqueueApprovalNotifications } from "@/lib/mail/approval-emails";
 
 function revalidateAttendance() {
   revalidatePath("/absensi", "layout");
@@ -54,6 +56,20 @@ export async function saveWorkHoursAction(values: unknown): Promise<ActionResult
     await saveWorkHours(prisma, admin.id, workHoursSchema.parse(values));
     revalidatePath("/setting/absensi");
     revalidateAttendance();
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+/** Appeal satu hari tidak hadir (Fase 14): Sakit / Kunjungan keluar, approval Bu Ika. */
+export async function submitAppealAction(values: unknown): Promise<ActionResult> {
+  const user = await requireUser();
+  try {
+    const result = await submitAppeal(prisma, user, appealSchema.parse(values));
+    await enqueueApprovalNotifications(prisma, result.notifications);
+    revalidateAttendance();
+    revalidatePath("/approval");
     return { ok: true, data: undefined };
   } catch (error) {
     return toActionError(error);

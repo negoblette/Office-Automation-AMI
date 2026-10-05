@@ -74,3 +74,14 @@ export const leavePolicySettingSchema = z
     });
   });
 export type LeavePolicySettingInput = z.infer<typeof leavePolicySettingSchema>;
+
+/** Pemutihan / penyesuaian saldo cuti oleh Admin (Fase 14): ± hari, alasan wajib. */
+export const leaveAdjustmentSchema = z.object({
+  days: z.coerce
+    .number({ error: "Jumlah hari wajib diisi" })
+    .int({ error: "Harus bilangan bulat" })
+    .refine((v) => v !== 0, { error: "Tidak boleh 0" })
+    .refine((v) => Math.abs(v) <= 30, { error: "Maksimal 30 hari per penyesuaian" }),
+  reason: textSchema("Alasan", { min: 3, max: 300 }),
+});
+export type LeaveAdjustmentFormInput = z.infer<typeof leaveAdjustmentSchema>;

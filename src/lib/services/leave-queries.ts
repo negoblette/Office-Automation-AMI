@@ -1,4 +1,5 @@
 // Query halaman Cuti. Saldo periode berjalan dibuat otomatis bila belum ada (ensureLeaveBalance).
+import type { Role } from "@/generated/prisma/enums";
 import type { PrismaClient, RequestStatus } from "@/generated/prisma/client";
 import { fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { addDays, firstUsableDate, leaveYear, remainingDays } from "@/lib/leave";
@@ -17,6 +18,8 @@ export type LeaveBalanceView = {
   entitlement: number;
   carriedOver: number;
   used: number;
+  /** Penyesuaian Admin / potong cuti (Fase 14). */
+  adjustment: number;
   pending: number;
   remaining: number;
 };
@@ -50,6 +53,7 @@ export async function getCurrentBalances(db: PrismaClient, employeeIds: string[]
       entitlement: balance.entitlement,
       carriedOver: balance.carriedOver,
       used: balance.used,
+      adjustment: balance.adjustment,
       pending: pendingDays,
       remaining: remainingDays(balance, pendingDays),
     });
@@ -76,10 +80,19 @@ export type LeaveRequestRow = {
   submittedAt: string | null;
 };
 
-/** Staf: miliknya sendiri; Admin: semua. */
-export async function listLeaveRequests(db: PrismaClient, viewer: { role: "ADMIN" | "STAFF"; employeeId: string | null }) {
+/**
+ * Staf: miliknya sendiri; Admin: semua. `yearMonth` (Fase 14) = hanya cuti yang beririsan dengan
+ * bulan itu (cuti lintas bulan tampil di kedua bulan).
+ */
+export async function listLeaveRequests(db: PrismaClient, viewer: { role: Role; employeeId: string | null }, yearMonth?: string) {
+  const month = yearMonth
+    ? (() => {
+        const [y, m] = yearMonth.split("-").map(Number);
+        return { startDate: { lte: new Date(Date.UTC(y, m, 0)) }, endDate: { gte: new Date(Date.UTC(y, m - 1, 1)) } };
+      })()
+    : {};
   const requests = await db.leaveRequest.findMany({
-    where: viewer.role === "ADMIN" ? {} : { employeeId: viewer.employeeId ?? "__none__" },
+    where: { ...(viewer.role === "ADMIN" ? {} : { employeeId: viewer.employeeId ?? "__none__" }), ...month },
     orderBy: { startDate: "desc" },
     include: { employee: { select: { fullName: true, position: true } } },
   });
@@ -147,4 +160,95 @@ export async function listDirectorLeaves(db: PrismaClient, fromIso: string, toIs
     endDate: toJakartaIsoDate(l.endDate),
     workingDays: l.workingDays,
   }));
+}
+
+export type LeaveAdjustmentView = {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  days: number;
+  reason: string;
+  source: string;
+  attendanceDate: string | null;
+  createdBy: string | null;
+  createdAt: string;
+};
+
+/** Riwayat penyesuaian saldo (terbaru dulu). `employeeId` kosong = semua karyawan (Admin). */
+export async function listLeaveAdjustments(db: PrismaClient, employeeId?: string, limit = 30): Promise<LeaveAdjustmentView[]> {
+  const rows = await db.leaveAdjustment.findMany({
+    where: employeeId ? { employeeId } : undefined,
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    include: {
+      balance: { select: { employee: { select: { fullName: true } } } },
+      createdBy: { select: { email: true, employee: { select: { fullName: true } } } },
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    employeeId: r.employeeId,
+    employeeName: r.balance.employee.fullName,
+    days: r.days,
+    reason: r.reason,
+    source: r.source,
+    attendanceDate: r.attendanceDate ? toJakartaIsoDate(r.attendanceDate) : null,
+    createdBy: r.createdBy ? (r.createdBy.employee?.fullName ?? r.createdBy.email) : null,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
+export type CalendarDay = {
+  date: string;
+  inMonth: boolean;
+  weekend: boolean;
+  holiday: string | null;
+  /** Karyawan yang cuti (disetujui) di tanggal ini; Direktur ditandai (BR-CUT-11). */
+  leaves: { name: string; isDirector: boolean }[];
+};
+
+/**
+ * Kalender bulanan cuti & libur (Fase 14): semua karyawan melihat cuti semua karyawan (keputusan
+ * user 2026-10-02). Grid Senin–Minggu, termasuk hari dari bulan sebelum/sesudah untuk melengkapi minggu.
+ * Cuti hanya ditandai di hari kerja (Sabtu, Minggu, libur tidak dihitung cuti).
+ */
+export async function getLeaveCalendar(db: PrismaClient, yearMonth: string): Promise<CalendarDay[][]> {
+  const [y, m] = yearMonth.split("-").map(Number);
+  const first = `${yearMonth}-01`;
+  const last = toJakartaIsoDate(new Date(Date.UTC(y, m, 0)));
+  const firstWeekday = (new Date(`${first}T00:00:00Z`).getUTCDay() + 6) % 7; // 0 = Senin
+  const gridStart = addDays(first, -firstWeekday);
+  const lastWeekday = (new Date(`${last}T00:00:00Z`).getUTCDay() + 6) % 7;
+  const gridEnd = addDays(last, 6 - lastWeekday);
+
+  const [leaves, holidays] = await Promise.all([
+    db.leaveRequest.findMany({
+      where: { status: "APPROVED", startDate: { lte: fromIsoDate(gridEnd) }, endDate: { gte: fromIsoDate(gridStart) } },
+      include: { employee: { select: { fullName: true, division: true } } },
+      orderBy: { startDate: "asc" },
+    }),
+    db.holiday.findMany({ where: { deletedAt: null, date: { gte: fromIsoDate(gridStart), lte: fromIsoDate(gridEnd) } } }),
+  ]);
+  const holidayOf = new Map(holidays.map((h) => [toJakartaIsoDate(h.date), h.name]));
+
+  const weeks: CalendarDay[][] = [];
+  for (let day = gridStart; day <= gridEnd; day = addDays(day, 1)) {
+    if ((weeks.at(-1)?.length ?? 7) === 7) weeks.push([]);
+    const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
+    const weekend = weekday === 0 || weekday === 6;
+    const holiday = holidayOf.get(day) ?? null;
+    weeks.at(-1)!.push({
+      date: day,
+      inMonth: day.startsWith(yearMonth),
+      weekend,
+      holiday,
+      leaves:
+        weekend || holiday
+          ? []
+          : leaves
+              .filter((l) => toJakartaIsoDate(l.startDate) <= day && toJakartaIsoDate(l.endDate) >= day)
+              .map((l) => ({ name: l.employee.fullName, isDirector: l.employee.division === "DIRECTOR" })),
+    });
+  }
+  return weeks;
 }

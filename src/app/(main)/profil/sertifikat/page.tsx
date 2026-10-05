@@ -21,6 +21,7 @@ export default async function ProfilSertifikatPage() {
           employeeId={user.employeeId}
           certificates={await getEmployeeCertificates(prisma, user.employeeId)}
           canEdit
+          canEditVerified={user.role === "ADMIN"}
         />
       ) : (
         <NoEmployeeRecord />

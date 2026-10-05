@@ -73,8 +73,9 @@ async function expiringItems(db: PrismaClient, todayIso: string): Promise<Expiri
  */
 async function weekEvents(db: PrismaClient, todayIso: string, staffEmployeeId?: string | null): Promise<{ start: string; end: string; events: WeekEvent[] }> {
   const { start, end } = weekRange(todayIso);
-  const visibility =
-    staffEmployeeId === undefined ? {} : { OR: [{ employee: { division: "DIRECTOR" as const } }, { employeeId: staffEmployeeId ?? "__none__" }] };
+  // Keputusan user 2026-10-02: semua karyawan melihat cuti semua karyawan (parameter staf tidak lagi membatasi).
+  void staffEmployeeId;
+  const visibility = {};
   const [leaves, holidays] = await Promise.all([
     db.leaveRequest.findMany({
       where: { status: "APPROVED", startDate: { lte: fromIsoDate(end) }, endDate: { gte: fromIsoDate(start) }, ...visibility },

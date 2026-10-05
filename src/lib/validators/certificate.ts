@@ -2,7 +2,10 @@ import { z } from "zod";
 import { CertificateType } from "@/generated/prisma/enums";
 import { isoDateSchema, optionalField, textSchema, withDateRange } from "./common";
 
-/** Sertifikat profesional / ijazah (URD CERT-01). End date kosong = seumur hidup. */
+/**
+ * Sertifikat profesional / ijazah (URD CERT-01). Fase 14: masa berlaku wajib untuk sertifikat
+ * profesional; ijazah tidak punya masa berlaku. `startDate` = tanggal diambil/lulus.
+ */
 export const certificateSchema = withDateRange(
   z.object({
     type: z.enum(CertificateType, { error: "Jenis wajib dipilih" }),
@@ -15,6 +18,10 @@ export const certificateSchema = withDateRange(
   }),
   "startDate",
   "endDate",
-  "Tanggal berakhir tidak boleh sebelum tanggal terbit",
-);
+  "Tanggal berakhir tidak boleh sebelum tanggal diambil",
+).superRefine((v, ctx) => {
+  if (v.type === "PROFESSIONAL" && !v.endDate) {
+    ctx.addIssue({ code: "custom", path: ["endDate"], message: "Masa berlaku wajib diisi untuk sertifikat profesional" });
+  }
+});
 export type CertificateInput = z.infer<typeof certificateSchema>;

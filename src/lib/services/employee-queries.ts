@@ -1,5 +1,6 @@
 // Query baca untuk halaman karyawan. Hasil sudah aman dikirim ke Client Component
 // (tanpa BigInt; tanggal dikirim sebagai ISO string).
+import type { Role } from "@/generated/prisma/enums";
 import type { DocumentType, EmployeeStatus, PrismaClient } from "@/generated/prisma/client";
 import { certificateStatus, daysUntil } from "@/lib/certificate-status";
 import { documentCompleteness } from "@/lib/employee-documents";
@@ -13,7 +14,7 @@ export type EmployeeListRow = {
   employeeNo: string | null;
   division: "SALES" | "ENGINEER" | "UMUM" | "DIRECTOR";
   position: string;
-  role: "ADMIN" | "STAFF" | null;
+  role: Role | null;
   /** Tanggal masuk periode terakhir (YYYY-MM-DD). */
   startDate: string | null;
   /** Tanggal keluar periode terakhir (YYYY-MM-DD), untuk arsip. */
@@ -95,6 +96,9 @@ export async function getEmployeeFormValues(db: PrismaClient, employeeId: string
       npwp: employee.npwp ?? "",
       bpjsTkNo: employee.bpjsTkNo ?? "",
       bpjsKesNo: employee.bpjsKesNo ?? "",
+      emergencyName: employee.emergencyName ?? "",
+      emergencyRelation: employee.emergencyRelation ?? "",
+      emergencyPhone: employee.emergencyPhone ?? "",
     },
   };
 }
@@ -193,6 +197,11 @@ export async function getEmployeeCertificates(db: PrismaClient, employeeId: stri
     where: { employeeId, deletedAt: null },
     orderBy: [{ type: "asc" }, { startDate: "desc" }],
   });
+  const requests = await db.approvalRequest.findMany({
+    where: { module: "CERTIFICATE", entityId: { in: certificates.map((c) => c.id) } },
+    select: { entityId: true, currentLevel: true },
+  });
+  const levelOf = new Map(requests.map((r) => [r.entityId, r.currentLevel]));
   return certificates.map((certificate) => {
     const endDate = certificate.endDate ? toJakartaIsoDate(certificate.endDate) : null;
     return {
@@ -205,6 +214,9 @@ export async function getEmployeeCertificates(db: PrismaClient, employeeId: stri
       endDate,
       fileKey: certificate.fileKey,
       status: certificateStatus(endDate, today),
+      /** Verifikasi Ko Yosep → Bu Ika (Fase 14). */
+      verification: certificate.status,
+      verificationLevel: levelOf.get(certificate.id) ?? null,
       daysLeft: endDate ? daysUntil(endDate, today) : null,
     };
   });

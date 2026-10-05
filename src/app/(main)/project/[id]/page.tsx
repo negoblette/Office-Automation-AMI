@@ -9,9 +9,9 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { formatDate, formatRupiah } from "@/lib/format";
-import { PAYMENT_METHOD_LABEL, PROJECT_TYPE_LABEL } from "@/lib/labels";
+import { PAYMENT_METHOD_LABEL, PROJECT_TYPE_LABEL, projectLabel } from "@/lib/labels";
 import { getProjectDetail, type ProjectEntryRow } from "@/lib/services/project-queries";
-import { ExpenseDialog, RevenueDialog } from "../project-dialogs";
+import { ExpenseDialog } from "../project-dialogs";
 
 export const metadata: Metadata = { title: "Detail Project" };
 
@@ -79,7 +79,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title={project.name}
+        title={projectLabel(project)}
         description={
           <span className="flex flex-wrap items-center gap-2">
             {project.customerName} · {PROJECT_TYPE_LABEL[project.type]}
@@ -89,38 +89,22 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         breadcrumbs={[{ label: "Operasional & Aset" }, { label: "Project", href: "/project" }, { label: project.name }]}
         actions={
           isAdmin &&
-          project.isActive && (
-            <>
-              <RevenueDialog projectId={project.id} />
-              <ExpenseDialog projectId={project.id} />
-            </>
-          )
+          project.isActive && <ExpenseDialog projectId={project.id} />
         }
       />
 
       {project.totals && (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-3">
           <StatCard label="Reimburse (disetujui)" value={formatRupiah(project.totals.reimburse)} tone="info" footer="Baris reimburse yang memilih project ini" />
           <StatCard label="Expense langsung" value={formatRupiah(project.totals.directExpense)} tone="warning" footer={`Menunggu: ${formatRupiah(project.totals.pendingExpense)}`} />
-          <StatCard label="Revenue" value={formatRupiah(project.totals.revenue)} tone="success" footer={`Menunggu: ${formatRupiah(project.totals.pendingRevenue)}`} />
-          <StatCard
-            label="Selisih"
-            value={formatRupiah(project.totals.margin)}
-            tone={project.totals.margin < 0 ? "danger" : "success"}
-            footer={`Total expense ${formatRupiah(project.totals.expense)}`}
-          />
+          <StatCard label="Total expense" value={formatRupiah(project.totals.expense)} tone="danger" footer="Reimburse + expense langsung (disetujui)" />
         </div>
       )}
 
       {isAdmin && (
-        <>
-          <Section title="Expense Langsung">
-            <EntryTable rows={project.expenses} withPayment />
-          </Section>
-          <Section title="Revenue">
-            <EntryTable rows={project.revenues} withPayment={false} />
-          </Section>
-        </>
+        <Section title="Expense Langsung">
+          <EntryTable rows={project.expenses} withPayment />
+        </Section>
       )}
 
       <Section title={isAdmin ? "Reimburse ke Project Ini" : "Reimburse Saya di Project Ini"}>

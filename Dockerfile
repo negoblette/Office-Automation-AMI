@@ -59,7 +59,7 @@ CMD ["node", "server.js"]
 # ---------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS worker
 WORKDIR /app
-ENV NODE_ENV=production TZ=Asia/Jakarta
+ENV NODE_ENV=production TZ=Asia/Jakarta UPLOAD_DIR=/app/storage/uploads
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/dist/worker.mjs ./worker.mjs
 COPY package.json ./

@@ -1,6 +1,6 @@
 // Query halaman Absensi & kartu dashboard. Hasil aman dikirim ke Client Component (tanpa Date).
 import type { PrismaClient } from "@/generated/prisma/client";
-import { type DayStatus, dayStatus, type WorkHours } from "@/lib/attendance";
+import { appealDeadline, type DayStatus, dayStatus, type WorkHours } from "@/lib/attendance";
 import { formatTime, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { addDays } from "@/lib/leave";
 import { getWorkHours } from "./attendance";
@@ -17,6 +17,14 @@ export type AttendanceDay = {
   workedMinutes: number | null;
   correctionNote: string | null;
   correctedBy: string | null;
+  /** Appeal hari itu (Fase 14). */
+  appeal: { number: string; reason: "SICK" | "VISIT"; status: string; note: string } | null;
+  /** Saldo cuti sudah dipotong karena tidak hadir tanpa appeal. */
+  leaveDeducted: boolean;
+  /** Masih boleh mengajukan appeal (tidak hadir, ≤ 7 hari). */
+  canAppeal: boolean;
+  /** Batas appeal (YYYY-MM-DD) untuk hari tidak hadir. */
+  appealDeadline: string | null;
 };
 
 export type TodayAttendance = {
@@ -47,7 +55,10 @@ export function monthRange(yearMonth: string) {
   return { start: `${yearMonth}-01`, end: `${yearMonth}-${String(last).padStart(2, "0")}` };
 }
 
-function toDay(dateIso: string, status: DayStatus, row: AttendanceRow | undefined): AttendanceDay {
+type DayExtras = { appeal?: AttendanceDay["appeal"]; deducted?: boolean; todayIso?: string };
+
+function toDay(dateIso: string, status: DayStatus, row: AttendanceRow | undefined, extras: DayExtras = {}): AttendanceDay {
+  const deadline = status === "ABSENT" ? appealDeadline(dateIso) : null;
   return {
     date: dateIso,
     status,
@@ -59,13 +70,17 @@ function toDay(dateIso: string, status: DayStatus, row: AttendanceRow | undefine
     workedMinutes: row?.clockOut ? Math.floor((row.clockOut.getTime() - row.clockIn.getTime()) / 60000) : null,
     correctionNote: row?.correctionNote ?? null,
     correctedBy: row?.correctedBy ? (row.correctedBy.employee?.fullName ?? row.correctedBy.email) : null,
+    appeal: extras.appeal ?? null,
+    leaveDeducted: extras.deducted ?? false,
+    canAppeal: Boolean(deadline && extras.todayIso && extras.todayIso <= deadline && !extras.deducted),
+    appealDeadline: deadline,
   };
 }
 
 /** Data pendukung rekap untuk rentang tanggal: absen, cuti disetujui, libur, periode kerja. */
 async function loadRange(db: PrismaClient, employeeIds: string[], start: string, end: string) {
   const range = { gte: fromIsoDate(start), lte: fromIsoDate(end) };
-  const [attendances, leaves, holidays, periods] = await Promise.all([
+  const [attendances, leaves, holidays, periods, appeals, deductions] = await Promise.all([
     db.attendance.findMany({
       where: { employeeId: { in: employeeIds }, date: range },
       include: { correctedBy: { select: { email: true, employee: { select: { fullName: true } } } } },
@@ -76,7 +91,17 @@ async function loadRange(db: PrismaClient, employeeIds: string[], start: string,
     }),
     db.holiday.findMany({ where: { date: range, deletedAt: null }, select: { date: true } }),
     db.employmentPeriod.findMany({ where: { employeeId: { in: employeeIds } }, select: { employeeId: true, startDate: true, endDate: true } }),
+    db.attendanceAppeal.findMany({
+      where: { employeeId: { in: employeeIds }, date: range, status: { in: ["PENDING", "APPROVED"] } },
+      select: { employeeId: true, date: true, number: true, reason: true, status: true, note: true },
+    }),
+    db.leaveAdjustment.findMany({
+      where: { employeeId: { in: employeeIds }, source: "ABSENCE", attendanceDate: range },
+      select: { employeeId: true, attendanceDate: true },
+    }),
   ]);
+  const appealOf = new Map(appeals.map((a) => [`${a.employeeId}|${toJakartaIsoDate(a.date)}`, { number: a.number, reason: a.reason, status: a.status, note: a.note }]));
+  const deductedSet = new Set(deductions.map((d) => `${d.employeeId}|${toJakartaIsoDate(d.attendanceDate!)}`));
   const holidaySet = new Set(holidays.map((h) => toJakartaIsoDate(h.date)));
   const recordOf = new Map(attendances.map((a) => [`${a.employeeId}|${toJakartaIsoDate(a.date)}`, a]));
   const onLeave = (employeeId: string, dateIso: string) =>
@@ -85,7 +110,7 @@ async function loadRange(db: PrismaClient, employeeIds: string[], start: string,
     periods.some(
       (p) => p.employeeId === employeeId && toJakartaIsoDate(p.startDate) <= dateIso && (!p.endDate || toJakartaIsoDate(p.endDate) >= dateIso),
     );
-  return { holidaySet, recordOf, onLeave, employed };
+  return { holidaySet, recordOf, onLeave, employed, appealOf, deductedSet };
 }
 
 /** Riwayat per hari satu karyawan dalam satu bulan (sampai hari ini). */
@@ -96,7 +121,9 @@ export async function listMonthDays(db: PrismaClient, employeeId: string, yearMo
   const data = await loadRange(db, [employeeId], start, last);
   const days: AttendanceDay[] = [];
   for (let dateIso = last; dateIso >= start; dateIso = addDays(dateIso, -1)) {
-    const row = data.recordOf.get(`${employeeId}|${dateIso}`);
+    const key = `${employeeId}|${dateIso}`;
+    const row = data.recordOf.get(key);
+    const appeal = data.appealOf.get(key) ?? null;
     const status = dayStatus({
       dateIso,
       todayIso,
@@ -104,8 +131,9 @@ export async function listMonthDays(db: PrismaClient, employeeId: string, yearMo
       record: row ?? null,
       onLeave: data.onLeave(employeeId, dateIso),
       holiday: data.holidaySet.has(dateIso),
+      appeal,
     });
-    if (status !== "NOT_EMPLOYED") days.push(toDay(dateIso, status, row));
+    if (status !== "NOT_EMPLOYED") days.push(toDay(dateIso, status, row, { appeal, deducted: data.deductedSet.has(key), todayIso }));
   }
   return days;
 }
@@ -138,6 +166,11 @@ export type AttendanceSummaryRow = {
   noClockOut: number;
   leave: number;
   absent: number;
+  /** Appeal disetujui (Fase 14). */
+  sick: number;
+  visit: number;
+  /** Hari yang sudah dipotong cuti. */
+  deducted: number;
   lateMinutes: number;
   /** Status hari ini (hanya bila bulan berjalan). */
   today: AttendanceDay | null;
@@ -165,12 +198,17 @@ export async function monthSummary(db: PrismaClient, yearMonth: string, todayIso
       noClockOut: 0,
       leave: 0,
       absent: 0,
+      sick: 0,
+      visit: 0,
+      deducted: 0,
       lateMinutes: 0,
       today: null,
     };
     if (!data) return row;
     for (let dateIso = start; dateIso <= last; dateIso = addDays(dateIso, 1)) {
-      const record = data.recordOf.get(`${employee.id}|${dateIso}`);
+      const key = `${employee.id}|${dateIso}`;
+      const record = data.recordOf.get(key);
+      const appeal = data.appealOf.get(key) ?? null;
       const status = dayStatus({
         dateIso,
         todayIso,
@@ -178,14 +216,18 @@ export async function monthSummary(db: PrismaClient, yearMonth: string, todayIso
         record: record ?? null,
         onLeave: data.onLeave(employee.id, dateIso),
         holiday: data.holidaySet.has(dateIso),
+        appeal,
       });
+      if (status === "SICK") row.sick++;
+      if (status === "VISIT") row.visit++;
+      if (data.deductedSet.has(key)) row.deducted++;
       if (record) row.present++;
       if (record && record.lateMinutes > 0) row.late++;
       if (status === "NO_CLOCK_OUT") row.noClockOut++;
       if (status === "LEAVE") row.leave++;
       if (status === "ABSENT") row.absent++;
       row.lateMinutes += record?.lateMinutes ?? 0;
-      if (dateIso === todayIso) row.today = toDay(dateIso, status, record);
+      if (dateIso === todayIso) row.today = toDay(dateIso, status, record, { appeal, todayIso });
     }
     return row;
   });

@@ -27,7 +27,7 @@ export function EmployeeAccountSection({ mode }: { mode: "create" | "edit" }) {
       <DateInputField name="startDate" label="Tanggal masuk" required />
       {mode === "edit" && (
         <>
-          <TextInputField name="employeeNo" label="Nomor karyawan" />
+          <TextInputField name="employeeNo" label="NIP" hint="Karyawan baru boleh dikosongkan dulu." />
           <TextInputField name="level" label="Level / grade" />
         </>
       )}
@@ -54,6 +54,11 @@ export function EmployeePersonalSections() {
         <div className="hidden sm:block" />
         <TextInputField name="bpjsTkNo" label="BPJS Ketenagakerjaan" inputMode="numeric" placeholder="11 digit" />
         <TextInputField name="bpjsKesNo" label="BPJS Kesehatan" inputMode="numeric" placeholder="13 digit" />
+      </FormSection>
+      <FormSection title="Kontak Darurat" description="Orang yang dihubungi bila terjadi keadaan darurat.">
+        <TextInputField name="emergencyName" label="Nama" />
+        <TextInputField name="emergencyRelation" label="Hubungan" placeholder="mis. Istri, Orang tua, Saudara" />
+        <TextInputField name="emergencyPhone" label="Nomor HP" inputMode="tel" placeholder="08xxxxxxxxxx" />
       </FormSection>
     </>
   );

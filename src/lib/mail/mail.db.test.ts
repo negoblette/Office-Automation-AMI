@@ -58,7 +58,7 @@ describe("buildApprovalEmails (NTF-01..03)", () => {
     const final = await approveRequest(testDb, { requestId, actorId: u.rudy });
     const finalEmails = await buildApprovalEmails(testDb, final.notifications[0]);
     expect(finalEmails.map((e) => e.to).sort()).toEqual(
-      ["andi", "darwin", "ika", "leonard", "rudy", "yosep"].map((k) => `${k}@artha-mitra.local`),
+      ["andi", "ika", "leonard", "rudy"].map((k) => `${k}@artha-mitra.local`), // Admin = Ika, Rudy, Leonard
     );
     expect(finalEmails[0]).toMatchObject({ subject: "[Disetujui] Reimburse RMB/2026/09/0007", props: { statusLine: "Disetujui final oleh Rudy." } });
   });

@@ -25,7 +25,7 @@ import { useActionSubmit } from "./use-action-submit";
  * Dialog berisi form react-hook-form + schema Zod + Server Action: reset ke `defaults` saat
  * dibuka, error server per field, tutup & refresh saat sukses. Isi field sebagai `children`.
  */
-export function FormDialog<TSchema extends z.ZodType<FieldValues, FieldValues>>({
+export function FormDialog<TSchema extends z.ZodType<FieldValues, FieldValues>, TData = undefined>({
   trigger,
   title,
   description,
@@ -35,6 +35,7 @@ export function FormDialog<TSchema extends z.ZodType<FieldValues, FieldValues>>(
   action,
   children,
   wide,
+  onSuccess,
 }: {
   trigger: React.ReactElement;
   title: string;
@@ -42,9 +43,11 @@ export function FormDialog<TSchema extends z.ZodType<FieldValues, FieldValues>>(
   schema: TSchema;
   defaults: z.input<TSchema>;
   submitLabel: string;
-  action: (values: z.output<TSchema>) => Promise<ActionResult>;
+  action: (values: z.output<TSchema>) => Promise<ActionResult<TData>>;
   children: React.ReactNode;
   wide?: boolean;
+  /** Dipanggil setelah sukses (sebelum refresh), mis. memilih data yang baru dibuat di form induk. */
+  onSuccess?: (data: TData) => void;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -68,15 +71,20 @@ export function FormDialog<TSchema extends z.ZodType<FieldValues, FieldValues>>(
           <form
             noValidate
             className="flex flex-col gap-4"
-            onSubmit={form.handleSubmit((values) =>
-              submit(
-                () => action(values),
-                () => {
-                  setOpen(false);
-                  router.refresh();
-                },
-              ),
-            )}
+            onSubmit={(event) => {
+              // Dialog di-portal, tapi event React tetap naik ke <form> induk (mis. form reimburse).
+              event.stopPropagation();
+              return form.handleSubmit((values) =>
+                submit(
+                  () => action(values),
+                  (data) => {
+                    setOpen(false);
+                    onSuccess?.(data);
+                    router.refresh();
+                  },
+                ),
+              )(event);
+            }}
           >
             <DialogHeader>
               <DialogTitle>{title}</DialogTitle>

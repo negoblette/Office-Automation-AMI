@@ -1,4 +1,5 @@
 // Query halaman Kesehatan. Nominal dikonversi ke number — aman dikirim ke client.
+import type { Role } from "@/generated/prisma/enums";
 import type { PrismaClient, RequestStatus } from "@/generated/prisma/client";
 import { fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { remainingPlafond } from "@/lib/health";
@@ -59,13 +60,11 @@ export type HealthClaimRow = {
   note: string | null;
   status: RequestStatus;
   currentLevel: number | null;
-  invoiceFileKey: string;
-  invoiceFileName: string;
   payouts: { month: string; amount: number; paid: boolean }[];
 };
 
 /** Staf: klaim sendiri; Admin: semua. */
-export async function listHealthClaims(db: PrismaClient, viewer: { role: "ADMIN" | "STAFF"; employeeId: string | null }) {
+export async function listHealthClaims(db: PrismaClient, viewer: { role: Role; employeeId: string | null }) {
   const claims = await db.healthClaim.findMany({
     where: viewer.role === "ADMIN" ? {} : { employeeId: viewer.employeeId ?? "__none__" },
     orderBy: { createdAt: "desc" },
@@ -92,8 +91,6 @@ export async function listHealthClaims(db: PrismaClient, viewer: { role: "ADMIN"
     note: claim.note,
     status: claim.status,
     currentLevel: levelOf.get(claim.id) ?? null,
-    invoiceFileKey: claim.invoiceFileKey,
-    invoiceFileName: claim.invoiceFileName,
     payouts: claim.payouts.map((p) => ({ month: toJakartaIsoDate(p.periodMonth).slice(0, 7), amount: Number(p.amount), paid: p.paidAt !== null })),
   }));
 }

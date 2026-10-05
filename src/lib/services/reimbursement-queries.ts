@@ -1,7 +1,11 @@
 // Query halaman Reimburse. Nominal BigInt dikonversi ke number (serializeMoney) — aman ke client.
+import type { Role } from "@/generated/prisma/enums";
 import type { ApprovalStepView } from "@/components/shared/approval-stepper";
 import type { Division, Prisma, PrismaClient, RequestStatus } from "@/generated/prisma/client";
 import { serializeMoney, toJakartaIsoDate } from "@/lib/format";
+import { listCorrections } from "./approval-correction";
+import { projectLabel } from "@/lib/labels";
+import { nextProjectCode } from "./project-queries";
 
 const listInclude = {
   employee: { select: { fullName: true, position: true } },
@@ -30,7 +34,7 @@ export type ReimbursementListRow = {
  */
 export async function listReimbursements(
   db: PrismaClient,
-  viewer: { role: "ADMIN" | "STAFF"; employeeId: string | null },
+  viewer: { role: Role; employeeId: string | null },
 ): Promise<ReimbursementListRow[]> {
   const ownId = viewer.employeeId ?? "__none__";
   const rows = await db.reimbursement.findMany({
@@ -76,7 +80,7 @@ export async function getReimbursementDetail(db: PrismaClient, reimbursementId: 
         include: {
           type: { select: { name: true } },
           customer: { select: { name: true } },
-          project: { select: { name: true } },
+          project: { select: { code: true, name: true } },
         },
       },
     },
@@ -101,6 +105,7 @@ export async function getReimbursementDetail(db: PrismaClient, reimbursementId: 
       actedBy: step.actedById ? (nameOf.get(step.actedById) ?? null) : null,
       actedAt: step.actedAt?.toISOString() ?? null,
     })) ?? [];
+  const corrections = request ? ((await listCorrections(db, [request.id])).get(request.id) ?? []) : [];
 
   return {
     id: r.id,
@@ -117,12 +122,15 @@ export async function getReimbursementDetail(db: PrismaClient, reimbursementId: 
     approvedAt: r.approvedAt?.toISOString() ?? null,
     ...serializeMoney({ totalCash: r.totalCash, totalCc: r.totalCc, total: r.total }),
     steps,
+    corrections,
     items: r.items.map((item) => ({
       id: item.id,
       date: toJakartaIsoDate(item.date),
+      customerId: item.customerId,
       customerName: item.customer?.name ?? null,
       projectId: item.projectId,
-      projectName: item.project?.name ?? null,
+      newAcquisition: item.newAcquisition,
+      projectName: item.project ? projectLabel(item.project) : item.newAcquisition ? "New Acquisition (prospek)" : null,
       activity: item.activity,
       participants: item.participants,
       location: item.location,
@@ -141,20 +149,78 @@ export type ReimbursementDetail = NonNullable<Awaited<ReturnType<typeof getReimb
 
 /** Pilihan dropdown form: tipe sesuai divisi pemohon (RMB-04), customer, project aktif. */
 export async function getReimbursementFormOptions(db: PrismaClient, division: Division) {
-  const [types, customers, projects] = await Promise.all([
+  const [types, customers, projects, suggestedProjectCode] = await Promise.all([
     db.reimburseType.findMany({ where: { isActive: true, divisions: { has: division } }, orderBy: { name: "asc" } }),
-    db.customer.findMany({ where: { deletedAt: null }, orderBy: { name: "asc" }, select: { name: true } }),
+    db.customer.findMany({ where: { deletedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     db.project.findMany({
       where: { isActive: true },
       orderBy: [{ customer: { name: "asc" } }, { name: "asc" }],
-      select: { id: true, name: true, customer: { select: { name: true } } },
+      select: { id: true, code: true, name: true, customerId: true },
     }),
+    nextProjectCode(db),
   ]);
   return {
     types: types.map((type) => ({ value: type.id, label: type.name })),
-    customers: customers.map((customer) => customer.name),
-    projects: projects.map((project) => ({ value: project.id, label: `${project.customer.name} — ${project.name}` })),
+    customers: customers.map((customer) => ({ value: customer.id, label: customer.name })),
+    // Form: Company dipilih dulu, lalu dropdown hanya project milik company itu (Fase 14).
+    projects: projects.map((project) => ({ value: project.id, label: projectLabel(project), customerId: project.customerId })),
+    /** Untuk dialog "+ Project baru" di form (Fase 14: staf boleh menambah customer & project). */
+    suggestedProjectCode,
   };
 }
 
 export type ReimbursementFormOptions = Awaited<ReturnType<typeof getReimbursementFormOptions>>;
+
+export type ReimbursePrintRow = {
+  id: string;
+  date: string;
+  number: string;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "DRAFT";
+  customerName: string | null;
+  projectName: string | null;
+  activity: string;
+  participants: string;
+  location: string;
+  typeName: string;
+  paymentMethod: "CASH" | "CC";
+  amount: number;
+};
+
+/**
+ * Rekap reimburse satu karyawan untuk satu bulan transaksi (Fase 14: print / save as PDF).
+ * Hanya pengajuan yang sudah diajukan (bukan draft) dan tidak dihapus.
+ */
+export async function getReimbursePrintData(db: PrismaClient, employeeId: string, yearMonth: string) {
+  const [y, m] = yearMonth.split("-").map(Number);
+  const start = new Date(Date.UTC(y, m - 1, 1));
+  const end = new Date(Date.UTC(y, m, 0));
+  const [employee, items] = await Promise.all([
+    db.employee.findUnique({ where: { id: employeeId }, select: { fullName: true, position: true, division: true, employeeNo: true } }),
+    db.reimbursementItem.findMany({
+      where: { date: { gte: start, lte: end }, reimbursement: { employeeId, deletedAt: null, status: { not: "DRAFT" } } },
+      orderBy: [{ date: "asc" }, { id: "asc" }],
+      include: {
+        reimbursement: { select: { number: true, status: true } },
+        customer: { select: { name: true } },
+        project: { select: { code: true, name: true } },
+        type: { select: { name: true } },
+      },
+    }),
+  ]);
+  if (!employee) return null;
+  const rows: ReimbursePrintRow[] = items.map((i) => ({
+    id: i.id,
+    date: toJakartaIsoDate(i.date),
+    number: i.reimbursement.number,
+    status: i.reimbursement.status,
+    customerName: i.customer?.name ?? null,
+    projectName: i.project ? projectLabel(i.project) : i.newAcquisition ? "New Acquisition (prospek)" : null,
+    activity: i.activity,
+    participants: i.participants,
+    location: i.location,
+    typeName: i.type.name,
+    paymentMethod: i.paymentMethod,
+    amount: Number(i.amount),
+  }));
+  return { employee, rows };
+}

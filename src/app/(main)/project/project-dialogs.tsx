@@ -12,29 +12,38 @@ import { Button } from "@/components/ui/button";
 import { toJakartaIsoDate } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL, PROJECT_TYPE_LABEL, toOptions } from "@/lib/labels";
 import type { CustomerWithProjects } from "@/lib/services/project-queries";
-import { customerSchema, projectExpenseSchema, projectRevenueSchema, projectSchema } from "@/lib/validators/project";
+import { customerSchema, projectExpenseSchema, projectSchema } from "@/lib/validators/project";
 import {
   deleteCustomerAction,
   saveCustomerAction,
   saveProjectAction,
   submitProjectExpenseAction,
-  submitProjectRevenueAction,
 } from "./actions";
 
-export function CustomerDialog({ customer }: { customer?: { id: string; name: string } }) {
+export function CustomerDialog({
+  customer,
+  trigger,
+  onCreated,
+}: {
+  customer?: { id: string; name: string };
+  trigger?: React.ReactElement;
+  onCreated?: (id: string) => void;
+}) {
   return (
-    <FormDialog
+    <FormDialog<typeof customerSchema, { id: string }>
       trigger={
-        customer ? (
+        trigger ??
+        (customer ? (
           <Button variant="ghost" size="icon-sm" aria-label={`Ubah ${customer.name}`}>
             <Pencil />
           </Button>
         ) : (
           <Button size="lg">
-            <Plus aria-hidden /> Customer
+            <Plus aria-hidden /> Tambah Customer
           </Button>
-        )
+        ))
       }
+      onSuccess={(data) => onCreated?.(data.id)}
       title={customer ? `Ubah ${customer.name}` : "Tambah Customer"}
       schema={customerSchema}
       defaults={{ name: customer?.name ?? "" }}
@@ -74,15 +83,26 @@ export function ProjectDialog({
   customers,
   customerId,
   project,
+  suggestedCode,
+  canSetActive = true,
+  trigger,
+  onCreated,
 }: {
   customers: { value: string; label: string }[];
   customerId?: string;
-  project?: { id: string; name: string; type: "RUNNING" | "NEW_ACQUISITION"; isActive: boolean; customerId: string };
+  project?: { id: string; code: string | null; name: string; type: "RUNNING" | "NEW_ACQUISITION"; isActive: boolean; customerId: string };
+  /** Saran ID untuk project baru (mis. PRJ-0004). */
+  suggestedCode?: string;
+  /** false untuk non-Admin: project baru selalu aktif. */
+  canSetActive?: boolean;
+  trigger?: React.ReactElement;
+  onCreated?: (project: { id: string; customerId: string }) => void;
 }) {
   return (
-    <FormDialog
+    <FormDialog<typeof projectSchema, { id: string; customerId: string }>
       trigger={
-        project ? (
+        trigger ??
+        (project ? (
           <Button variant="ghost" size="icon-sm" aria-label={`Ubah ${project.name}`}>
             <Pencil />
           </Button>
@@ -90,12 +110,14 @@ export function ProjectDialog({
           <Button variant="outline" size="sm">
             <Plus aria-hidden /> Project
           </Button>
-        )
+        ))
       }
+      onSuccess={(data) => onCreated?.(data)}
       title={project ? `Ubah ${project.name}` : "Tambah Project"}
       schema={projectSchema}
       defaults={{
         customerId: project?.customerId ?? customerId ?? "",
+        code: project?.code ?? suggestedCode ?? "",
         name: project?.name ?? "",
         type: project?.type ?? "RUNNING",
         isActive: project?.isActive ?? true,
@@ -104,9 +126,10 @@ export function ProjectDialog({
       action={(values) => saveProjectAction(project?.id ?? null, values)}
     >
       <SelectInputField name="customerId" label="Customer" required options={customers} />
+      <TextInputField name="code" label="ID project" required placeholder="mis. PRJ-0012" hint="Tampil sebagai &quot;ID - Nama Project&quot;." />
       <TextInputField name="name" label="Nama project" required />
       <SelectInputField name="type" label="Jenis" required options={toOptions(PROJECT_TYPE_LABEL)} />
-      <CheckboxField name="isActive" label="Project aktif" hint="Project nonaktif tidak muncul di pilihan reimburse/expense baru." />
+      {canSetActive && <CheckboxField name="isActive" label="Project aktif" hint="Project nonaktif tidak muncul di pilihan reimburse/expense baru." />}
     </FormDialog>
   );
 }
@@ -144,29 +167,6 @@ export function ExpenseDialog({ projectId }: { projectId: string }) {
         <DateInputField name="date" label="Tanggal" required />
         <SelectInputField name="paymentMethod" label="Pembayaran" required options={toOptions(PAYMENT_METHOD_LABEL)} />
       </div>
-      <TextInputField name="description" label="Keterangan" required />
-      <AmountField />
-    </FormDialog>
-  );
-}
-
-/** Input revenue project (PRJ-04, OI-06: field minimal). */
-export function RevenueDialog({ projectId }: { projectId: string }) {
-  return (
-    <FormDialog
-      trigger={
-        <Button size="lg" variant="outline">
-          <Plus aria-hidden /> Input Revenue
-        </Button>
-      }
-      title="Input Revenue Project"
-      description="Diajukan ke approval (alur sama dengan reimburse)."
-      schema={projectRevenueSchema}
-      defaults={{ date: toJakartaIsoDate(), description: "", amount: null as unknown as number }}
-      submitLabel="Ajukan"
-      action={(values) => submitProjectRevenueAction(projectId, values)}
-    >
-      <DateInputField name="date" label="Tanggal" required />
       <TextInputField name="description" label="Keterangan" required />
       <AmountField />
     </FormDialog>

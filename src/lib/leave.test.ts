@@ -12,19 +12,19 @@ import {
 
 const POLICIES = [
   { minYears: 0, maxYears: 0, days: 0 },
-  { minYears: 1, maxYears: 5, days: 12 },
-  { minYears: 6, maxYears: 15, days: 15 },
-  { minYears: 16, maxYears: null, days: 18 },
+  { minYears: 1, maxYears: 4, days: 12 },
+  { minYears: 5, maxYears: 14, days: 15 },
+  { minYears: 15, maxYears: null, days: 18 },
 ];
 
 describe("masa kerja & jatah (LV-02)", () => {
   it.each([
     [0, 0],
     [1, 12],
-    [5, 12],
-    [6, 15],
-    [15, 15],
-    [16, 18],
+    [4, 12],
+    [5, 15],
+    [14, 15],
+    [15, 18],
     [30, 18],
   ])("%i tahun → %i hari", (years, days) => {
     expect(entitlementFor(years, POLICIES)).toBe(days);
@@ -70,13 +70,13 @@ describe("periode cuti = tahun kalender (keputusan user, OI-03 — prorata 2026-
     expect(firstUsableDate("2026-11-20")).toBe("2027-11-20");
   });
 
-  it("naik tingkat mulai Januari setelah genap 6 / 16 tahun", () => {
-    // Masuk Mar 2020: genap 6 tahun Mar 2026 → 2026 masih 12, 2027 menjadi 15.
-    expect(entitlementOf("2020-03-15", "2026-11-01")).toBe(12);
-    expect(entitlementOf("2020-03-15", "2027-01-05")).toBe(15);
-    // Masuk Jan 2010: per 1 Jan 2026 = 16 tahun → 18.
-    expect(entitlementOf("2010-01-04", "2026-06-01")).toBe(15);
-    expect(entitlementOf("2010-01-01", "2026-06-01")).toBe(18);
+  it("naik tingkat mulai Januari setelah genap 5 / 15 tahun", () => {
+    // Masuk Mar 2021: genap 5 tahun Mar 2026 → 2026 masih 12, 2027 menjadi 15.
+    expect(entitlementOf("2021-03-15", "2026-11-01")).toBe(12);
+    expect(entitlementOf("2021-03-15", "2027-01-05")).toBe(15);
+    // Masuk 4 Jan 2010: per 1 Jan 2026 = 15 tahun penuh (15 th 11 bln) → 18.
+    expect(entitlementOf("2010-01-04", "2026-06-01")).toBe(18);
+    expect(entitlementOf("2011-01-04", "2026-06-01")).toBe(15);
   });
 
   it("rehire di tengah tahun: periode mulai tanggal rehire, belum bisa cuti", () => {
@@ -113,7 +113,17 @@ describe("saldo & carry over (LV-03, OI-02)", () => {
     [{ entitlement: 12, carriedOver: 3, used: 14 }, 1], // 3 dari carry + 11 dari jatah → sisa jatah 1
     [{ entitlement: 12, carriedOver: 3, used: 15 }, 0],
     [{ entitlement: 0, carriedOver: 0, used: 0 }, 0],
+    // Fase 14: penyesuaian & saldo minus
+    [{ entitlement: 12, carriedOver: 0, used: 12, adjustment: 2 }, 2], // pemutihan +2 yang belum terpakai ikut terbawa
+    [{ entitlement: 12, carriedOver: 0, used: 12, adjustment: -2 }, -2], // potong cuti → minus terbawa penuh
+    [{ entitlement: 0, carriedOver: -2, used: 0, adjustment: 0 }, -2], // tahun berikutnya belum dapat jatah → minus tetap
+    [{ entitlement: 12, carriedOver: -2, used: 4, adjustment: 0 }, 3], // minus mengurangi jatah: 12 − 2 − 4 = 6 → maks 3
   ])("%o → carry berikutnya %i", (balance, expected) => {
     expect(nextCarryOver(balance, 3)).toBe(expected);
+  });
+
+  it("penyesuaian ikut sisa saldo (boleh minus)", () => {
+    expect(remainingDays({ entitlement: 12, carriedOver: 0, used: 12, adjustment: -1 })).toBe(-1);
+    expect(remainingDays({ entitlement: 12, carriedOver: -2, used: 0, adjustment: 3 })).toBe(13);
   });
 });

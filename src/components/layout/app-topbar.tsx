@@ -14,6 +14,7 @@ type AppTopbarProps = {
 
 const ROLE_LABELS: Record<AppRole, string> = {
   ADMIN: "Admin",
+  APPROVER: "Approver",
   STAFF: "Staf",
 };
 

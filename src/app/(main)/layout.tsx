@@ -2,6 +2,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
+import { canApprove } from "@/lib/roles";
 import { countPendingApprovals } from "@/lib/services/approval-queries";
 
 /**
@@ -11,7 +12,7 @@ import { countPendingApprovals } from "@/lib/services/approval-queries";
  */
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  const badges = user.role === "ADMIN" ? { "/approval": await countPendingApprovals(prisma, user.id) } : undefined;
+  const badges = canApprove(user.role) ? { "/approval": await countPendingApprovals(prisma, user.id) } : undefined;
 
   return (
     <div className="flex min-h-screen flex-1 flex-col bg-background">

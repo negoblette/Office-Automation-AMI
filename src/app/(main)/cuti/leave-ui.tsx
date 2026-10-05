@@ -22,7 +22,7 @@ const date = (iso: string) => formatDate(`${iso}T00:00:00Z`, "short");
 
 /** Saldo cuti (LV-07): jatah, carry over, terpakai, menunggu, sisa. */
 export function LeaveBalanceCard({ balance, title = "Saldo Cuti Saya" }: { balance: LeaveBalanceView; title?: string }) {
-  const total = balance.entitlement + balance.carriedOver;
+  const total = balance.entitlement + balance.carriedOver + balance.adjustment;
   const usedPercent = total ? ((balance.used + balance.pending) / total) * 100 : 0;
   return (
     <section className="rounded-2xl bg-card p-5 shadow-card">
@@ -48,6 +48,7 @@ export function LeaveBalanceCard({ balance, title = "Saldo Cuti Saya" }: { balan
         {[
           ["Jatah", balance.entitlement],
           ["Carry over", balance.carriedOver],
+          ...(balance.adjustment ? [["Penyesuaian", balance.adjustment > 0 ? `+${balance.adjustment}` : balance.adjustment] as const] : []),
           ["Terpakai", balance.used],
           ["Menunggu approval", balance.pending],
         ].map(([label, value]) => (

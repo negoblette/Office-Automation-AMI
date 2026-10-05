@@ -1,19 +1,19 @@
 "use client";
 
-import { Clock, Loader2, LogIn, LogOut, Pencil, Plus } from "lucide-react";
+import { Clock, Loader2, LogIn, LogOut, MessageSquareWarning, Pencil, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { DateInputField, TextareaField, TextInputField } from "@/components/form/fields";
+import { DateInputField, SelectInputField, TextareaField, TextInputField } from "@/components/form/fields";
 import { FormDialog } from "@/components/form/form-dialog";
 import { StatusBadge, type StatusVariant } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
-import { DAY_STATUS_LABEL, type DayStatus, formatDuration } from "@/lib/attendance";
+import { APPEAL_REASON_LABEL, DAY_STATUS_LABEL, type DayStatus, formatDuration } from "@/lib/attendance";
 import { formatDate } from "@/lib/format";
 import type { AttendanceDay, TodayAttendance } from "@/lib/services/attendance-queries";
 import { cn } from "@/lib/utils";
-import { attendanceCorrectionSchema } from "@/lib/validators/attendance";
-import { clockInAction, clockOutAction, correctAttendanceAction } from "./actions";
+import { appealSchema, attendanceCorrectionSchema } from "@/lib/validators/attendance";
+import { clockInAction, clockOutAction, correctAttendanceAction, submitAppealAction } from "./actions";
 
 export const DAY_STATUS_VARIANT: Record<DayStatus, StatusVariant> = {
   PRESENT: "success",
@@ -24,6 +24,9 @@ export const DAY_STATUS_VARIANT: Record<DayStatus, StatusVariant> = {
   HOLIDAY: "neutral",
   WEEKEND: "neutral",
   ABSENT: "danger",
+  SICK: "info",
+  VISIT: "info",
+  APPEAL_PENDING: "warning",
   NOT_YET: "neutral",
   NOT_EMPLOYED: "neutral",
 };
@@ -190,8 +193,33 @@ export function AddCorrectionButton({ employeeId, defaultDate }: { employeeId: s
   return <CorrectionDialog employeeId={employeeId} defaultDate={defaultDate} />;
 }
 
-/** Tabel riwayat harian. `correctFor` = employeeId bila Admin boleh mengoreksi. */
-export function AttendanceDaysTable({ days, correctFor }: { days: AttendanceDay[]; correctFor?: string }) {
+/** Appeal satu hari tidak hadir (Fase 14): Sakit / Kunjungan keluar + keterangan → approval Bu Ika. */
+function AppealDialog({ day }: { day: AttendanceDay }) {
+  return (
+    <FormDialog
+      trigger={
+        <Button variant="outline" size="sm">
+          <MessageSquareWarning aria-hidden /> Appeal
+        </Button>
+      }
+      title={`Appeal ${formatDate(`${day.date}T00:00:00Z`, "weekday")}`}
+      description={`Tidak masuk karena sakit atau ada kunjungan keluar? Ajukan paling lambat ${formatDate(`${day.appealDeadline}T00:00:00Z`)}. Tanpa appeal yang disetujui, saldo cuti dipotong 1 hari.`}
+      schema={appealSchema}
+      defaults={{ date: day.date, reason: "" as never, note: "" }}
+      submitLabel="Ajukan Appeal"
+      action={submitAppealAction}
+    >
+      <SelectInputField name="reason" label="Alasan" required options={Object.entries(APPEAL_REASON_LABEL).map(([value, label]) => ({ value, label }))} />
+      <TextareaField name="note" label="Keterangan" required />
+    </FormDialog>
+  );
+}
+
+/**
+ * Tabel riwayat harian. `correctFor` = employeeId bila Admin boleh mengoreksi; `appealable` = riwayat
+ * milik sendiri (tombol Appeal untuk hari tidak hadir ≤ 7 hari).
+ */
+export function AttendanceDaysTable({ days, correctFor, appealable = false }: { days: AttendanceDay[]; correctFor?: string; appealable?: boolean }) {
   if (days.length === 0) return <p className="rounded-2xl bg-card p-5 text-sm text-muted-foreground shadow-card">Belum ada data di bulan ini.</p>;
   return (
     <div className="overflow-x-auto rounded-2xl bg-card shadow-card">
@@ -230,6 +258,16 @@ export function AttendanceDaysTable({ days, correctFor }: { days: AttendanceDay[
                         Dikoreksi {day.correctedBy}: {day.correctionNote}
                       </span>
                     )}
+                    {day.appeal && (
+                      <span className="text-xs text-muted-foreground">
+                        Appeal {day.appeal.number} · {APPEAL_REASON_LABEL[day.appeal.reason]}: {day.appeal.note}
+                      </span>
+                    )}
+                    {day.leaveDeducted && <span className="text-xs font-medium text-danger">Saldo cuti dipotong 1 hari</span>}
+                    {day.canAppeal && !appealable && (
+                      <span className="text-xs text-muted-foreground">Batas appeal {formatDate(`${day.appealDeadline}T00:00:00Z`, "short")}</span>
+                    )}
+                    {appealable && day.canAppeal && <AppealDialog day={day} />}
                   </div>
                 </td>
                 {correctFor && (

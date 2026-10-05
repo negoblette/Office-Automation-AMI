@@ -80,3 +80,38 @@ export async function rolloverLeaveBalances(db: PrismaClient, todayIso = toJakar
   }
   return created;
 }
+
+export type LeaveAdjustmentInput = {
+  employeeId: string;
+  /** Tanggal acuan periode saldo (tahun kalender) yang disesuaikan. */
+  refIso: string;
+  days: number;
+  reason: string;
+  source: "MANUAL" | "ABSENCE";
+  /** ABSENCE: tanggal tidak hadir (unik per karyawan, cegah potong ganda). */
+  attendanceDate?: string | null;
+  createdById: string | null;
+};
+
+/**
+ * Penyesuaian saldo cuti (Fase 14): pemutihan / koreksi Admin (+/−) atau potong otomatis karena
+ * tidak hadir tanpa appeal (−1). Dicatat di LeaveAdjustment + audit; saldo boleh minus.
+ */
+export async function addLeaveAdjustment(tx: Tx, input: LeaveAdjustmentInput) {
+  if (!Number.isInteger(input.days) || input.days === 0) throw new ServiceError("Jumlah hari penyesuaian tidak boleh 0", "days");
+  const balance = await ensureLeaveBalance(tx, input.employeeId, input.refIso);
+  const adjustment = await tx.leaveAdjustment.create({
+    data: {
+      balanceId: balance.id,
+      employeeId: input.employeeId,
+      days: input.days,
+      reason: input.reason,
+      source: input.source,
+      attendanceDate: input.attendanceDate ? fromIsoDate(input.attendanceDate) : null,
+      createdById: input.createdById,
+    },
+  });
+  await tx.leaveBalance.update({ where: { id: balance.id }, data: { adjustment: { increment: input.days } } });
+  await logAudit(tx, { actorId: input.createdById, action: "UPDATE", entity: "LeaveBalance", entityId: balance.id, after: { adjustment } });
+  return adjustment;
+}

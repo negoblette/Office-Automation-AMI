@@ -24,6 +24,8 @@ import {
 import { listEmployeeAssets } from "@/lib/services/asset-queries";
 import { RehireButton, ResignButton } from "../employee-status-actions";
 import { FEATURES } from "@/lib/features";
+import { EmployeeAssetsPanel } from "@/components/employee/employee-assets-panel";
+import { listEmployeeAssetItems } from "@/lib/services/employee-asset";
 
 export const metadata: Metadata = { title: "Detail Karyawan" };
 
@@ -32,6 +34,7 @@ const TABS = [
   { key: "keluarga", label: "Keluarga" },
   { key: "dokumen", label: "Dokumen" },
   { key: "sertifikat", label: "Sertifikat" },
+  { key: "aset", label: "Aset" },
   { key: "inventory", label: "Inventory" },
   { key: "riwayat", label: "Riwayat Kerja" },
 ] as const;
@@ -73,6 +76,9 @@ export default async function DetailKaryawanPage({
         }
         actions={
           <>
+            <Link href={`/biodata/${employee.id}`} className={buttonVariants({ variant: "outline", size: "lg" })}>
+              Biodata (PDF)
+            </Link>
             <Link href={`/karyawan/${employee.id}/edit`} className={buttonVariants({ variant: "outline", size: "lg" })}>
               <Pencil aria-hidden /> Edit
             </Link>
@@ -127,10 +133,11 @@ export default async function DetailKaryawanPage({
 
       {activeTab === "data-diri" && <PersonalData employee={employee} />}
       {activeTab === "riwayat" && <EmploymentHistory periods={employee.periods} />}
+      {activeTab === "aset" && <EmployeeAssetsPanel employeeId={employee.id} assets={await listEmployeeAssetItems(prisma, employee.id)} canEdit />}
       {activeTab === "keluarga" && <FamilyPanel data={documents} canEdit />}
       {activeTab === "dokumen" && <PersonalDocumentsPanel data={documents} canEdit />}
       {activeTab === "sertifikat" && (
-        <CertificatesPanel employeeId={employee.id} certificates={await getEmployeeCertificates(prisma, employee.id)} canEdit />
+        <CertificatesPanel employeeId={employee.id} certificates={await getEmployeeCertificates(prisma, employee.id)} canEdit canEditVerified />
       )}
       {activeTab === "inventory" && <AssignmentHistory rows={await listEmployeeAssets(prisma, employee.id)} mode="employee" />}
     </div>
@@ -174,7 +181,7 @@ function PersonalData({ employee }: { employee: EmployeeDetail }) {
       <InfoSection
         title="Akun & Pekerjaan"
         items={[
-          ["Nomor karyawan", employee.employeeNo],
+          ["NIP", employee.employeeNo ?? "Belum ada"],
           ["Level / grade", employee.level],
           ["Status akun", employee.accountActive ? "Aktif" : "Nonaktif"],
           ["Login terakhir", employee.lastLoginAt ? formatDateTime(employee.lastLoginAt) : "Belum pernah login"],

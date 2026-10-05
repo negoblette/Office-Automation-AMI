@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { getReimbursementDetail, getReimbursementFormOptions } from "@/lib/services/reimbursement-queries";
+import { itemsToVisits } from "@/lib/validators/reimbursement";
 import { ReimbursementForm } from "../../reimbursement-form";
 
 export const metadata: Metadata = { title: "Edit Draft Reimburse" };
@@ -27,19 +28,17 @@ export default async function EditReimbursePage({ params }: { params: Promise<{ 
         options={await getReimbursementFormOptions(prisma, detail.division)}
         defaultValues={{
           note: detail.note ?? "",
-          items: detail.items.map((item) => ({
-            date: item.date,
-            customerName: item.customerName ?? "",
-            projectId: item.projectId ?? "",
-            activity: item.activity,
-            participants: item.participants,
-            location: item.location,
-            typeId: item.typeId,
-            hasReceipt: item.hasReceipt,
-            paymentMethod: item.paymentMethod,
-            amount: item.amount,
-            receiptFileKey: item.receiptFileKey ?? "",
-            receiptFileName: item.receiptFileName ?? "",
+          visits: itemsToVisits(detail.items).map((visit) => ({
+            ...visit,
+            lines: visit.lines.map((item) => ({
+              activity: item.activity,
+              participants: item.participants,
+              location: item.location,
+              typeId: item.typeId,
+              hasReceipt: item.hasReceipt,
+              paymentMethod: item.paymentMethod,
+              amount: item.amount,
+            })),
           })),
         }}
       />

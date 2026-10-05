@@ -12,6 +12,8 @@ export const PROFILE_FIELDS = {
   npwp: "NPWP",
   bpjsTkNo: "BPJS Ketenagakerjaan",
   bpjsKesNo: "BPJS Kesehatan",
+  emergencyName: "Nama kontak darurat",
+  emergencyPhone: "No HP kontak darurat",
 } as const;
 
 export type ProfileFieldKey = keyof typeof PROFILE_FIELDS;

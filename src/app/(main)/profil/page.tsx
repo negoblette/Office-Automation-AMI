@@ -16,7 +16,12 @@ export default async function ProfilPage() {
   const employee = user.employeeId ? await getEmployeeFormValues(prisma, user.employeeId) : null;
 
   return (
-    <ProfileShell active="data-diri" title="Profil Saya" description="Lengkapi dan perbarui data diri Anda. Data ini dipakai untuk administrasi kantor.">
+    <ProfileShell
+      active="data-diri"
+      title="Profil Saya"
+      description="Lengkapi dan perbarui data diri Anda. Data ini dipakai untuk administrasi kantor."
+      employeeId={user.employeeId}
+    >
       {employee ? (
         <ProfileContent values={employee.values} />
       ) : (
@@ -27,7 +32,7 @@ export default async function ProfilPage() {
 }
 
 function ProfileContent({ values }: { values: NonNullable<Awaited<ReturnType<typeof getEmployeeFormValues>>>["values"] }) {
-  const { email, division, role, startDate, ...selfValues } = values;
+  const { email, division, role, startDate, employeeNo, fullName, position, level, ...selfValues } = values;
   const completeness = profileCompleteness(selfValues);
 
   return (
@@ -49,6 +54,10 @@ function ProfileContent({ values }: { values: NonNullable<Awaited<ReturnType<typ
           division: DIVISION_LABEL[division],
           role: ROLE_LABEL[role],
           startDate: startDate ? formatDate(`${startDate}T00:00:00Z`) : "—",
+          employeeNo: employeeNo || null,
+          fullName,
+          position,
+          level: level || null,
         }}
       />
     </div>

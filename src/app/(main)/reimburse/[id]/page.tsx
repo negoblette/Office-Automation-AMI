@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { Fragment } from "react";
 import { notFound, redirect } from "next/navigation";
+import { CorrectionList } from "@/app/(main)/approval/correction-ui";
 import { ApprovalStepper } from "@/components/shared/approval-stepper";
 import { requestStatusBadge } from "@/components/shared/approval-status";
 import { FileChip } from "@/components/shared/file-chip";
@@ -21,8 +23,13 @@ export default async function DetailReimbursePage({ params }: { params: Promise<
   if (!r) notFound();
 
   const isOwner = r.employeeId === user.employeeId;
+  // Approver (role APPROVER) boleh melihat pengajuan yang mencantumkan dirinya sebagai approver.
+  const isAssignedApprover =
+    !isOwner &&
+    user.role === "APPROVER" &&
+    (await prisma.approvalRequestStep.count({ where: { approverIds: { has: user.id }, request: { module: "REIMBURSE", entityId: r.id } } })) > 0;
   // Staf hanya boleh melihat miliknya; draft hanya terlihat oleh pemohon.
-  if (!isOwner && (user.role !== "ADMIN" || r.status === "DRAFT")) redirect("/akses-ditolak");
+  if (!isOwner && ((user.role !== "ADMIN" && !isAssignedApprover) || r.status === "DRAFT")) redirect("/akses-ditolak");
 
   const badge = requestStatusBadge(r.status, r.currentLevel);
   const title = r.number ?? "Draft Reimburse";
@@ -55,6 +62,12 @@ export default async function DetailReimbursePage({ params }: { params: Promise<
         <section className="rounded-2xl bg-card p-5 shadow-card">
           <h2 className="mb-4 text-base font-semibold">Riwayat Approval</h2>
           <ApprovalStepper steps={r.steps} requestStatus={r.status} />
+          {r.corrections.length > 0 && (
+            <div className="mt-4 rounded-xl bg-warning-soft p-3">
+              <p className="mb-1 text-sm font-semibold">Koreksi oleh approver</p>
+              <CorrectionList corrections={r.corrections} className="flex flex-col gap-1 text-sm text-muted-foreground" />
+            </div>
+          )}
         </section>
       )}
 
@@ -70,29 +83,40 @@ export default async function DetailReimbursePage({ params }: { params: Promise<
             </tr>
           </thead>
           <tbody>
-            {r.items.map((item) => (
-              <tr key={item.id} className="border-t border-border align-top">
-                <td className="px-4 py-3 whitespace-nowrap">{formatDate(`${item.date}T00:00:00Z`, "short")}</td>
-                <td className="px-4 py-3">
-                  {item.customerName ?? "—"}
-                  {item.projectName && <p className="text-xs text-muted-foreground">Project: {item.projectName}</p>}
-                </td>
-                <td className="px-4 py-3 whitespace-pre-line">{item.participants}</td>
-                <td className="px-4 py-3">{item.activity}</td>
-                <td className="px-4 py-3">{item.location}</td>
-                <td className="px-4 py-3">{item.typeName}</td>
-                <td className="px-4 py-3">
-                  {item.receiptFileKey ? (
-                    <FileChip fileKey={item.receiptFileKey} fileName={item.receiptFileName ?? "kwitansi"} className="max-w-40" />
-                  ) : item.hasReceipt ? (
-                    <span className="text-danger">Ya (belum di-upload)</span>
-                  ) : (
-                    "Tidak"
-                  )}
-                </td>
-                <td className="px-4 py-3">{PAYMENT_METHOD_LABEL[item.paymentMethod]}</td>
-                <td className="px-4 py-3 text-right tabular-nums">{formatRupiah(item.amount)}</td>
-              </tr>
+            {/* Dikelompokkan per tanggal transaksi + subtotal harian (Fase 14). */}
+            {groupByDate(r.items).map(([day, items]) => (
+              <Fragment key={day}>
+                {items.map((item) => (
+                  <tr key={item.id} className="border-t border-border align-top">
+                    <td className="px-4 py-3 whitespace-nowrap">{formatDate(`${item.date}T00:00:00Z`, "short")}</td>
+                    <td className="px-4 py-3">
+                      {item.customerName ?? "—"}
+                      {item.projectName && <p className="text-xs text-muted-foreground">Project: {item.projectName}</p>}
+                    </td>
+                    <td className="px-4 py-3 whitespace-pre-line">{item.participants}</td>
+                    <td className="px-4 py-3">{item.activity}</td>
+                    <td className="px-4 py-3">{item.location}</td>
+                    <td className="px-4 py-3">{item.typeName}</td>
+                    <td className="px-4 py-3">
+                      {item.receiptFileKey ? (
+                        <FileChip fileKey={item.receiptFileKey} fileName={item.receiptFileName ?? "kwitansi"} className="max-w-40" />
+                      ) : item.hasReceipt ? (
+                        "Ya"
+                      ) : (
+                        "Tidak"
+                      )}
+                    </td>
+                    <td className="px-4 py-3">{PAYMENT_METHOD_LABEL[item.paymentMethod]}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{formatRupiah(item.amount)}</td>
+                  </tr>
+                ))}
+                <tr className="border-t border-border bg-muted/40 text-sm">
+                  <td colSpan={8} className="px-4 py-2 text-right font-medium text-muted-foreground">
+                    Subtotal {formatDate(`${day}T00:00:00Z`, "short")}
+                  </td>
+                  <td className="px-4 py-2 text-right font-semibold tabular-nums">{formatRupiah(items.reduce((sum, i) => sum + i.amount, 0))}</td>
+                </tr>
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -106,6 +130,12 @@ export default async function DetailReimbursePage({ params }: { params: Promise<
       )}
     </div>
   );
+}
+
+function groupByDate<T extends { date: string }>(items: T[]): [string, T[]][] {
+  const groups = new Map<string, T[]>();
+  for (const item of [...items].sort((a, b) => a.date.localeCompare(b.date))) groups.set(item.date, [...(groups.get(item.date) ?? []), item]);
+  return [...groups.entries()];
 }
 
 function Info({ label, value }: { label: string; value: React.ReactNode }) {

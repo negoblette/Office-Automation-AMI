@@ -38,17 +38,22 @@ export function CertificatesPanel({
   employeeId,
   certificates,
   canEdit,
+  canEditVerified = false,
 }: {
   employeeId: string;
   certificates: CertificateView[];
   canEdit: boolean;
+  /** Admin boleh mengubah sertifikat yang sudah terverifikasi. */
+  canEditVerified?: boolean;
 }) {
   return (
     <section className="rounded-2xl bg-card p-5 shadow-card sm:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="space-y-1">
           <h2 className="text-base font-semibold">Sertifikat & Ijazah</h2>
-          <p className="text-sm text-muted-foreground">Status &ldquo;Akan kadaluarsa&rdquo; muncul 30 hari sebelum tanggal berakhir.</p>
+          <p className="text-sm text-muted-foreground">
+            Sertifikat baru diverifikasi Ko Yosep lalu Bu Ika. Status &ldquo;Akan kadaluarsa&rdquo; muncul 30 hari sebelum masa berlaku habis.
+          </p>
         </div>
         {canEdit && <CertificateDialog employeeId={employeeId} />}
       </div>
@@ -58,7 +63,12 @@ export function CertificatesPanel({
       ) : (
         <ul className="divide-y divide-border">
           {certificates.map((certificate) => (
-            <CertificateRow key={certificate.id} employeeId={employeeId} certificate={certificate} canEdit={canEdit} />
+            <CertificateRow
+              key={certificate.id}
+              employeeId={employeeId}
+              certificate={certificate}
+              canEdit={canEdit && (canEditVerified || certificate.verification !== "APPROVED")}
+            />
           ))}
         </ul>
       )}
@@ -81,6 +91,19 @@ function CertificateRow({ employeeId, certificate, canEdit }: { employeeId: stri
             {badge.label}
             {certificate.status === "EXPIRING" && certificate.daysLeft !== null && ` · ${certificate.daysLeft} hari lagi`}
           </StatusBadge>
+          {certificate.verification === "APPROVED" ? (
+            <StatusBadge variant="success" dot={false}>
+              Terverifikasi
+            </StatusBadge>
+          ) : certificate.verification === "PENDING" ? (
+            <StatusBadge variant="warning" dot={false}>
+              Menunggu verifikasi {certificate.verificationLevel === 2 ? "Bu Ika" : "Ko Yosep"}
+            </StatusBadge>
+          ) : (
+            <StatusBadge variant="neutral" dot={false}>
+              Verifikasi dibatalkan
+            </StatusBadge>
+          )}
         </div>
         <p className="text-sm text-muted-foreground">
           {CERTIFICATE_TYPE_LABEL[certificate.type]}
@@ -88,7 +111,7 @@ function CertificateRow({ employeeId, certificate, canEdit }: { employeeId: stri
           {certificate.number && ` · No. ${certificate.number}`}
         </p>
         <p className="text-sm text-muted-foreground">
-          Berlaku {date(certificate.startDate)} – {certificate.endDate ? date(certificate.endDate) : "seumur hidup"}
+          Diambil {date(certificate.startDate)} · {certificate.endDate ? `berlaku s/d ${date(certificate.endDate)}` : "tanpa masa berlaku"}
         </p>
         {error && (
           <p role="alert" className="text-xs font-medium text-danger">
@@ -199,8 +222,8 @@ function CertificateDialog({ employeeId, certificate }: { employeeId: string; ce
               <TextInputField name="name" label="Nama" required placeholder="mis. Cisco CCNA" />
               <TextInputField name="issuer" label="Penerbit" />
               <TextInputField name="number" label="Nomor" />
-              <DateInputField name="startDate" label="Tanggal terbit" required />
-              <DateInputField name="endDate" label="Berlaku sampai" hint="Kosongkan jika seumur hidup" />
+              <DateInputField name="startDate" label="Tanggal diambil / lulus" required />
+              <DateInputField name="endDate" label="Masa berlaku sampai" hint="Wajib untuk sertifikat profesional; kosongkan untuk ijazah" />
             </div>
             <FormField label="File" htmlFor="certificate-file" error={form.formState.errors.fileKey?.message}>
               <Controller

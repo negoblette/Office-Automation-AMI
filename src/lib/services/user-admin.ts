@@ -1,12 +1,13 @@
 // Setting → User & Role (Tahap 10.3): ubah role, aktif/nonaktif, reset password.
-// Approver selalu Admin aktif (Tech Spec §4.2), jadi Admin yang dinonaktifkan / diturunkan ke
-// Staf tidak boleh meninggalkan step approval tanpa approver lain.
+// Approver = user aktif ber-role Admin / Approver; user yang dinonaktifkan / diturunkan ke Staf
+// tidak boleh meninggalkan step approval tanpa approver lain.
 import argon2 from "argon2";
 import type { Prisma, PrismaClient, Role } from "@/generated/prisma/client";
 import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
 import { DIVISION_LABEL } from "@/lib/labels";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
+import { APPROVER_ROLES, canApprove } from "@/lib/roles";
 
 type Tx = Prisma.TransactionClient;
 
@@ -22,7 +23,7 @@ export function flowLabel(flow: { module: keyof typeof APPROVAL_MODULE_META | nu
  */
 export async function assertCanLoseApproverRights(tx: Tx, userId: string, displayName: string) {
   const isOtherActiveAdmin = async (ids: string[]) =>
-    (await tx.user.count({ where: { id: { in: ids.filter((id) => id !== userId) }, role: "ADMIN", isActive: true } })) > 0;
+    (await tx.user.count({ where: { id: { in: ids.filter((id) => id !== userId) }, role: { in: [...APPROVER_ROLES] }, isActive: true } })) > 0;
 
   const flowSteps = await tx.approvalFlowStep.findMany({
     where: { flow: { isActive: true, deletedAt: null }, approvers: { some: { userId } } },
@@ -94,7 +95,7 @@ export async function setUserRole(db: PrismaClient, actorId: string, userId: str
     const user = await getUserOrThrow(tx, userId);
     if (user.id === actorId) throw new ServiceError("Anda tidak bisa mengubah role akun Anda sendiri");
     if (user.role === role) return;
-    if (user.role === "ADMIN") await assertCanLoseApproverRights(tx, userId, user.displayName);
+    if (canApprove(user.role) && !canApprove(role)) await assertCanLoseApproverRights(tx, userId, user.displayName);
     await tx.user.update({ where: { id: userId }, data: { role } });
     await logAudit(tx, { actorId, action: "UPDATE", entity: "User", entityId: userId, before: { role: user.role }, after: { role } });
   });
@@ -108,7 +109,7 @@ export async function setUserActive(db: PrismaClient, actorId: string, userId: s
     if (isActive && user.employee?.status === "RESIGNED") {
       throw new ServiceError("Karyawan ini sudah resign. Aktifkan kembali lewat halaman Arsip (Rehire).");
     }
-    if (!isActive && user.role === "ADMIN") await assertCanLoseApproverRights(tx, userId, user.displayName);
+    if (!isActive && canApprove(user.role)) await assertCanLoseApproverRights(tx, userId, user.displayName);
     await tx.user.update({ where: { id: userId }, data: { isActive } });
     await logAudit(tx, { actorId, action: "UPDATE", entity: "User", entityId: userId, before: { isActive: user.isActive }, after: { isActive } });
   });

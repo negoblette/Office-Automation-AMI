@@ -52,6 +52,9 @@ services:
     build: { context: ., target: worker }
     <<: *app-env
     restart: unless-stopped
+    # Job invoice.purge menghapus file invoice > 2 tahun dari volume upload yang sama dengan app.
+    volumes:
+      - uploads:/app/storage/uploads
     depends_on:
       migrate: { condition: service_completed_successfully }
 

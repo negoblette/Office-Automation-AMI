@@ -86,11 +86,12 @@ describe("updateSelf (isi data mandiri, EMP-06)", () => {
       andi.userId,
       andi.employeeId,
       // Walau request memuat divisi/role, schema staf membuangnya.
-      employeeSelfSchema.parse({ ...selfInput(), nik: "3171012345678901", phone: "081234567890", division: "DIRECTOR", role: "ADMIN" }),
+      employeeSelfSchema.parse({ ...selfInput(), fullName: "Nama Lain", position: "Direktur", nik: "3171012345678901", phone: "081234567890", division: "DIRECTOR", role: "ADMIN" }),
     );
 
     const employee = await testDb.employee.findUniqueOrThrow({ where: { id: andi.employeeId }, include: { user: true } });
-    expect(employee).toMatchObject({ nik: "3171012345678901", phone: "+6281234567890", division: "ENGINEER" });
+    expect(employee).toMatchObject({ nik: "3171012345678901", phone: "+6281234567890", division: "ENGINEER", fullName: "Andi Pratama" });
+    expect(employee.position).not.toBe("Direktur");
     expect(employee.user!.role).toBe("STAFF");
     expect(await auditActions(andi.employeeId)).toEqual(["UPDATE"]);
   });
@@ -124,6 +125,8 @@ describe("updateByAdmin", () => {
   const adminInput = (overrides: Record<string, unknown> = {}) =>
     employeeAdminUpdateSchema.parse({
       ...selfInput(),
+      fullName: "Andi Pratama",
+      position: "Engineer",
       email: "andi@test.local",
       division: "ENGINEER",
       role: "STAFF",

@@ -7,7 +7,6 @@ import { useState } from "react";
 import { Controller, FormProvider, useForm } from "react-hook-form";
 import type { z } from "zod";
 import { DateInputField, SelectInputField, TextareaField } from "@/components/form/fields";
-import { FileUpload } from "@/components/form/file-upload";
 import { FormAlert } from "@/components/form/form-actions";
 import { FormField } from "@/components/form/form-field";
 import { RupiahInput } from "@/components/form/rupiah-input";
@@ -38,8 +37,6 @@ export function HealthClaimDialog({ categories, remaining }: { categories: { val
     categoryId: "",
     claimDate: toJakartaIsoDate(),
     amount: null as unknown as number,
-    invoiceFileKey: "",
-    invoiceFileName: "",
     note: "",
   };
   const form = useForm<Input, unknown, Output>({ resolver: zodResolver(healthClaimSchema), defaultValues: defaults });
@@ -84,22 +81,6 @@ export function HealthClaimDialog({ categories, remaining }: { categories: { val
                 control={form.control}
                 name="amount"
                 render={({ field }) => <RupiahInput id="claim-amount" value={field.value as number | null} onChange={field.onChange} onBlur={field.onBlur} />}
-              />
-            </FormField>
-            <FormField label="Invoice" htmlFor="claim-invoice" required error={errors.invoiceFileKey?.message}>
-              <Controller
-                control={form.control}
-                name="invoiceFileKey"
-                render={({ field }) => (
-                  <FileUpload
-                    id="claim-invoice"
-                    value={field.value ? { key: field.value, fileName: form.getValues("invoiceFileName") || "invoice", mimeType: "", sizeBytes: 0 } : null}
-                    onChange={(file) => {
-                      field.onChange(file?.key ?? "");
-                      form.setValue("invoiceFileName", file?.fileName ?? "");
-                    }}
-                  />
-                )}
               />
             </FormField>
             <TextareaField name="note" label="Catatan (opsional)" />

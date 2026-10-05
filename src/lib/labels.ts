@@ -22,6 +22,7 @@ export const DIVISION_LABEL: Record<Division, string> = {
 
 export const ROLE_LABEL: Record<Role, string> = {
   ADMIN: "Admin",
+  APPROVER: "Approver",
   STAFF: "Staf",
 };
 
@@ -89,4 +90,9 @@ export const CANDIDATE_STATUS_LABEL: Record<CandidateStatus, string> = {
 /** Opsi dropdown dari map label, urutan mengikuti deklarasi. */
 export function toOptions<T extends string>(labels: Record<T, string>): { value: T; label: string }[] {
   return (Object.entries(labels) as [T, string][]).map(([value, label]) => ({ value, label }));
+}
+
+/** "ID - Nama Project" (Fase 14); project tanpa ID tampil namanya saja. */
+export function projectLabel(project: { code: string | null; name: string }): string {
+  return project.code ? `${project.code} - ${project.name}` : project.name;
 }

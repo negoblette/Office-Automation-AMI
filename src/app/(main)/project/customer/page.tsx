@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { requireAdmin } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
-import { PROJECT_TYPE_LABEL } from "@/lib/labels";
+import { PROJECT_TYPE_LABEL, projectLabel } from "@/lib/labels";
 import { listCustomersWithProjects } from "@/lib/services/project-queries";
 import { CustomerDialog, DeleteCustomerButton, ProjectDialog } from "../project-dialogs";
 
@@ -21,7 +21,7 @@ export default async function CustomerProjectPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Customer & Project"
-        description="Master customer dan project (PRJ-01). Customer baru juga otomatis tercatat saat staf mengetik nama company di reimburse."
+        description="Master customer dan project (PRJ-01). Form reimburse hanya bisa memilih company dari daftar ini."
         breadcrumbs={[{ label: "Operasional & Aset" }, { label: "Project", href: "/project" }, { label: "Customer & Project" }]}
         actions={<CustomerDialog />}
       />
@@ -50,7 +50,7 @@ export default async function CustomerProjectPage() {
                   {customer.projects.map((project) => (
                     <li key={project.id} className="flex items-center gap-3 px-3 py-2">
                       <Link href={`/project/${project.id}`} className="flex-1 text-sm font-medium hover:underline">
-                        {project.name}
+                        {projectLabel(project)}
                       </Link>
                       <span className="text-xs text-muted-foreground">{PROJECT_TYPE_LABEL[project.type]}</span>
                       <StatusBadge variant={project.isActive ? "success" : "neutral"} dot={false}>

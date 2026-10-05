@@ -6,9 +6,7 @@ import { type ActionResult, toActionError } from "@/lib/actions";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { enqueueApprovalNotifications } from "@/lib/mail/approval-emails";
-import { ServiceError } from "@/lib/services/errors";
 import { deleteReimbursementDraft, saveReimbursementDraft, submitReimbursement } from "@/lib/services/reimbursement";
-import { inspectStoredFile } from "@/lib/storage";
 import { reimbursementSchema } from "@/lib/validators/reimbursement";
 
 function revalidateReimburse() {
@@ -29,13 +27,6 @@ export async function saveReimbursementAction(
   const user = await requireUser();
   try {
     const input = reimbursementSchema.parse(values);
-    for (const [index, item] of input.items.entries()) {
-      if (item.receiptFileKey && !(await inspectStoredFile(item.receiptFileKey))) {
-        throw new ServiceError(`Baris ${index + 1}: file kwitansi tidak ditemukan, silakan upload ulang`);
-      }
-    }
-
-    // Kwitansi yang diganti tidak dihapus dari storage (NFR v1.14: data tidak dihapus permanen).
     const saved = await saveReimbursementDraft(prisma, user, z.string().nullable().parse(reimbursementId), input);
 
     let number: string | undefined;

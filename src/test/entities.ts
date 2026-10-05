@@ -63,5 +63,17 @@ export async function createApprovalEntity(module: ApprovalModule, requesterUser
         ? (await testDb.projectExpense.create({ data: { ...data, paymentMethod: "CASH" } })).id
         : (await testDb.projectRevenue.create({ data })).id;
     }
+    case "CERTIFICATE": {
+      const certificate = await testDb.certificate.create({
+        data: { employeeId: user.employeeId!, type: "PROFESSIONAL", name: "Sertifikat Uji", startDate: new Date(), endDate: new Date(Date.now() + 365 * 86_400_000) },
+      });
+      return certificate.id;
+    }
+    case "ATTENDANCE_APPEAL": {
+      const appeal = await testDb.attendanceAppeal.create({
+        data: { number: `UJI-${randomUUID()}`, employeeId: user.employeeId!, date: new Date(Date.now() - 86_400_000 * Math.ceil(Math.random() * 300)), reason: "SICK", note: "uji" },
+      });
+      return appeal.id;
+    }
   }
 }

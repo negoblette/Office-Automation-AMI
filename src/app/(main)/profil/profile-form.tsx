@@ -7,7 +7,7 @@ import { useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import type { z } from "zod";
 import { EmployeePersonalSections } from "@/components/employee/employee-fields";
-import { FormSection, ReadOnlyField, TextInputField } from "@/components/form/fields";
+import { FormSection, ReadOnlyField } from "@/components/form/fields";
 import { FormAlert } from "@/components/form/form-actions";
 import { useActionSubmit } from "@/components/form/use-action-submit";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,16 @@ import { updateProfileAction } from "./actions";
 type Input = z.input<typeof employeeSelfSchema>;
 type Output = z.output<typeof employeeSelfSchema>;
 
-export type ProfileReadOnly = { email: string; division: string; role: string; startDate: string };
+export type ProfileReadOnly = {
+  email: string;
+  division: string;
+  role: string;
+  startDate: string;
+  employeeNo: string | null;
+  fullName: string;
+  position: string;
+  level: string | null;
+};
 
 export function ProfileForm({ defaultValues, readOnly }: { defaultValues: Input; readOnly: ProfileReadOnly }) {
   const router = useRouter();
@@ -40,15 +49,15 @@ export function ProfileForm({ defaultValues, readOnly }: { defaultValues: Input;
     <FormProvider {...form}>
       <form onSubmit={onSubmit} noValidate className="flex max-w-4xl flex-col gap-6" onChange={() => setSaved(false)}>
         <FormAlert message={serverError} />
-        <FormSection title="Akun & Pekerjaan" description="Divisi, role, email login, dan tanggal masuk hanya bisa diubah Admin.">
+        <FormSection title="Akun & Pekerjaan" description="Bagian ini hanya bisa diisi & diubah Admin. Hubungi Admin bila ada yang salah.">
           <ReadOnlyField label="Email login" value={readOnly.email} />
           <ReadOnlyField label="Role" value={readOnly.role} />
           <ReadOnlyField label="Divisi" value={readOnly.division} />
           <ReadOnlyField label="Tanggal masuk" value={readOnly.startDate} />
-          <TextInputField name="fullName" label="Nama lengkap" required />
-          <TextInputField name="position" label="Jabatan" required />
-          <TextInputField name="employeeNo" label="Nomor karyawan" />
-          <TextInputField name="level" label="Level / grade" />
+          <ReadOnlyField label="Nama lengkap" value={readOnly.fullName} />
+          <ReadOnlyField label="Jabatan" value={readOnly.position} />
+          <ReadOnlyField label="NIP" value={readOnly.employeeNo ?? "Belum ada — diisi Admin"} />
+          <ReadOnlyField label="Level / grade" value={readOnly.level ?? "—"} />
         </FormSection>
         <EmployeePersonalSections />
         <div className="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-end">

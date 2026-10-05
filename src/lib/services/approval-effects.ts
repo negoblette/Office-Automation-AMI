@@ -28,4 +28,12 @@ export const FINAL_EFFECTS: Partial<Record<ApprovalModule, FinalEffect>> = {
   REVENUE: async (tx, entityId) => {
     await tx.projectRevenue.update({ where: { id: entityId }, data: { status: "APPROVED" } });
   },
+  // Fase 14: sertifikat terverifikasi (Ko Yosep → Bu Ika).
+  CERTIFICATE: async (tx, entityId) => {
+    await tx.certificate.update({ where: { id: entityId }, data: { status: "APPROVED" } });
+  },
+  // Fase 14: appeal tidak hadir disetujui → hari itu berstatus Sakit / Kunjungan keluar (tidak dipotong cuti).
+  ATTENDANCE_APPEAL: async (tx, entityId, approvedAt) => {
+    await tx.attendanceAppeal.update({ where: { id: entityId }, data: { status: "APPROVED", approvedAt } });
+  },
 };

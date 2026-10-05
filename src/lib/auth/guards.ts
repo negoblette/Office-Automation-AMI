@@ -4,6 +4,7 @@ import { cache } from "react";
 import type { Role } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { auth } from "./index";
+import { canApprove } from "@/lib/roles";
 
 export type CurrentUser = {
   id: string;
@@ -53,6 +54,13 @@ export async function requireUser(): Promise<CurrentUser> {
 }
 
 /** Wajib role ADMIN. Staf diarahkan ke halaman "Akses ditolak". */
+/** Wajib role yang boleh menyetujui (ADMIN / APPROVER) — halaman & aksi Approval. */
+export async function requireApprover(): Promise<CurrentUser> {
+  const user = await requireUser();
+  if (!canApprove(user.role)) redirect("/akses-ditolak");
+  return user;
+}
+
 export async function requireAdmin(): Promise<CurrentUser> {
   const user = await requireUser();
   if (user.role !== "ADMIN") redirect("/akses-ditolak");

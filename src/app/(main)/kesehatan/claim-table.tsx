@@ -2,7 +2,6 @@
 
 import { useMemo } from "react";
 import { requestStatusBadge } from "@/components/shared/approval-status";
-import { FileChip } from "@/components/shared/file-chip";
 import { PersonCell } from "@/components/shared/person-cell";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { DataTable, type DataTableColumn, dataTableColumnHelper } from "@/components/table/data-table";
@@ -45,11 +44,6 @@ const restColumns = [
         </div>
       );
     },
-  }),
-  col.display({
-    id: "invoice",
-    header: "Invoice",
-    cell: ({ row }) => <FileChip fileKey={row.original.invoiceFileKey} fileName={row.original.invoiceFileName} className="max-w-40" />,
   }),
   col.accessor((row) => requestStatusBadge(row.status, row.currentLevel).label, {
     id: "status",

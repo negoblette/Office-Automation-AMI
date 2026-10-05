@@ -42,7 +42,7 @@ dan melapor → user review & commit sendiri → baru lanjut ke tahap berikutnya
 - **Cek:** [x] seed jalan 2× tanpa duplikat
 
 ### Tahap 1.2 — Master data
-- [x] `LeavePolicy` 0/12/15/18 (0, 1–5, 6–15, 16+)
+- [x] `LeavePolicy` 0/12/15/18 (0, 1–4, 5–14, 15+ — digeser 2026-10-02)
 - [x] `AppSetting` `leave.maxCarryOver = 3`
 - [x] `ReimburseType` (field `divisions[]`): Entertainment, Meals, Gift, Accommodation → SALES, UMUM, DIRECTOR; Transport, Allowance → ENGINEER, UMUM, DIRECTOR
 - [x] `HealthCategory`: rawat jalan dokter, vitamin, kacamata
@@ -373,3 +373,60 @@ dan melapor → user review & commit sendiri → baru lanjut ke tahap berikutnya
 - [x] Soft delete (`deletedAt`) untuk dokumen, sertifikat, keluarga, kandidat, customer, libur, draft reimburse, approval flow, aset; file tidak lagi dihapus dari storage; semua query memfilter data terhapus; libur/customer yang dihapus dipulihkan bila ditambah lagi
 - [x] Yang tetap diganti isinya saat diedit (tercatat di audit): level approval flow, tabel jatah cuti, baris draft reimburse
 - **Cek:** [x] 359 test lulus (termasuk `v114.db.test.ts`) · [x] halaman utama 200 untuk Admin & Staf
+
+---
+
+## Fase 14 — Permintaan 2026-10-02 ✅ (sisa: GPS absensi ditunda, uji klik UI)
+
+### 14.1 Sertifikat ✅
+- [x] Sertifikat lewat verifikasi bertingkat: **Ko Yosep → Bu Ika** (sertifikat milik Ko Yosep: level 1 dilewati → Bu Ika). *Mengubah v1.14 "sertifikat tanpa approval"*
+- [x] Label "Tanggal terbit" → "Tanggal diambil/lulus"; masa berlaku wajib untuk sertifikat profesional (ijazah tanpa masa berlaku)
+- **Cek 14.1:** [x] migrasi `certificate_verification` (modul approval CERTIFICATE, nomor `CRT/…`, sertifikat lama = terverifikasi) · [x] terverifikasi → staf tidak bisa ubah (Admin bisa); hapus yang masih menunggu → verifikasi dibatalkan · [x] approver melihat ringkasan & file sertifikat di antrian · [x] 7 DB test · [ ] klik lewat UI
+
+### 14.2 Karyawan & profil ✅
+- [x] NIP boleh kosong saat karyawan baru dibuat; Bu Ika/Admin mengisinya belakangan dan langsung tampil di profil (cek alur & tampilan "belum ada NIP")
+- [x] Daftar aset sederhana per karyawan di profil (nama barang, serial, tanggal terima, catatan) — **bukan** modul Inventory penuh (tetap ditunda)
+- [x] Kontak darurat di profil karyawan (nama, hubungan, no HP)
+- [x] Form biodata bisa di-download (PDF) dari profil karyawan — halaman cetak `/biodata/[id]` + "Cetak / Simpan PDF" (dialog print browser, tanpa library PDF)
+- **Cek 14.2:** [x] migrasi `employee_emergency_assets` · [x] NIP hanya Admin (staf: read-only "Belum ada — diisi Admin") · [x] kontak darurat masuk kelengkapan data diri · [x] tab Karyawan → Aset (Admin) & Profil → Aset Saya · [x] biodata: pemilik & Admin saja · [x] 368 test lulus
+
+### 14.3 Approval & role ✅
+- [x] Sales: satu tingkat **Ko Darwin / Ko Leonard** (salah satu, adu cepat); Engineer tetap **Ko Yosep → Ko Rudy**
+- [x] Reimburse divisi Umum → **Bu Ika / Ko Leonard** (salah satu); pemohon dikeluarkan dari levelnya sendiri (Darwin → Leonard, Ika → Leonard, Yosep → Rudy)
+- [x] Bu Devi = karyawan biasa (Umum) tanpa peran approval/pencatatan — hapus penyebutan Bu Devi di dokumen approval
+- [x] Approver bisa koreksi **nominal & keterangan** per baris (reimburse, klaim kesehatan, expense/revenue) sebelum menyetujui; setiap perubahan tercatat (sebelum → sesudah, oleh siapa) dan terlihat pemohon
+- [x] Role baru **APPROVER**: akses seperti Staf (data sendiri) + halaman Approval untuk pengajuan yang ditugaskan; tanpa Karyawan/Setting
+- **Cek 14.3:** [x] migrasi `approver_role`, `approval_correction` · [x] DB dev: Darwin & Yosep → Approver, flow Sales/Umum diperbarui (tercatat di audit) · [x] test approval, koreksi, setting diperbarui · [x] halaman per role benar (Admin/Approver/Staf) · [ ] klik Koreksi & Setujui lewat UI
+- [x] Pembagian role: **Admin** (kendali penuh) = Bu Ika, Ko Rudy, Ko Leonard; **Approver** = Ko Darwin, Ko Yosep (seed + DB dev). Engine approval & pengaman approver diubah agar approver boleh role ADMIN **atau** APPROVER
+
+### 14.4 Invoice & retensi data ✅
+- [x] Hapus upload invoice/kwitansi sepenuhnya dari reimburse & klaim kesehatan (form, validasi, tampilan)
+- [x] Job purge (`invoice.purge`, harian 02:00 WIB): file invoice/kwitansi lama yang sudah tersimpan & berumur > 2 tahun dihapus dari storage (data nominal tetap) — pengecualian tertulis dari NFR "tidak dihapus permanen"
+- **Cek 14.4:** [x] migrasi `health_invoice_optional` · [x] form reimburse & klaim tanpa upload ("Ada kwitansi fisik?" tetap sebagai info) · [x] worker memuat job purge; volume upload ikut di-mount ke worker produksi · [x] 364 test lulus
+
+### 14.5 Reimburse ✅
+- [x] Petunjuk tipe: Training → Allowance
+- [x] Subtotal per tanggal transaksi di form & detail reimburse, lalu total pengajuan
+- [x] Print / save as PDF reimburse, filter per orang & per bulan — `/cetak/reimburse?bulan=&karyawan=` (Admin pilih karyawan; lainnya hanya diri sendiri), form di halaman Reimburse
+- [x] Project punya ID (`Project.code`, unik; project lama diberi `PRJ-0001…`); tampil sebagai "ID - Nama Project"
+- [x] Form reimburse: Company wajib dipilih dulu, lalu dropdown "ID - Nama Project" hanya project milik company itu (dicek juga di server)
+- [x] Form kunjungan → baris (permintaan 2026-10-05): tiap kunjungan = Tanggal + Company (dropdown, wajib dari master) + Project (dropdown milik company: Tanpa project / **New Acquisition (prospek)** / project); di dalamnya baris Tipe, Payment, Total, Lokasi, Names – Position, Aktivitas, kwitansi (tambah/hapus baris); "Tambah Kunjungan" untuk company/project/tanggal lain; subtotal per kunjungan + per tanggal + Cash/CC/Total. Draft lama dikelompokkan ulang otomatis saat diedit
+- [x] Halaman Project: filter per customer; tombol Tambah Customer / Tambah Project untuk semua karyawan (permintaan 2026-10-05); staf hanya menambah (tidak mengubah/menghapus), project baru dari staf selalu aktif, ID project disarankan otomatis (PRJ-berikutnya). Di form reimburse: "+ Customer baru" / "+ Project baru" per kunjungan, langsung terpilih setelah disimpan
+- [x] Revenue project dihapus (2026-10-05): stat Total revenue, kolom Revenue & Selisih, tombol/dialog/action Input Revenue, pilihan modul REVENUE di Setting Approval. Tabel & approval lama dibiarkan (tanpa migrasi destruktif)
+- **Cek form kunjungan:** [x] migrasi `reimburse_new_acquisition` · [x] company tidak lagi dibuat otomatis dari form · [x] 3 test baru (master-only + New Acquisition, perataan kunjungan → baris, `itemsToVisits`) · [x] 389 test lulus · [x] smoke `/reimburse/baru` · [ ] klik isi & ajukan lewat UI
+- **Cek 14.5:** [x] migrasi `project_code` · [x] 4 DB/unit test baru · [x] 372 test lulus · [x] halaman cetak: Staf tidak bisa membuka rekap orang lain · [ ] klik & cetak lewat UI
+
+### 14.6 Cuti ✅
+- [x] Filter/query cuti per bulan (`/cuti?bulan=`; cuti lintas bulan tampil di kedua bulan + ringkasan hari disetujui)
+- [x] Kalender built-in tampilan bulan dengan blok highlight (cuti, libur, Direktur cuti) — komponen `LeaveCalendar`, di `/cuti/kalender`
+- [x] "Pemutihan": Admin menyesuaikan saldo cuti karyawan secara manual (tambah/kembalikan hari) dengan alasan, tercatat di audit — `/cuti/saldo` (kolom Penyesuaian + tombol Sesuaikan + riwayat); saldo minus terbawa ke tahun berikutnya
+- **Cek 14.6:** [x] migrasi `leave_adjustment` (`LeaveBalance.adjustment` + tabel `LeaveAdjustment`, juga dipakai potong cuti 14.7) · [x] unit test carry over minus + 4 DB test · [x] 381 test lulus · [ ] klik lewat UI
+
+- [x] Kalender di dashboard (Admin & Staf) yang menandai hari ada karyawan cuti (highlight + keterangan nama/jenis). **Semua karyawan melihat cuti semua karyawan** (keputusan user 2026-10-02) — hapus pembatasan Staf di kartu "Kalender Libur & Cuti" dashboard
+
+### 14.7 Absensi ✅ (GPS ditunda)
+- [ ] ⏸ GPS (dalam/luar kantor) — **ditunda** (keputusan user 2026-10-02)
+- [x] Tombol **Appeal** untuk satu hari tidak masuk (tidak bisa clock in): pilih alasan **Sakit** atau **Kunjungan keluar** + keterangan teks (tanpa lampiran). Diajukan untuk hari yang sudah lewat, maks 7 hari sejak tanggal tidak hadir
+- [x] Appeal butuh approval **Bu Ika**; appeal milik Bu Ika → Ko Rudy / Ko Leonard (salah satu). Setelah disetujui, status hari itu berganti "Sakit" / "Kunjungan keluar" (bukan Tidak hadir)
+- [x] Tidak hadir tanpa alasan: 7 hari sejak tanggal tidak hadir untuk appeal; lewat tanpa appeal yang disetujui → job harian memotong **1 hari saldo cuti** per hari (saldo boleh **minus**, mengurangi jatah berikutnya); tercatat di audit & riwayat absensi
+- **Cek 14.7:** [x] migrasi `attendance_appeal` (modul approval ATTENDANCE_APPEAL, nomor `APL/…`) · [x] job `attendance.deduct` harian 01:00 WIB (hanya tanggal ≥ `AppSetting attendance.deductionStartDate` = hari pertama job berjalan; appeal menunggu tidak dipotong; sekali per tanggal) · [x] riwayat absensi: tombol Appeal, status Sakit / Kunjungan keluar / Appeal menunggu, "Saldo cuti dipotong"; rekap Admin + kolom Sakit, Kunjungan, Cuti dipotong · [x] 5 DB test · [x] 386 test lulus · [ ] klik Appeal & Setujui lewat UI

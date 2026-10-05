@@ -3,6 +3,7 @@ import type { Actor } from "@/lib/services/access";
 import { approveRequest } from "@/lib/services/approval";
 import { saveHealthCategory, saveReimburseType, typeCodeFromName } from "@/lib/services/master-data";
 import { deleteCustomer, projectTotals, saveCustomer, saveProject, submitProjectExpense, submitProjectRevenue } from "@/lib/services/project";
+import { nextProjectCode } from "@/lib/services/project-queries";
 import { saveReimbursementDraft, submitReimbursement } from "@/lib/services/reimbursement";
 import { projectExpenseSchema, projectRevenueSchema, projectSchema, reimburseTypeSchema } from "@/lib/validators/project";
 import { reimbursementSchema } from "@/lib/validators/reimbursement";
@@ -26,7 +27,7 @@ afterAll(async () => {
 
 async function newProject(name = "Core Network") {
   const customer = await saveCustomer(testDb, u.yosep, null, "PT Bank Mandiri");
-  return saveProject(testDb, u.yosep, null, projectSchema.parse({ customerId: customer.id, name, type: "RUNNING", isActive: true }));
+  return saveProject(testDb, u.yosep, null, projectSchema.parse({ customerId: customer.id, code: `PRJ-${name.slice(0, 4)}`, name, type: "RUNNING", isActive: true }));
 }
 const approveAll = async (entityId: string, module: "EXPENSE" | "REVENUE" | "REIMBURSE") => {
   const request = await testDb.approvalRequest.findUniqueOrThrow({ where: { module_entityId: { module, entityId } } });
@@ -41,21 +42,41 @@ describe("customer & project (PRJ-01)", () => {
     const project = await newProject();
     await expect(saveCustomer(testDb, u.yosep, null, "pt bank mandiri")).rejects.toThrow("Nama customer sudah terdaftar");
     await expect(
-      saveProject(testDb, u.yosep, null, projectSchema.parse({ customerId: project.customerId, name: "core network", type: "NEW_ACQUISITION", isActive: true })),
+      saveProject(testDb, u.yosep, null, projectSchema.parse({ customerId: project.customerId, code: "PRJ-X", name: "core network", type: "NEW_ACQUISITION", isActive: true })),
     ).rejects.toThrow("Project dengan nama ini sudah ada");
     await expect(deleteCustomer(testDb, u.yosep, project.customerId)).rejects.toThrow("tidak bisa dihapus");
   });
 });
 
+describe("staf menambah customer & project (Fase 14)", () => {
+  it("createOnly: boleh menambah (project selalu aktif), tidak boleh mengubah; saran ID project berikutnya", async () => {
+    const staff = { createOnly: true };
+    const customer = await saveCustomer(testDb, u.andi, null, "PT Prospek Baru", staff);
+    await expect(saveCustomer(testDb, u.andi, customer.id, "Ganti Nama", staff)).rejects.toThrow("Hanya Admin");
+
+    expect(await nextProjectCode(testDb)).toBe("PRJ-0001");
+    const project = await saveProject(testDb, u.andi, null, projectSchema.parse({ customerId: customer.id, code: "prj-0007", name: "Pilot", type: "NEW_ACQUISITION", isActive: false }), staff);
+    expect(project.isActive).toBe(true);
+    expect(await nextProjectCode(testDb)).toBe("PRJ-0008");
+    await expect(
+      saveProject(testDb, u.andi, project.id, projectSchema.parse({ customerId: customer.id, code: "PRJ-0007", name: "Pilot 2", type: "RUNNING", isActive: true }), staff),
+    ).rejects.toThrow("Hanya Admin");
+    const audit = await testDb.auditLog.findFirst({ where: { entity: "Customer", entityId: customer.id } });
+    expect(audit?.userId).toBe(u.andi);
+  });
+});
+
 describe("expense & revenue (PRJ-02..04)", () => {
-  it("hanya Admin; nomor EXP/REV; lewat approval (Yosep: L1 dilewati → Rudy); status APPROVED setelah final", async () => {
+  it("hanya Admin; nomor EXP/REV; lewat approval (Bu Ika → Ko Leonard); status APPROVED setelah final", async () => {
     const project = await newProject();
     const expenseInput = projectExpenseSchema.parse({ date: "2026-09-10", description: "Tiket pesawat onsite", paymentMethod: "CC", amount: "3.000.000" });
     await expect(submitProjectExpense(testDb, actors.andi, project.id, expenseInput)).rejects.toThrow("Hanya Admin");
+    // Ko Yosep kini Approver (bukan Admin) → tidak bisa input expense.
+    await expect(submitProjectExpense(testDb, actors.yosep, project.id, expenseInput)).rejects.toThrow("Hanya Admin");
 
-    const expense = await submitProjectExpense(testDb, actors.yosep, project.id, expenseInput);
+    const expense = await submitProjectExpense(testDb, actors.ika, project.id, expenseInput);
     expect(expense.number).toMatch(/^EXP\/\d{4}\/\d{2}\/0001$/);
-    const revenue = await submitProjectRevenue(testDb, actors.yosep, project.id, projectRevenueSchema.parse({ date: "2026-09-15", description: "Termin 1", amount: 50_000_000 }));
+    const revenue = await submitProjectRevenue(testDb, actors.ika, project.id, projectRevenueSchema.parse({ date: "2026-09-15", description: "Termin 1", amount: 50_000_000 }));
     expect(revenue.number).toMatch(/^REV\//);
 
     expect(await projectTotals(testDb, project.id)).toMatchObject({ expense: 0, revenue: 0, pendingExpense: 3_000_000, pendingRevenue: 50_000_000 });
@@ -69,7 +90,7 @@ describe("expense & revenue (PRJ-02..04)", () => {
     const project = await newProject();
     const typeId = (await testDb.reimburseType.findUniqueOrThrow({ where: { code: "TRANSPORT" } })).id;
     const row = (amount: number, projectId = "") => ({
-      date: "2026-09-12", customerName: "", projectId, activity: "Onsite", participants: "Andi – Engineer", location: "Jakarta",
+      date: "2026-09-12", customerId: project.customerId, projectId, activity: "Onsite", participants: "Andi – Engineer", location: "Jakarta",
       typeId, hasReceipt: false, paymentMethod: "CASH", amount, receiptFileKey: "", receiptFileName: "",
     });
     // 1 pengajuan: 2 baris ke project + 1 baris tanpa project.
@@ -86,9 +107,9 @@ describe("expense & revenue (PRJ-02..04)", () => {
 
   it("project nonaktif tidak bisa diberi expense baru", async () => {
     const project = await newProject();
-    await saveProject(testDb, u.yosep, project.id, projectSchema.parse({ customerId: project.customerId, name: project.name, type: "RUNNING", isActive: false }));
+    await saveProject(testDb, u.yosep, project.id, projectSchema.parse({ customerId: project.customerId, code: project.code, name: project.name, type: "RUNNING", isActive: false }));
     await expect(
-      submitProjectExpense(testDb, actors.yosep, project.id, projectExpenseSchema.parse({ date: "2026-09-10", description: "Parkir", paymentMethod: "CASH", amount: 50_000 })),
+      submitProjectExpense(testDb, actors.ika, project.id, projectExpenseSchema.parse({ date: "2026-09-10", description: "Parkir", paymentMethod: "CASH", amount: 50_000 })),
     ).rejects.toThrow("Project sudah tidak aktif");
   });
 });

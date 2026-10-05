@@ -7,6 +7,8 @@ import { type FileExtension, MIME_TYPES } from "@/lib/storage/validate";
 export type FileOwner = {
   /** null = tidak ada karyawan pemilik (mis. dokumen kandidat) → hanya Admin. */
   employeeId: string | null;
+  /** User yang tercantum sebagai approver pengajuan terkait file ini (mis. verifikator sertifikat). */
+  approverIds?: string[];
   fileName: string;
   mimeType: string;
 };
@@ -16,11 +18,12 @@ export type FileAccessRepository = {
 };
 
 /**
- * Admin boleh semua file. Approver pengajuan selalu Admin (Tech Spec §4.2), jadi ikut
- * tercakup aturan ini. Staf hanya file miliknya sendiri.
+ * Admin boleh semua file. Approver (role APPROVER) boleh file pengajuan yang mencantumkan dirinya
+ * sebagai approver. Staf hanya file miliknya sendiri.
  */
-export function canAccessFile(user: { role: Role; employeeId: string | null }, owner: FileOwner): boolean {
+export function canAccessFile(user: { id?: string; role: Role; employeeId: string | null }, owner: FileOwner): boolean {
   if (user.role === "ADMIN") return true;
+  if (user.id && owner.approverIds?.includes(user.id)) return true;
   return owner.employeeId !== null && owner.employeeId === user.employeeId;
 }
 
@@ -29,7 +32,7 @@ function mimeOf(key: string): string {
 }
 
 /** Cukup `prisma` atau `tx` dari `$transaction`. */
-export type FileAccessDb = Pick<PrismaClient, "document" | "certificate" | "reimbursementItem" | "healthClaim">;
+export type FileAccessDb = Pick<PrismaClient, "document" | "certificate" | "reimbursementItem" | "healthClaim" | "approvalRequest">;
 
 export function prismaFileAccessRepository(db: FileAccessDb): FileAccessRepository {
   return {
@@ -48,10 +51,19 @@ export function prismaFileAccessRepository(db: FileAccessDb): FileAccessReposito
 
       const certificate = await db.certificate.findFirst({
         where: { fileKey: key, deletedAt: null },
-        select: { employeeId: true, name: true },
+        select: { id: true, employeeId: true, name: true },
       });
       if (certificate) {
-        return { employeeId: certificate.employeeId, fileName: `${certificate.name}.${key.split(".").pop()}`, mimeType: mimeOf(key) };
+        const request = await db.approvalRequest.findUnique({
+          where: { module_entityId: { module: "CERTIFICATE", entityId: certificate.id } },
+          select: { steps: { select: { approverIds: true } } },
+        });
+        return {
+          employeeId: certificate.employeeId,
+          fileName: `${certificate.name}.${key.split(".").pop()}`,
+          mimeType: mimeOf(key),
+          approverIds: request?.steps.flatMap((s) => s.approverIds) ?? [],
+        };
       }
 
       const receipt = await db.reimbursementItem.findFirst({
@@ -71,7 +83,7 @@ export function prismaFileAccessRepository(db: FileAccessDb): FileAccessReposito
         select: { employeeId: true, invoiceFileName: true },
       });
       if (invoice) {
-        return { employeeId: invoice.employeeId, fileName: invoice.invoiceFileName, mimeType: mimeOf(key) };
+        return { employeeId: invoice.employeeId, fileName: invoice.invoiceFileName ?? "invoice", mimeType: mimeOf(key) };
       }
 
       return null;

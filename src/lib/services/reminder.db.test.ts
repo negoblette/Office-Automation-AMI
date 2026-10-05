@@ -34,17 +34,15 @@ describe("certificateReminders (CERT-03)", () => {
     expect(emails.map((e) => e.to).sort()).toEqual(
       [
         "andi@artha-mitra.local",
-        "darwin@artha-mitra.local",
         "ika@artha-mitra.local",
         "leonard@artha-mitra.local",
         "rudy@artha-mitra.local",
-        "yosep@artha-mitra.local",
       ].sort(),
     );
     const toAndi = emails.find((e) => e.to === "andi@artha-mitra.local")!;
     expect(toAndi.subject).toBe("[Reminder] Sertifikat Profesional CCNA berakhir 30 hari lagi");
     expect(toAndi.props.url).toMatch(/\/profil\/sertifikat$/);
-    expect(emails.find((e) => e.to === "yosep@artha-mitra.local")!.props.url).toMatch(`/karyawan/${andiEmployeeId}?tab=sertifikat`);
+    expect(emails.find((e) => e.to === "ika@artha-mitra.local")!.props.url).toMatch(`/karyawan/${andiEmployeeId}?tab=sertifikat`);
 
     // Hari berikutnya: CCNA tidak dikirim ulang; "Jauh" baru masuk H-30.
     const next = await certificateReminders(testDb, "2026-09-25");
@@ -82,7 +80,7 @@ describe("assetReminders (INV-04)", () => {
     });
     await testDb.asset.create({ data: { deviceName: "Switch Y", serialNo: "SN2", category: "DEMO_UNIT", supportEnd: d("2027-01-01") } });
     const emails = await assetReminders(testDb, TODAY);
-    expect(emails).toHaveLength(10); // 2 item × 5 Admin
+    expect(emails).toHaveLength(6); // 2 item × 3 Admin (Ika, Rudy, Leonard)
     expect(new Set(emails.map((e) => e.props.itemKind))).toEqual(new Set(["Periode support unit", "Garansi unit"]));
     expect(emails.every((e) => e.to !== "andi@artha-mitra.local")).toBe(true);
     expect(await assetReminders(testDb, TODAY)).toEqual([]);

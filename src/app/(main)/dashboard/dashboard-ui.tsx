@@ -1,18 +1,17 @@
 // Kartu-kartu dashboard (server component, tanpa state).
-import { CalendarDays, FileWarning, Flag, Hourglass } from "lucide-react";
+import { FileWarning, Hourglass } from "lucide-react";
 import Link from "next/link";
 import { ApprovalStepper } from "@/components/shared/approval-stepper";
 import { requestStatusBadge } from "@/components/shared/approval-status";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { CorrectionList } from "@/app/(main)/approval/correction-ui";
 import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
 import { formatDate } from "@/lib/format";
 import type { ApprovalRow } from "@/lib/services/approval-queries";
-import type { ExpiringItem, WeekEvent } from "@/lib/services/dashboard-queries";
+import type { ExpiringItem } from "@/lib/services/dashboard-queries";
 import { cn } from "@/lib/utils";
 
-const date = (iso: string, style: "short" | "long" = "short") => formatDate(`${iso}T00:00:00Z`, style);
-const DAY_NAMES = ["MIN", "SEN", "SEL", "RAB", "KAM", "JUM", "SAB"];
 
 export function DashboardCard({
   title,
@@ -45,60 +44,6 @@ export function DashboardCard({
       </div>
       {children}
     </section>
-  );
-}
-
-/** Kalender libur & cuti pekan ini (desain 01). */
-export function WeekCard({ week }: { week: { start: string; end: string; events: WeekEvent[] } }) {
-  return (
-    <DashboardCard
-      title="Kalender Libur & Cuti"
-      description={`Pekan ini: ${date(week.start)} – ${date(week.end)}`}
-      icon={CalendarDays}
-      action={
-        <Link href="/cuti/kalender" className="text-sm font-medium text-primary hover:underline">
-          Lihat kalender
-        </Link>
-      }
-    >
-      {week.events.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Tidak ada cuti atau hari libur pekan ini.</p>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {week.events.map((event) => {
-            const day = event.kind === "leave" ? (event.startDate < week.start ? week.start : event.startDate) : event.date;
-            const d = new Date(`${day}T00:00:00Z`);
-            return (
-              <li key={event.key} className="flex items-center gap-3 rounded-xl bg-muted/60 p-3">
-                <div className="flex w-12 shrink-0 flex-col items-center rounded-lg bg-card py-1.5">
-                  <span className="text-[10px] font-semibold text-muted-foreground">{DAY_NAMES[d.getUTCDay()]}</span>
-                  <span className="text-lg leading-none font-bold">{d.getUTCDate()}</span>
-                </div>
-                {event.kind === "leave" ? (
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">
-                      {event.isDirector && <span className="mr-1 rounded bg-warning-soft px-1.5 py-0.5 text-xs">Direktur cuti</span>}
-                      {event.employeeName}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Cuti {date(event.startDate)} – {date(event.endDate)} · {event.workingDays} hari kerja
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <Flag className="size-4 shrink-0 text-danger" aria-hidden />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold">{event.name}</p>
-                      <p className="text-xs text-muted-foreground">Libur · {date(event.date, "long")}</p>
-                    </div>
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </DashboardCard>
   );
 }
 
@@ -153,6 +98,7 @@ export function MyRequestsList({ rows }: { rows: ApprovalRow[] }) {
                 {meta.label} · <span className="font-mono">{row.entityNumber}</span>
               </p>
               <p className="text-xs text-muted-foreground">Diajukan {formatDate(row.createdAt, "short")}</p>
+              <CorrectionList corrections={row.corrections} className="mt-1 flex flex-col gap-0.5 text-xs text-muted-foreground" />
             </Link>
             <div className="flex flex-wrap items-center gap-3">
               <ApprovalStepper steps={row.steps} requestStatus={row.status} compact />

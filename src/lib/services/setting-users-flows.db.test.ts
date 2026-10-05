@@ -54,6 +54,8 @@ describe("User & Role", () => {
     // Flow diubah: Yosep tidak lagi di flow, tapi snapshot pengajuan masih menunggu Yosep.
     const flows = await testDb.approvalFlow.findMany({ where: { division: "ENGINEER" } });
     for (const flow of flows) await saveFlow(testDb, u.rudy, flow.id, { steps: [{ approverIds: [u.rudy] }] });
+    const certFlow = await testDb.approvalFlow.findFirstOrThrow({ where: { module: "CERTIFICATE" } });
+    await saveFlow(testDb, u.rudy, certFlow.id, { steps: [{ approverIds: [u.rudy] }, { approverIds: [u.ika] }] });
     await expect(setUserRole(testDb, u.rudy, u.yosep, "STAFF")).rejects.toThrow("1 pengajuan");
   });
 
@@ -92,7 +94,7 @@ describe("Approval Flow", () => {
 
   it("validasi: approver harus Admin aktif, tidak duplikat antar level, flow modul+divisi unik", async () => {
     const flow = await flowOf("REIMBURSE", "ENGINEER");
-    await expect(saveFlow(testDb, u.yosep, flow.id, { steps: [{ approverIds: [u.andi] }] })).rejects.toThrow("Admin yang aktif");
+    await expect(saveFlow(testDb, u.yosep, flow.id, { steps: [{ approverIds: [u.andi] }] })).rejects.toThrow("Admin / Approver yang aktif");
     await expect(saveFlow(testDb, u.yosep, flow.id, { steps: [{ approverIds: [u.rudy] }, { approverIds: [u.rudy] }] })).rejects.toThrow("lebih dari satu level");
     await expect(saveFlow(testDb, u.yosep, null, { module: "REIMBURSE", division: "ENGINEER", steps: [{ approverIds: [u.rudy] }] })).rejects.toThrow("Sudah ada flow aktif");
 

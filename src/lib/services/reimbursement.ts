@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import type { Division, Prisma, PrismaClient } from "@/generated/prisma/client";
 import { fromIsoDate } from "@/lib/format";
 import { type ReimbursementInput, reimbursementTotals } from "@/lib/validators/reimbursement";
-import { type Actor, assertFileKeyAvailable } from "./access";
+import type { Actor } from "./access";
 import { type ApprovalNotification, buildApproval } from "./approval";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
@@ -34,40 +34,36 @@ async function getOwnDraft(tx: Tx, actor: Actor, reimbursementId: string) {
   return reimbursement;
 }
 
-/** Nama company → id Customer; nama baru otomatis ditambahkan ke master (keputusan user). */
-async function resolveCustomerId(tx: Tx, actorId: string, name: string | null): Promise<string | null> {
-  if (!name) return null;
-  const existing = await tx.customer.findFirst({ where: { name: { equals: name, mode: "insensitive" } } });
-  if (existing?.deletedAt) await tx.customer.update({ where: { id: existing.id }, data: { deletedAt: null } });
-  if (existing) return existing.id;
-  const customer = await tx.customer.create({ data: { name } });
-  await logAudit(tx, { actorId, action: "CREATE", entity: "Customer", entityId: customer.id, after: { ...customer, source: "reimburse" } });
-  return customer.id;
-}
-
-/** Validasi & ubah baris input → data Prisma. `ownKeys` = key kwitansi yang sudah milik draft ini. */
-async function buildItems(tx: Tx, actorId: string, division: Division, input: ReimbursementInput, ownKeys: Set<string>) {
+/**
+ * Validasi & ubah baris input → data Prisma. Fase 14 (2026-10-05): Company wajib dari master;
+ * project harus milik company itu, atau ditandai prospek New Acquisition (tanpa project).
+ */
+async function buildItems(tx: Tx, division: Division, input: ReimbursementInput) {
   const types = await tx.reimburseType.findMany({ where: { isActive: true, divisions: { has: division } } });
   const allowedTypes = new Set(types.map((type) => type.id));
+  const customers = new Map(
+    (await tx.customer.findMany({ where: { id: { in: input.items.map((i) => i.customerId) }, deletedAt: null } })).map((c) => [c.id, c]),
+  );
 
   const items = [];
   for (const [index, item] of input.items.entries()) {
     const row = `Baris ${index + 1}`;
     // RMB-04: tipe harus sesuai divisi pemohon.
     if (!allowedTypes.has(item.typeId)) throw new ServiceError(`${row}: tipe reimburse tidak tersedia untuk divisi Anda`);
-
-    let customerId = await resolveCustomerId(tx, actorId, item.customerName);
+    const customer = customers.get(item.customerId);
+    if (!customer) throw new ServiceError(`${row}: company tidak ditemukan di master`);
+    if (item.projectId && item.newAcquisition) throw new ServiceError(`${row}: pilih project atau New Acquisition, bukan keduanya`);
     if (item.projectId) {
       const project = await tx.project.findUnique({ where: { id: item.projectId } });
       if (!project?.isActive) throw new ServiceError(`${row}: project tidak ditemukan atau sudah tidak aktif`);
-      customerId = project.customerId; // project menentukan customer-nya
+      if (project.customerId !== customer.id) throw new ServiceError(`${row}: project bukan milik ${customer.name}`);
     }
-    if (item.receiptFileKey && !ownKeys.has(item.receiptFileKey)) await assertFileKeyAvailable(tx, item.receiptFileKey);
 
     items.push({
       date: fromIsoDate(item.date),
-      customerId,
+      customerId: customer.id,
       projectId: item.projectId,
+      newAcquisition: item.newAcquisition,
       activity: item.activity,
       participants: item.participants,
       location: item.location,
@@ -75,8 +71,6 @@ async function buildItems(tx: Tx, actorId: string, division: Division, input: Re
       hasReceipt: item.hasReceipt,
       paymentMethod: item.paymentMethod,
       amount: BigInt(item.amount),
-      receiptFileKey: item.receiptFileKey,
-      receiptFileName: item.receiptFileKey ? (item.receiptFileName ?? "kwitansi") : null,
     });
   }
   return items;
@@ -88,7 +82,7 @@ function totalsOf(items: { paymentMethod: "CASH" | "CC"; amount: bigint }[]) {
   return { totalCash: BigInt(cash), totalCc: BigInt(cc), total: BigInt(total) };
 }
 
-export type SaveDraftResult = { reimbursementId: string; removedFileKeys: string[] };
+export type SaveDraftResult = { reimbursementId: string };
 
 /** Buat draft baru (`reimbursementId` null) atau ubah draft milik sendiri. Baris diganti seluruhnya. */
 export async function saveReimbursementDraft(
@@ -100,9 +94,7 @@ export async function saveReimbursementDraft(
   return db.$transaction(async (tx) => {
     const employee = await getRequester(tx, actor);
     const before = reimbursementId ? await getOwnDraft(tx, actor, reimbursementId) : null;
-    const ownKeys = new Set((before?.items ?? []).map((item) => item.receiptFileKey).filter((key): key is string => Boolean(key)));
-
-    const items = await buildItems(tx, actor.id, employee.division, input, ownKeys);
+    const items = await buildItems(tx, employee.division, input);
     const data = { note: input.note, division: employee.division, ...totalsOf(items) };
 
     let id: string;
@@ -120,8 +112,7 @@ export async function saveReimbursementDraft(
     const after = await tx.reimbursement.findUniqueOrThrow({ where: { id }, include: { items: true } });
     await logAudit(tx, { actorId: actor.id, action: before ? "UPDATE" : "CREATE", entity: "Reimbursement", entityId: id, before, after });
 
-    const keptKeys = new Set(items.map((item) => item.receiptFileKey).filter(Boolean));
-    return { reimbursementId: id, removedFileKeys: [...ownKeys].filter((key) => !keptKeys.has(key)) };
+    return { reimbursementId: id };
   });
 }
 
@@ -133,8 +124,6 @@ export async function submitReimbursement(db: PrismaClient, actor: Actor, reimbu
     const employee = await getRequester(tx, actor);
     const draft = await getOwnDraft(tx, actor, reimbursementId);
     if (draft.items.length === 0) throw new ServiceError("Tambahkan minimal 1 baris sebelum mengajukan");
-    const missingReceipt = draft.items.findIndex((item) => item.hasReceipt && !item.receiptFileKey);
-    if (missingReceipt >= 0) throw new ServiceError(`Baris ${missingReceipt + 1}: upload file kwitansi atau ubah Kwitansi menjadi "Tidak"`);
 
     const number = await nextDocumentNumber(tx, "RMB");
     await tx.reimbursement.update({

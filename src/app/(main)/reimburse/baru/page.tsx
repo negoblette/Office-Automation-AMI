@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { getReimbursementFormOptions } from "@/lib/services/reimbursement-queries";
-import { emptyItem } from "../form-defaults";
+import { emptyVisit } from "../form-defaults";
 import { ReimbursementForm } from "../reimbursement-form";
 
 export const metadata: Metadata = { title: "Pengajuan Reimburse" };
@@ -19,13 +19,13 @@ export default async function ReimburseBaruPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Pengajuan Reimburse"
-        description="Isi satu baris per transaksi. Tipe mengikuti divisi Anda; total dihitung otomatis."
+        description="Pilih tanggal, company, lalu project (atau New Acquisition) per kunjungan; isi satu baris per transaksi. Total dihitung otomatis."
         breadcrumbs={[{ label: "Pengajuan & Keuangan" }, { label: "Reimburse", href: "/reimburse" }, { label: "Pengajuan Baru" }]}
       />
       {employee?.status === "ACTIVE" ? (
         <ReimbursementForm
           reimbursementId={null}
-          defaultValues={{ note: "", items: [emptyItem()] }}
+          defaultValues={{ note: "", visits: [emptyVisit()] }}
           options={await getReimbursementFormOptions(prisma, employee.division)}
         />
       ) : (

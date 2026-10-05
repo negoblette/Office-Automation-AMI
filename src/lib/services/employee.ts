@@ -7,6 +7,7 @@ import type { EmployeeAdminUpdateInput, EmployeeCreateInput, EmployeeSelfInput }
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { assertCanLoseApproverRights } from "./user-admin";
+import { canApprove } from "@/lib/roles";
 
 type Tx = Prisma.TransactionClient;
 
@@ -36,17 +37,13 @@ async function assertEmployeeNoAvailable(tx: Tx, employeeNo: string | null | und
   if (!employeeNo) return;
   const owner = await tx.employee.findUnique({ where: { employeeNo }, select: { id: true } });
   if (owner && owner.id !== exceptEmployeeId) {
-    throw new ServiceError("Nomor karyawan sudah dipakai karyawan lain", "employeeNo");
+    throw new ServiceError("NIP sudah dipakai karyawan lain", "employeeNo");
   }
 }
 
 /** Data diri → kolom Prisma (tanggal ISO → Date). */
 function selfData(input: EmployeeSelfInput) {
   return {
-    fullName: input.fullName,
-    position: input.position,
-    employeeNo: input.employeeNo,
-    level: input.level,
     nik: input.nik,
     kkNo: input.kkNo,
     birthPlace: input.birthPlace,
@@ -58,6 +55,9 @@ function selfData(input: EmployeeSelfInput) {
     npwp: input.npwp,
     bpjsTkNo: input.bpjsTkNo,
     bpjsKesNo: input.bpjsKesNo,
+    emergencyName: input.emergencyName,
+    emergencyRelation: input.emergencyRelation,
+    emergencyPhone: input.emergencyPhone,
   };
 }
 
@@ -116,8 +116,8 @@ export async function updateSelf(db: PrismaClient, actorId: string, employeeId: 
     const before = await getEmployeeOrThrow(tx, employeeId);
     if (before.status !== "ACTIVE") throw new ServiceError("Data karyawan yang sudah resign tidak bisa diubah");
     await assertNikAvailable(tx, input.nik, employeeId);
-    await assertEmployeeNoAvailable(tx, input.employeeNo, employeeId);
 
+    // NIP, nama, jabatan, level tidak termasuk data diri (hanya Admin, Fase 14).
     const after = await tx.employee.update({ where: { id: employeeId }, data: selfData(input) });
 
     await logAudit(tx, { actorId, action: "UPDATE", entity: "Employee", entityId: employeeId, before, after });
@@ -137,7 +137,7 @@ export async function updateByAdmin(
     if (before.user?.id === actorId && before.user.role !== input.role) {
       throw new ServiceError("Anda tidak bisa mengubah role akun Anda sendiri", "role");
     }
-    if (before.user?.role === "ADMIN" && input.role !== "ADMIN") {
+    if (before.user && canApprove(before.user.role) && !canApprove(input.role)) {
       await assertCanLoseApproverRights(tx, before.user.id, before.fullName);
     }
     await assertEmailAvailable(tx, input.email, employeeId);
@@ -161,7 +161,7 @@ export async function updateByAdmin(
 
     const after = await tx.employee.update({
       where: { id: employeeId },
-      data: { ...selfData(input), email: input.email, division: input.division },
+      data: { ...selfData(input), fullName: input.fullName, position: input.position, level: input.level, employeeNo: input.employeeNo, email: input.email, division: input.division },
     });
     if (before.user) {
       await tx.user.update({ where: { id: before.user.id }, data: { email: input.email, role: input.role } });
@@ -188,7 +188,7 @@ export async function resignEmployee(db: PrismaClient, actorId: string, employee
     const employee = await getEmployeeOrThrow(tx, employeeId);
     if (employee.status !== "ACTIVE") throw new ServiceError("Karyawan sudah berstatus resign");
     if (employee.user?.id === actorId) throw new ServiceError("Anda tidak bisa me-resign akun Anda sendiri");
-    if (employee.user?.role === "ADMIN") await assertCanLoseApproverRights(tx, employee.user.id, employee.fullName);
+    if (employee.user && canApprove(employee.user.role)) await assertCanLoseApproverRights(tx, employee.user.id, employee.fullName);
 
     const period = await tx.employmentPeriod.findFirst({ where: { employeeId, endDate: null } });
     if (!period) throw new ServiceError("Periode kerja aktif tidak ditemukan");
