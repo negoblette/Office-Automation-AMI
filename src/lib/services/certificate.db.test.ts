@@ -41,11 +41,8 @@ const requestOf = (certificateId: string) =>
   testDb.approvalRequest.findUniqueOrThrow({ where: { module_entityId: { module: "CERTIFICATE", entityId: certificateId } }, include: { steps: { orderBy: { level: "asc" } } } });
 
 describe("certificateSchema", () => {
-  it("masa berlaku wajib untuk sertifikat profesional; ijazah boleh kosong; berlaku < diambil ditolak", () => {
-    expect(certificateSchema.safeParse({ type: "PROFESSIONAL", name: "CCNA", startDate: "2024-01-01", endDate: "" }).error?.issues[0]).toMatchObject({
-      path: ["endDate"],
-      message: "Masa berlaku wajib diisi untuk sertifikat profesional",
-    });
+  it("masa berlaku opsional (profesional & ijazah); berlaku < diambil ditolak", () => {
+    expect(certificateSchema.parse({ type: "PROFESSIONAL", name: "CCNA", startDate: "2024-01-01", endDate: "" }).endDate).toBeNull();
     expect(certificateSchema.parse({ type: "IJAZAH", name: "S1", startDate: "2020-01-01", endDate: "" }).endDate).toBeNull();
     const result = certificateSchema.safeParse({ type: "IJAZAH", name: "S1", startDate: "2020-01-01", endDate: "2019-12-31" });
     expect(result.error?.issues[0]).toMatchObject({ path: ["endDate"], message: "Tanggal berakhir tidak boleh sebelum tanggal diambil" });

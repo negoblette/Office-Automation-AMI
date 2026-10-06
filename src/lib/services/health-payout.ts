@@ -43,3 +43,11 @@ export async function applyApprovedHealthClaim(tx: Tx, claimId: string, approved
     },
   });
 }
+
+/** Kebalikan `applyApprovedHealthClaim` (approval final dibatalkan). Ditolak bila sudah dibayar. */
+export async function revertApprovedHealthClaim(tx: Tx, claimId: string) {
+  const payouts = await tx.healthPayout.findMany({ where: { claimId } });
+  if (payouts.some((p) => p.paidAt)) throw new ServiceError("Klaim ini sudah dibayar — persetujuannya tidak bisa dibatalkan");
+  await tx.healthPayout.deleteMany({ where: { claimId } });
+  await tx.healthClaim.update({ where: { id: claimId }, data: { status: "PENDING", approvedAt: null, approvedAmount: null } });
+}

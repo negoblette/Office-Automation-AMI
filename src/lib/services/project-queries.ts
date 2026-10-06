@@ -16,7 +16,7 @@ export type ProjectRow = {
   customerId: string;
   customerName: string;
   /** Hanya untuk Admin. */
-  totals: ProjectTotals | null;
+  totals: ProjectTotals;
 };
 
 /** Admin: semua project + total; Staf: project aktif tanpa angka keuangan. */
@@ -36,7 +36,8 @@ export async function listProjects(db: PrismaClient, viewer: Viewer): Promise<Pr
       isActive: p.isActive,
       customerId: p.customerId,
       customerName: p.customer.name,
-      totals: isAdmin ? await projectTotals(db, p.id) : null,
+      // Total biaya project terlihat semua karyawan (2026-10-06); rincian expense Admin tetap khusus Admin.
+      totals: await projectTotals(db, p.id),
     })),
   );
 }
@@ -81,7 +82,27 @@ export type ProjectReimburseRow = {
   status: RequestStatus;
 };
 
-/** Detail project. Staf: info project + baris reimburse miliknya saja (tanpa angka keuangan project). */
+/**
+ * Satu baris biaya project (2026-10-06: reimburse & expense langsung digabung jadi satu daftar).
+ * `source`: REIMBURSE = baris reimburse karyawan yang memilih project ini; EXPENSE = dicatat Admin.
+ */
+export type ProjectCostRow = {
+  id: string;
+  source: "REIMBURSE" | "EXPENSE";
+  number: string;
+  /** Link detail (reimburse); null untuk expense. */
+  href: string | null;
+  date: string;
+  description: string;
+  /** Yang mengajukan: karyawan pemohon reimburse / Admin yang menginput expense. */
+  person: string | null;
+  paymentMethod: PaymentMethod | null;
+  amount: number;
+  status: RequestStatus;
+  currentLevel: number | null;
+};
+
+/** Detail project. Staf: info project + total biaya project + baris reimburse miliknya saja. */
 export async function getProjectDetail(db: PrismaClient, projectId: string, viewer: Viewer) {
   const project = await db.project.findUnique({ where: { id: projectId }, include: { customer: { select: { name: true } } } });
   if (!project) return null;
@@ -95,6 +116,11 @@ export async function getProjectDetail(db: PrismaClient, projectId: string, view
     orderBy: { date: "desc" },
     include: { reimbursement: { select: { id: true, number: true, status: true, employee: { select: { fullName: true } } } } },
   });
+  const reimburseApprovals = await db.approvalRequest.findMany({
+    where: { module: "REIMBURSE", entityId: { in: [...new Set(reimburseItems.map((i) => i.reimbursement.id))] } },
+    select: { entityId: true, currentLevel: true },
+  });
+  const reimburseLevelOf = new Map(reimburseApprovals.map((a) => [a.entityId, a.currentLevel]));
   const reimburse: ProjectReimburseRow[] = reimburseItems.map((item) => ({
     id: item.id,
     reimbursementId: item.reimbursement.id,
@@ -107,6 +133,7 @@ export async function getProjectDetail(db: PrismaClient, projectId: string, view
   }));
 
   let expenses: ProjectEntryRow[] = [];
+  let expenseCreator = new Map<string, string | null>();
   let revenues: ProjectEntryRow[] = [];
   if (isAdmin) {
     const [expenseRows, revenueRows] = await Promise.all([
@@ -137,8 +164,32 @@ export async function getProjectDetail(db: PrismaClient, projectId: string, view
       currentLevel: levelOf.get(e.id) ?? null,
     });
     expenses = expenseRows.map(toRow);
+    // Nama Admin yang menginput expense (kolom "Diajukan oleh", 2026-10-06).
+    const creators = await db.user.findMany({
+      where: { id: { in: [...new Set(expenseRows.map((e) => e.createdById))] } },
+      select: { id: true, email: true, employee: { select: { fullName: true } } },
+    });
+    const creatorOf = new Map(creators.map((c) => [c.id, c.employee?.fullName ?? c.email]));
+    expenseCreator = new Map(expenseRows.map((e) => [e.id, creatorOf.get(e.createdById) ?? null]));
     revenues = revenueRows.map(toRow);
   }
+
+  const costs: ProjectCostRow[] = [
+    ...reimburseItems.map((item) => ({
+      id: item.id,
+      source: "REIMBURSE" as const,
+      number: item.reimbursement.number,
+      href: `/reimburse/${item.reimbursement.id}`,
+      date: toJakartaIsoDate(item.date),
+      description: item.activity,
+      person: item.reimbursement.employee.fullName,
+      paymentMethod: item.paymentMethod,
+      amount: Number(item.amount),
+      status: item.reimbursement.status,
+      currentLevel: reimburseLevelOf.get(item.reimbursement.id) ?? null,
+    })),
+    ...expenses.map((e) => ({ ...e, source: "EXPENSE" as const, href: null, person: expenseCreator.get(e.id) ?? null })),
+  ].sort((a, b) => b.date.localeCompare(a.date) || b.number.localeCompare(a.number));
 
   return {
     id: project.id,
@@ -147,10 +198,11 @@ export async function getProjectDetail(db: PrismaClient, projectId: string, view
     type: project.type,
     isActive: project.isActive,
     customerName: project.customer.name,
-    totals: isAdmin ? await projectTotals(db, projectId) : null,
+    totals: await projectTotals(db, projectId),
     expenses,
     revenues,
     reimburse,
+    costs,
   };
 }
 export type ProjectDetail = NonNullable<Awaited<ReturnType<typeof getProjectDetail>>>;

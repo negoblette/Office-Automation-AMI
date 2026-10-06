@@ -4,7 +4,7 @@
 // - approve(): dipanggil dari halaman Approval; memajukan step atau menyelesaikan pengajuan.
 // Keduanya mengembalikan `notifications` yang di-enqueue pemanggil SETELAH commit (Tahap 5.4).
 import type { ApprovalModule, Prisma, PrismaClient } from "@/generated/prisma/client";
-import { FINAL_EFFECTS, type FinalEffectOptions } from "./approval-effects";
+import { FINAL_EFFECTS, type FinalEffectOptions, REVERT_EFFECTS } from "./approval-effects";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { canApprove } from "@/lib/roles";
@@ -241,6 +241,101 @@ export async function approveRequest(
       notifications: [
         { template: "approval-final", recipientIds: unique([request.requesterId, ...(await adminIds(tx))]), requestId: request.id },
       ],
+    };
+  });
+}
+
+// ---------------------------------------------------------------------
+// revoke — batalkan persetujuan (2026-10-06, "ubah keputusan approval")
+// ---------------------------------------------------------------------
+
+type RequestWithSteps = Prisma.ApprovalRequestGetPayload<{ include: { steps: true } }>;
+
+/**
+ * Step yang persetujuannya bisa dibatalkan: step APPROVED terakhir yang disetujui orang (bukan
+ * otomatis), dan belum ada keputusan sesudahnya. null = tidak ada.
+ */
+export function revocableStep(request: Pick<RequestWithSteps, "status" | "steps">) {
+  if (request.status !== "PENDING" && request.status !== "APPROVED") return null;
+  const steps = [...request.steps].sort((a, b) => a.level - b.level);
+  const last = steps.filter((s) => s.status === "APPROVED").at(-1);
+  if (!last?.actedById) return null;
+  // Level setelahnya hanya boleh SKIPPED / PENDING (belum diputuskan) / WAITING.
+  if (steps.some((s) => s.level > last.level && s.status === "APPROVED")) return null;
+  return last;
+}
+
+/** Yang boleh membatalkan: approver yang menyetujui step itu, atau Admin — bukan pemohon sendiri. */
+export function canRevoke(viewer: { id: string; role: string }, request: Pick<RequestWithSteps, "status" | "steps" | "requesterId" | "module">) {
+  const step = revocableStep(request);
+  if (!step || viewer.id === request.requesterId) return false;
+  if (request.status === "APPROVED" && !REVERT_EFFECTS[request.module]) return false;
+  return step.actedById === viewer.id || viewer.role === "ADMIN";
+}
+
+/**
+ * Batalkan persetujuan terakhir: step itu kembali PENDING (bisa dikoreksi & disetujui ulang).
+ * Jika pengajuan sudah final, efek modul dibatalkan (saldo cuti dikembalikan, payout klaim dihapus
+ * bila belum dibayar, dst.). Tercatat di riwayat koreksi (terlihat pemohon) + audit.
+ */
+export async function revokeApproval(db: PrismaClient, input: { requestId: string; actorId: string; reason: string }): Promise<ApproveResult> {
+  const reason = input.reason.trim();
+  if (reason.length < 3) throw new ServiceError("Alasan pembatalan minimal 3 karakter", "reason");
+  return db.$transaction(async (tx) => {
+    const request = await tx.approvalRequest.findUnique({ where: { id: input.requestId }, include: { steps: true } });
+    if (!request) throw new ServiceError("Pengajuan tidak ditemukan");
+    const actor = await tx.user.findUnique({
+      where: { id: input.actorId },
+      select: { id: true, role: true, isActive: true, email: true, employee: { select: { fullName: true } } },
+    });
+    if (!actor?.isActive || !canApprove(actor.role)) throw new ForbiddenError("Anda tidak berhak membatalkan persetujuan ini");
+    const step = revocableStep(request);
+    if (!step) throw new ServiceError("Tidak ada persetujuan yang bisa dibatalkan pada pengajuan ini");
+    if (!canRevoke(actor, request)) {
+      throw new ForbiddenError(
+        actor.id === request.requesterId ? "Tidak bisa membatalkan persetujuan pengajuan sendiri" : "Hanya approver yang menyetujui atau Admin yang bisa membatalkan",
+      );
+    }
+
+    const wasFinal = request.status === "APPROVED";
+    if (wasFinal) await REVERT_EFFECTS[request.module]!(tx, request.entityId);
+
+    // Step yang sedang menunggu (level berikutnya) kembali WAITING; step yang dibatalkan → PENDING.
+    await tx.approvalRequestStep.updateMany({ where: { requestId: request.id, status: "PENDING" }, data: { status: "WAITING" } });
+    const changed = await tx.approvalRequestStep.updateMany({
+      where: { id: step.id, status: "APPROVED" },
+      data: { status: "PENDING", actedById: null, actedAt: null, note: null },
+    });
+    if (changed.count === 0) throw new ServiceError("Pengajuan ini baru saja diubah — muat ulang halaman");
+    await tx.approvalRequest.update({ where: { id: request.id }, data: { status: "PENDING", currentLevel: step.level, completedAt: null } });
+
+    const approverName = await tx.user.findUnique({ where: { id: step.actedById! }, select: { email: true, employee: { select: { fullName: true } } } });
+    await tx.approvalCorrection.create({
+      data: {
+        requestId: request.id,
+        level: step.level,
+        targetId: step.id,
+        label: `Persetujuan level ${step.level}`,
+        field: "REVOKE",
+        before: `Disetujui ${approverName?.employee?.fullName ?? approverName?.email ?? ""}`.trim(),
+        after: `Dibatalkan: ${reason}`,
+        editedById: actor.id,
+      },
+    });
+    await logAudit(tx, {
+      actorId: actor.id,
+      action: "REVOKE",
+      entity: "ApprovalRequest",
+      entityId: request.id,
+      before: { status: request.status, level: step.level, approvedBy: step.actedById },
+      after: { status: "PENDING", currentLevel: step.level, reason, wasFinal },
+    });
+
+    // Approver level itu (selain yang membatalkan) diberi tahu bahwa pengajuan menunggu lagi.
+    const recipients = step.approverIds.filter((id) => id !== actor.id);
+    return {
+      status: "PENDING",
+      notifications: recipients.length ? [{ template: "approval-requested", recipientIds: recipients, requestId: request.id }] : [],
     };
   });
 }

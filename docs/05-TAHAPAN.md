@@ -380,7 +380,7 @@ dan melapor → user review & commit sendiri → baru lanjut ke tahap berikutnya
 
 ### 14.1 Sertifikat ✅
 - [x] Sertifikat lewat verifikasi bertingkat: **Ko Yosep → Bu Ika** (sertifikat milik Ko Yosep: level 1 dilewati → Bu Ika). *Mengubah v1.14 "sertifikat tanpa approval"*
-- [x] Label "Tanggal terbit" → "Tanggal diambil/lulus"; masa berlaku wajib untuk sertifikat profesional (ijazah tanpa masa berlaku)
+- [x] Label "Tanggal terbit" → "Tanggal diambil/lulus"; masa berlaku **opsional** untuk semua jenis (diubah 2026-10-06; sebelumnya wajib untuk sertifikat profesional)
 - **Cek 14.1:** [x] migrasi `certificate_verification` (modul approval CERTIFICATE, nomor `CRT/…`, sertifikat lama = terverifikasi) · [x] terverifikasi → staf tidak bisa ubah (Admin bisa); hapus yang masih menunggu → verifikasi dibatalkan · [x] approver melihat ringkasan & file sertifikat di antrian · [x] 7 DB test · [ ] klik lewat UI
 
 ### 14.2 Karyawan & profil ✅
@@ -396,6 +396,12 @@ dan melapor → user review & commit sendiri → baru lanjut ke tahap berikutnya
 - [x] Bu Devi = karyawan biasa (Umum) tanpa peran approval/pencatatan — hapus penyebutan Bu Devi di dokumen approval
 - [x] Approver bisa koreksi **nominal & keterangan** per baris (reimburse, klaim kesehatan, expense/revenue) sebelum menyetujui; setiap perubahan tercatat (sebelum → sesudah, oleh siapa) dan terlihat pemohon
 - [x] Role baru **APPROVER**: akses seperti Staf (data sendiri) + halaman Approval untuk pengajuan yang ditugaskan; tanpa Karyawan/Setting
+- [x] (2026-10-06) Koreksi approver diperluas: reimburse per baris (tanggal, company, project/New Acquisition, tipe, payment, nominal, lokasi, aktivitas, nama – jabatan, kwitansi), expense (tanggal, payment, nominal, keterangan), klaim (keterangan). Project dicek milik company
+- [x] (2026-10-06) **Batalkan Approval** (ubah keputusan): persetujuan terakhir oleh orang (bukan otomatis), selama level berikutnya belum memutuskan, bisa dibatalkan oleh approver yang menyetujui atau Admin (bukan pemohon), alasan wajib. Step kembali PENDING (bisa dikoreksi & disetujui ulang); bila sudah final, efek modul dibatalkan (reimburse/expense/sertifikat/appeal → PENDING, saldo cuti dikembalikan, payout klaim dihapus — ditolak bila sudah dibayar). Tercatat di riwayat koreksi (`field = REVOKE`) + audit `REVOKE`; email ke approver level itu
+- [x] (2026-10-06) Detail project: reimburse & expense langsung digabung jadi satu daftar **Biaya Project** (kolom Sumber: Reimburse / Expense Admin, urut tanggal); kartu jadi 2: Total biaya project (disetujui, rincian reimburse + expense) & Menunggu approval. Halaman daftar: "Total Biaya"
+- [x] (2026-10-06) Total biaya project (kartu & kolom Total Biaya, kartu Menunggu approval) terlihat **semua karyawan**; daftar rinci expense Admin tetap khusus Admin, staf hanya melihat baris reimburse miliknya
+- [x] (2026-10-06) Detail project: kolom Sumber → **Diajukan oleh** (pemohon reimburse / Admin penginput expense). Daftar project: **donut persentase biaya** (disetujui) per Project / per Customer — maks 7 irisan + "Lainnya", legenda = tabel nominal & persen, palet kategori tervalidasi CVD
+- **Cek ubah approval:** [x] tanpa migrasi (pakai `ApprovalCorrection`) · [x] 4 DB test baru (koreksi multi-field + validasi, batalkan non-final, batalkan final reimburse, batalkan final cuti + saldo) · [x] 394 test lulus · [x] smoke `/approval` · [ ] klik Koreksi / Batalkan Approval lewat UI
 - **Cek 14.3:** [x] migrasi `approver_role`, `approval_correction` · [x] DB dev: Darwin & Yosep → Approver, flow Sales/Umum diperbarui (tercatat di audit) · [x] test approval, koreksi, setting diperbarui · [x] halaman per role benar (Admin/Approver/Staf) · [ ] klik Koreksi & Setujui lewat UI
 - [x] Pembagian role: **Admin** (kendali penuh) = Bu Ika, Ko Rudy, Ko Leonard; **Approver** = Ko Darwin, Ko Yosep (seed + DB dev). Engine approval & pengaman approver diubah agar approver boleh role ADMIN **atau** APPROVER
 

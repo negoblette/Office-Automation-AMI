@@ -181,14 +181,19 @@ Holiday, Reimbursement (draft), ApprovalFlow, Asset. Setiap query WAJIB memfilte
 include relasi); file di storage tidak dihapus. Tambah ulang libur/customer yang pernah dihapus → dipulihkan.
 Reimburse: 6 tipe untuk semua divisi. Dokumen: Kelompok I & II (`DOCUMENT_GROUP_I/II`).
 
-**Koreksi approver:** approver step aktif boleh mengoreksi nominal & keterangan (reimburse per baris,
-expense/revenue, keterangan klaim) sebelum menyetujui → `ApprovalCorrection` (sebelum → sesudah), terlihat pemohon.
+**Koreksi approver:** approver step aktif boleh mengoreksi isi pengajuan sebelum menyetujui — reimburse per baris
+(tanggal, company, project/New Acquisition, tipe, payment, nominal, lokasi, aktivitas, nama – jabatan, kwitansi),
+expense (tanggal, payment, nominal, keterangan), keterangan klaim → `ApprovalCorrection` (sebelum → sesudah),
+terlihat pemohon. Field didefinisikan generik per modul di `services/approval-correction.ts#loadTargets`.
+**Batalkan approval** (`revokeApproval`): persetujuan terakhir (oleh orang, level berikutnya belum memutuskan)
+dibatalkan oleh approver yang menyetujui atau Admin (bukan pemohon), alasan wajib → step kembali PENDING; jika
+sudah final, `REVERT_EFFECTS` (approval-effects.ts) membalik efek modul. Tercatat `ApprovalCorrection.field = REVOKE`.
 
 **Invoice/kwitansi:** upload dihapus (Fase 14). File lama hanya disimpan 2 tahun: job `invoice.purge`
 (harian 02:00 WIB) menghapus file & referensinya, data nominal tetap — pengecualian dari aturan soft delete.
 
 **Sertifikat:** setiap sertifikat baru diverifikasi lewat approval engine (modul CERTIFICATE, `CRT/…`, flow
-Ko Yosep → Bu Ika); terverifikasi → hanya Admin yang bisa mengubah. Masa berlaku wajib untuk sertifikat profesional.
+Ko Yosep → Bu Ika); terverifikasi → hanya Admin yang bisa mengubah. Masa berlaku opsional untuk semua jenis (kosong = tanpa masa berlaku, tidak ikut reminder H-30).
 
 **Profil (Fase 14):** NIP (`employeeNo`) hanya diisi Admin; kontak darurat diisi karyawan; aset sederhana per
 karyawan (`EmployeeAsset`, dicatat Admin); biodata cetak di `/biodata/[employeeId]` (print browser → PDF).

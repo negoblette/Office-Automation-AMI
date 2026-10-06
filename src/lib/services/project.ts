@@ -137,12 +137,13 @@ export async function submitProjectRevenue(db: PrismaClient, actor: Actor, proje
  * + Σ ProjectExpense APPROVED (PRJ-03); revenue = Σ ProjectRevenue APPROVED.
  */
 export async function projectTotals(db: Pick<PrismaClient, "reimbursementItem" | "projectExpense" | "projectRevenue">, projectId: string) {
-  const [reimburse, expense, revenue, pendingExpense, pendingRevenue] = await Promise.all([
+  const [reimburse, expense, revenue, pendingExpense, pendingRevenue, pendingReimburse] = await Promise.all([
     db.reimbursementItem.aggregate({ _sum: { amount: true }, where: { projectId, reimbursement: { status: "APPROVED" } } }),
     db.projectExpense.aggregate({ _sum: { amount: true }, where: { projectId, status: "APPROVED" } }),
     db.projectRevenue.aggregate({ _sum: { amount: true }, where: { projectId, status: "APPROVED" } }),
     db.projectExpense.aggregate({ _sum: { amount: true }, where: { projectId, status: "PENDING" } }),
     db.projectRevenue.aggregate({ _sum: { amount: true }, where: { projectId, status: "PENDING" } }),
+    db.reimbursementItem.aggregate({ _sum: { amount: true }, where: { projectId, reimbursement: { status: "PENDING" } } }),
   ]);
   const n = (value: bigint | null) => Number(value ?? 0);
   const reimburseTotal = n(reimburse._sum.amount);
@@ -156,5 +157,6 @@ export async function projectTotals(db: Pick<PrismaClient, "reimbursementItem" |
     margin: revenueTotal - reimburseTotal - directExpense,
     pendingExpense: n(pendingExpense._sum.amount),
     pendingRevenue: n(pendingRevenue._sum.amount),
+    pendingReimburse: n(pendingReimburse._sum.amount),
   };
 }

@@ -64,6 +64,13 @@ export async function applyApprovedLeave(tx: Tx, leaveRequestId: string, approve
   await tx.leaveBalance.update({ where: { id: balance.id }, data: { used: { increment: request.workingDays } } });
 }
 
+/** Kebalikan `applyApprovedLeave` (approval final dibatalkan): status PENDING, saldo `used` dikembalikan. */
+export async function revertApprovedLeave(tx: Tx, leaveRequestId: string) {
+  const request = await tx.leaveRequest.update({ where: { id: leaveRequestId }, data: { status: "PENDING", approvedAt: null } });
+  const balance = await ensureLeaveBalance(tx, request.employeeId, toJakartaIsoDate(request.startDate));
+  await tx.leaveBalance.update({ where: { id: balance.id }, data: { used: { decrement: request.workingDays } } });
+}
+
 /** Job harian `leave.rollover`: pastikan setiap karyawan aktif punya saldo periode berjalan. */
 export async function rolloverLeaveBalances(db: PrismaClient, todayIso = toJakartaIsoDate()): Promise<number> {
   const employees = await db.employee.findMany({ where: { status: "ACTIVE" }, select: { id: true } });

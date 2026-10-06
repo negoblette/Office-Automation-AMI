@@ -3,6 +3,7 @@ import type { ApprovalModule, Prisma, PrismaClient, RequestStatus } from "@/gene
 import type { ApprovalStepView } from "@/components/shared/approval-stepper";
 import { CORRECTABLE_MODULES, type CorrectionView, listCorrections } from "./approval-correction";
 import { formatDate } from "@/lib/format";
+import { canRevoke } from "./approval";
 import { appealSummary } from "./attendance-appeal";
 
 /** Jumlah pengajuan yang sedang menunggu persetujuan user ini (step PENDING). */
@@ -28,6 +29,8 @@ export type ApprovalRow = {
   canApprove: boolean;
   /** HEALTH: nominal diajukan (dasar isian "nominal disetujui"); null untuk modul lain. */
   requestedAmount: number | null;
+  /** User yang login boleh membatalkan persetujuan terakhir (approver yang menyetujui / Admin). */
+  canRevoke: boolean;
   /** Bisa dikoreksi approver (modul dengan nominal/keterangan). */
   correctable: boolean;
   /** Riwayat koreksi approver (Fase 14). */
@@ -46,6 +49,7 @@ const include = {
 type RequestWithSteps = Prisma.ApprovalRequestGetPayload<{ include: typeof include }>;
 
 async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: string): Promise<ApprovalRow[]> {
+  const viewer = await db.user.findUnique({ where: { id: viewerId }, select: { id: true, role: true } });
   // Nama approver & pelaku untuk semua step sekaligus.
   const userIds = new Set(requests.flatMap((r) => r.steps.flatMap((s) => [...s.approverIds, ...(s.actedById ? [s.actedById] : [])])));
   const users = await db.user.findMany({
@@ -89,6 +93,7 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
       actedAt: step.actedAt?.toISOString() ?? null,
     })),
     canApprove: request.steps.some((step) => step.status === "PENDING" && step.approverIds.includes(viewerId)),
+    canRevoke: viewer ? canRevoke(viewer, request) : false,
     requestedAmount: request.module === "HEALTH" ? (claimAmountOf.get(request.entityId) ?? null) : null,
     correctable: (CORRECTABLE_MODULES as readonly ApprovalModule[]).includes(request.module),
     corrections: correctionsOf.get(request.id) ?? [],

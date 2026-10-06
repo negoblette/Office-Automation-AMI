@@ -2,7 +2,7 @@
 // idealnya di dalam `prisma.$transaction` yang sama dengan perubahan datanya.
 import type { Prisma } from "@/generated/prisma/client";
 
-export type AuditAction = "CREATE" | "UPDATE" | "DELETE" | "APPROVE" | "RESIGN" | "REHIRE" | "LOGIN" | "LOGIN_FAILED";
+export type AuditAction = "CREATE" | "UPDATE" | "DELETE" | "APPROVE" | "REVOKE" | "RESIGN" | "REHIRE" | "LOGIN" | "LOGIN_FAILED";
 
 export type AuditEntry = {
   /** User pelaku; null untuk aksi sistem (mis. job worker). */

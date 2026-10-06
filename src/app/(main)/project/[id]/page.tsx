@@ -10,14 +10,14 @@ import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { formatDate, formatRupiah } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL, PROJECT_TYPE_LABEL, projectLabel } from "@/lib/labels";
-import { getProjectDetail, type ProjectEntryRow } from "@/lib/services/project-queries";
+import { getProjectDetail, type ProjectCostRow } from "@/lib/services/project-queries";
 import { ExpenseDialog } from "../project-dialogs";
 
 export const metadata: Metadata = { title: "Detail Project" };
 
 const date = (iso: string) => formatDate(`${iso}T00:00:00Z`, "short");
 
-function Status({ status, level }: { status: ProjectEntryRow["status"]; level: number | null }) {
+function Status({ status, level }: { status: ProjectCostRow["status"]; level: number | null }) {
   const badge = requestStatusBadge(status, level);
   return <StatusBadge variant={badge.variant}>{badge.label}</StatusBadge>;
 }
@@ -34,29 +34,37 @@ function Section({ title, action, children }: { title: string; action?: React.Re
   );
 }
 
-function EntryTable({ rows, withPayment }: { rows: ProjectEntryRow[]; withPayment: boolean }) {
-  if (!rows.length) return <EmptyState title="Belum ada data" className="py-8" />;
+function CostTable({ rows, showPerson }: { rows: ProjectCostRow[]; showPerson: boolean }) {
+  if (!rows.length) return <EmptyState title="Belum ada biaya untuk project ini" className="py-8" />;
   return (
     <div className="overflow-x-auto rounded-2xl bg-card shadow-card">
-      <table className="w-full min-w-[640px] text-sm">
+      <table className="w-full min-w-[760px] text-sm">
         <thead className="bg-muted/60 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
           <tr>
             <th className="px-4 py-3">Nomor & Tanggal</th>
+            {showPerson && <th className="px-4 py-3">Diajukan oleh</th>}
             <th className="px-4 py-3">Keterangan</th>
-            {withPayment && <th className="px-4 py-3">Pembayaran</th>}
+            <th className="px-4 py-3">Pembayaran</th>
             <th className="px-4 py-3 text-right">Nominal</th>
             <th className="px-4 py-3">Status</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.id} className="border-t border-border">
+            <tr key={`${row.source}-${row.id}`} className="border-t border-border">
               <td className="px-4 py-3">
-                <p className="font-medium whitespace-nowrap">{row.number}</p>
+                {row.href ? (
+                  <Link href={row.href} className="font-medium whitespace-nowrap hover:underline">
+                    {row.number}
+                  </Link>
+                ) : (
+                  <p className="font-medium whitespace-nowrap">{row.number}</p>
+                )}
                 <p className="text-xs text-muted-foreground">{date(row.date)}</p>
               </td>
+              {showPerson && <td className="px-4 py-3 whitespace-nowrap">{row.person ?? "—"}</td>}
               <td className="px-4 py-3">{row.description}</td>
-              {withPayment && <td className="px-4 py-3">{row.paymentMethod ? PAYMENT_METHOD_LABEL[row.paymentMethod] : "—"}</td>}
+              <td className="px-4 py-3">{row.paymentMethod ? PAYMENT_METHOD_LABEL[row.paymentMethod] : "—"}</td>
               <td className="px-4 py-3 text-right tabular-nums">{formatRupiah(row.amount)}</td>
               <td className="px-4 py-3">
                 <Status status={row.status} level={row.currentLevel} />
@@ -75,6 +83,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const { id } = await params;
   const project = await getProjectDetail(prisma, id, user);
   if (!project) notFound();
+  const { totals } = project;
 
   return (
     <div className="flex flex-col gap-6">
@@ -93,57 +102,30 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         }
       />
 
-      {project.totals && (
-        <div className="grid gap-4 sm:grid-cols-3">
-          <StatCard label="Reimburse (disetujui)" value={formatRupiah(project.totals.reimburse)} tone="info" footer="Baris reimburse yang memilih project ini" />
-          <StatCard label="Expense langsung" value={formatRupiah(project.totals.directExpense)} tone="warning" footer={`Menunggu: ${formatRupiah(project.totals.pendingExpense)}`} />
-          <StatCard label="Total expense" value={formatRupiah(project.totals.expense)} tone="danger" footer="Reimburse + expense langsung (disetujui)" />
-        </div>
-      )}
+      {/* Total biaya project terlihat semua karyawan (2026-10-06); daftar rinci expense Admin tetap khusus Admin. */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <StatCard
+          label="Total biaya project"
+          value={formatRupiah(totals.expense)}
+          tone="danger"
+          footer={`Disetujui · Reimburse ${formatRupiah(totals.reimburse)} + Expense Admin ${formatRupiah(totals.directExpense)}`}
+        />
+        <StatCard
+          label="Menunggu approval"
+          value={formatRupiah(totals.pendingReimburse + totals.pendingExpense)}
+          tone="warning"
+          footer="Belum masuk total biaya"
+        />
+      </div>
 
-      {isAdmin && (
-        <Section title="Expense Langsung">
-          <EntryTable rows={project.expenses} withPayment />
-        </Section>
-      )}
-
-      <Section title={isAdmin ? "Reimburse ke Project Ini" : "Reimburse Saya di Project Ini"}>
-        {project.reimburse.length === 0 ? (
-          <EmptyState title="Belum ada baris reimburse" className="py-8" />
-        ) : (
-          <div className="overflow-x-auto rounded-2xl bg-card shadow-card">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead className="bg-muted/60 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                <tr>
-                  <th className="px-4 py-3">Nomor</th>
-                  <th className="px-4 py-3">Karyawan</th>
-                  <th className="px-4 py-3">Tanggal</th>
-                  <th className="px-4 py-3">Aktivitas</th>
-                  <th className="px-4 py-3 text-right">Nominal</th>
-                  <th className="px-4 py-3">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {project.reimburse.map((row) => (
-                  <tr key={row.id} className="border-t border-border">
-                    <td className="px-4 py-3">
-                      <Link href={`/reimburse/${row.reimbursementId}`} className="font-medium whitespace-nowrap hover:underline">
-                        {row.number}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">{row.employeeName}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{date(row.date)}</td>
-                    <td className="px-4 py-3">{row.activity}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatRupiah(row.amount)}</td>
-                    <td className="px-4 py-3">
-                      <Status status={row.status} level={null} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      <Section title={isAdmin ? "Biaya Project" : "Reimburse Saya di Project Ini"}>
+        {isAdmin && (
+          <p className="-mt-1 text-sm text-muted-foreground">
+            Semua biaya project dalam satu daftar — reimburse karyawan (nomor <b>RMB</b>) dan expense yang dicatat Admin (nomor <b>EXP</b>). Hanya yang{" "}
+            <b>disetujui</b> masuk total.
+          </p>
         )}
+        <CostTable rows={project.costs} showPerson={isAdmin} />
       </Section>
     </div>
   );

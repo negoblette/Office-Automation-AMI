@@ -3,7 +3,7 @@ import type { Actor } from "@/lib/services/access";
 import { approveRequest } from "@/lib/services/approval";
 import { saveHealthCategory, saveReimburseType, typeCodeFromName } from "@/lib/services/master-data";
 import { deleteCustomer, projectTotals, saveCustomer, saveProject, submitProjectExpense, submitProjectRevenue } from "@/lib/services/project";
-import { nextProjectCode } from "@/lib/services/project-queries";
+import { getProjectDetail, nextProjectCode } from "@/lib/services/project-queries";
 import { saveReimbursementDraft, submitReimbursement } from "@/lib/services/reimbursement";
 import { projectExpenseSchema, projectRevenueSchema, projectSchema, reimburseTypeSchema } from "@/lib/validators/project";
 import { reimbursementSchema } from "@/lib/validators/reimbursement";
@@ -100,6 +100,17 @@ describe("expense & revenue (PRJ-02..04)", () => {
 
     await approveAll(draft.reimbursementId, "REIMBURSE");
     expect(await projectTotals(testDb, project.id)).toMatchObject({ reimburse: 500_000, expense: 500_000 });
+    // Detail project: reimburse & expense Admin dalam satu daftar biaya (2026-10-06).
+    const expense = await submitProjectExpense(testDb, actors.ika, project.id, projectExpenseSchema.parse({ date: "2026-09-15", description: "Tiket pesawat", paymentMethod: "CC", amount: 1_000_000 }));
+    const detail = (await getProjectDetail(testDb, project.id, { role: "ADMIN", employeeId: actors.ika.employeeId }))!;
+    expect(detail.costs.map((c) => [c.source, c.amount, c.status])).toEqual([
+      ["EXPENSE", 1_000_000, expense.status],
+      ["REIMBURSE", 200_000, "APPROVED"],
+      ["REIMBURSE", 300_000, "APPROVED"],
+    ]);
+    // Staf hanya melihat baris reimburse miliknya, tanpa expense Admin.
+    const own = (await getProjectDetail(testDb, project.id, { role: "STAFF", employeeId: actors.sinta.employeeId }))!;
+    expect(own.costs).toEqual([]);
     // Customer baris reimburse mengikuti project.
     const items = await testDb.reimbursementItem.findMany({ where: { projectId: project.id } });
     expect(new Set(items.map((i) => i.customerId))).toEqual(new Set([project.customerId]));

@@ -223,7 +223,7 @@ function CertificateDialog({ employeeId, certificate }: { employeeId: string; ce
               <TextInputField name="issuer" label="Penerbit" />
               <TextInputField name="number" label="Nomor" />
               <DateInputField name="startDate" label="Tanggal diambil / lulus" required />
-              <DateInputField name="endDate" label="Masa berlaku sampai" hint="Wajib untuk sertifikat profesional; kosongkan untuk ijazah" />
+              <DateInputField name="endDate" label="Masa berlaku sampai" hint="Opsional — kosongkan bila tidak ada masa berlaku" />
             </div>
             <FormField label="File" htmlFor="certificate-file" error={form.formState.errors.fileKey?.message}>
               <Controller

@@ -2,8 +2,8 @@
 // di dalam transaksi yang sama. Setiap fase modul menambahkan efeknya di sini secara eksplisit
 // (bukan registrasi lewat side-effect import, supaya tidak ada efek yang terlewat).
 import type { ApprovalModule, Prisma } from "@/generated/prisma/client";
-import { applyApprovedHealthClaim } from "./health-payout";
-import { applyApprovedLeave } from "./leave-balance";
+import { applyApprovedHealthClaim, revertApprovedHealthClaim } from "./health-payout";
+import { applyApprovedLeave, revertApprovedLeave } from "./leave-balance";
 
 export type FinalEffectOptions = {
   /** HEALTH: nominal disetujui approver final (null = sama dengan nominal diajukan). */
@@ -35,5 +35,31 @@ export const FINAL_EFFECTS: Partial<Record<ApprovalModule, FinalEffect>> = {
   // Fase 14: appeal tidak hadir disetujui → hari itu berstatus Sakit / Kunjungan keluar (tidak dipotong cuti).
   ATTENDANCE_APPEAL: async (tx, entityId, approvedAt) => {
     await tx.attendanceAppeal.update({ where: { id: entityId }, data: { status: "APPROVED", approvedAt } });
+  },
+};
+
+export type RevertEffect = (tx: Prisma.TransactionClient, entityId: string) => Promise<void>;
+
+/**
+ * Kebalikan FINAL_EFFECTS saat persetujuan final dibatalkan (2026-10-06: "ubah keputusan approval").
+ * Entitas kembali PENDING; modul tanpa entri di sini tidak bisa dibatalkan setelah final.
+ */
+export const REVERT_EFFECTS: Partial<Record<ApprovalModule, RevertEffect>> = {
+  REIMBURSE: async (tx, entityId) => {
+    await tx.reimbursement.update({ where: { id: entityId }, data: { status: "PENDING", approvedAt: null } });
+  },
+  LEAVE: revertApprovedLeave,
+  HEALTH: revertApprovedHealthClaim,
+  EXPENSE: async (tx, entityId) => {
+    await tx.projectExpense.update({ where: { id: entityId }, data: { status: "PENDING" } });
+  },
+  REVENUE: async (tx, entityId) => {
+    await tx.projectRevenue.update({ where: { id: entityId }, data: { status: "PENDING" } });
+  },
+  CERTIFICATE: async (tx, entityId) => {
+    await tx.certificate.update({ where: { id: entityId }, data: { status: "PENDING" } });
+  },
+  ATTENDANCE_APPEAL: async (tx, entityId) => {
+    await tx.attendanceAppeal.update({ where: { id: entityId }, data: { status: "PENDING", approvedAt: null } });
   },
 };

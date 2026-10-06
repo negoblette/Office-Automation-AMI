@@ -14,9 +14,22 @@ import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
 import { formatDateTime } from "@/lib/format";
 import type { ApprovalRow } from "@/lib/services/approval-queries";
 import { ApproveButton } from "./approve-button";
-import { CorrectionButton, CorrectionList } from "./correction-ui";
+import { CorrectionButton, CorrectionList, RevokeButton } from "./correction-ui";
 
 const col = dataTableColumnHelper<ApprovalRow>();
+
+/** Aksi per baris: Koreksi + Setujui (approver step aktif), Batalkan Approval (yang menyetujui / Admin). */
+function RowActions({ row }: { row: ApprovalRow }) {
+  if (!row.canApprove && !row.canRevoke) return null;
+  const label = `${APPROVAL_MODULE_META[row.module].label} ${row.entityNumber}`;
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-1">
+      {row.canRevoke && <RevokeButton requestId={row.id} label={label} final={row.status === "APPROVED"} />}
+      {row.canApprove && row.correctable && <CorrectionButton requestId={row.id} label={label} />}
+      {row.canApprove && <ApproveButton requestId={row.id} label={label} requestedAmount={row.requestedAmount} />}
+    </div>
+  );
+}
 
 const requesterColumn = col.accessor((row) => `${row.requesterName} ${row.requesterPosition ?? ""}`, {
   id: "requester",
@@ -78,19 +91,7 @@ const queueColumns = col.columns([
   col.display({
     id: "actions",
     header: () => <span className="sr-only">Aksi</span>,
-    cell: ({ row }) =>
-      row.original.canApprove && (
-        <div className="flex items-center justify-end gap-1">
-          {row.original.correctable && (
-            <CorrectionButton requestId={row.original.id} label={`${APPROVAL_MODULE_META[row.original.module].label} ${row.original.entityNumber}`} />
-          )}
-          <ApproveButton
-            requestId={row.original.id}
-            label={`${APPROVAL_MODULE_META[row.original.module].label} ${row.original.entityNumber}`}
-            requestedAmount={row.original.requestedAmount}
-          />
-        </div>
-      ),
+    cell: ({ row }) => <RowActions row={row.original} />,
   }),
 ]);
 
@@ -111,19 +112,7 @@ const monitorColumns = col.columns([
   col.display({
     id: "actions",
     header: () => <span className="sr-only">Aksi</span>,
-    cell: ({ row }) =>
-      row.original.canApprove && (
-        <div className="flex items-center justify-end gap-1">
-          {row.original.correctable && (
-            <CorrectionButton requestId={row.original.id} label={`${APPROVAL_MODULE_META[row.original.module].label} ${row.original.entityNumber}`} />
-          )}
-          <ApproveButton
-            requestId={row.original.id}
-            label={`${APPROVAL_MODULE_META[row.original.module].label} ${row.original.entityNumber}`}
-            requestedAmount={row.original.requestedAmount}
-          />
-        </div>
-      ),
+    cell: ({ row }) => <RowActions row={row.original} />,
   }),
 ]);
 
