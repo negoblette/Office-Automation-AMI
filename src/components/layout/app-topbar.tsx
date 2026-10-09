@@ -2,6 +2,7 @@ import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PersonAvatar } from "@/components/shared/person-cell";
 import { logoutAction } from "./actions";
+import { Greeting } from "./greeting";
 import { MobileNav } from "./mobile-nav";
 import type { AppRole } from "./nav-config";
 import type { NavBadges } from "./sidebar-nav";
@@ -18,30 +19,41 @@ const ROLE_LABELS: Record<AppRole, string> = {
   STAFF: "Staf",
 };
 
+/** Topbar di dalam lembar putih (tetap sticky). */
 export function AppTopbar({ user, badges }: AppTopbarProps) {
   return (
-    <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-3 border-b border-border/70 bg-background/85 px-4 backdrop-blur sm:px-6 lg:px-8">
-      <MobileNav role={user.role} badges={badges} />
-      <span className="hidden text-sm font-bold text-foreground sm:inline lg:hidden">Office Automation</span>
+    <header className="sticky top-0 z-20 shrink-0 bg-sheet/85 backdrop-blur">
+      <div className="mx-auto flex min-h-16 w-full max-w-[1200px] items-center gap-3 px-[clamp(18px,3vw,36px)] py-2.5 sm:gap-3.5">
+        <MobileNav role={user.role} badges={badges} />
+        <span className="hidden text-sm font-bold text-ink sm:inline lg:hidden">Office Automation</span>
+        <Greeting name={user.name} className="hidden min-w-0 truncate text-[15px] font-semibold text-ink-2 lg:block" />
 
-      <div className="ml-auto flex items-center gap-2 sm:gap-4">
-        <SubmitRequestMenu />
+        <div className="ml-auto flex items-center gap-2 sm:gap-3.5">
+          <SubmitRequestMenu />
 
-        <div className="hidden h-8 w-px bg-border sm:block" aria-hidden />
+          <div className="hidden h-7 w-px bg-line sm:block" aria-hidden />
 
-        <div className="flex items-center gap-3">
-          <PersonAvatar name={user.name} size="sm" />
-          <div className="hidden leading-tight sm:block">
-            <p className="max-w-[180px] truncate text-sm font-semibold text-foreground">{user.name}</p>
-            <p className="text-xs text-muted-foreground">{ROLE_LABELS[user.role]}</p>
+          <div className="flex items-center gap-2.5">
+            <PersonAvatar name={user.name} className="rounded-[14px] bg-brand-tint font-extrabold text-brand-deep" />
+            <div className="hidden leading-tight sm:block">
+              <p className="max-w-[180px] truncate text-sm font-bold text-ink">{user.name}</p>
+              <p className="text-xs text-ink-3">{ROLE_LABELS[user.role]}</p>
+            </div>
           </div>
-        </div>
 
-        <form action={logoutAction}>
-          <Button type="submit" variant="ghost" size="icon" aria-label="Keluar" title="Keluar">
-            <LogOut className="size-4.5" />
-          </Button>
-        </form>
+          <form action={logoutAction}>
+            <Button
+              type="submit"
+              variant="ghost"
+              size="icon"
+              aria-label="Keluar"
+              title="Keluar"
+              className="size-11 rounded-[14px] text-ink-2 hover:bg-ink/[0.06] hover:text-ink"
+            >
+              <LogOut className="size-5" />
+            </Button>
+          </form>
+        </div>
       </div>
     </header>
   );

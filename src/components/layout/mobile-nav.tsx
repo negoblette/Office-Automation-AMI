@@ -14,15 +14,28 @@ export function MobileNav({ role, badges }: { role: AppRole; badges?: NavBadges 
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger render={<Button variant="ghost" size="icon" className="lg:hidden" aria-label="Buka menu" />}>
+      <SheetTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-11 rounded-[14px] text-ink-2 hover:bg-ink/[0.06] hover:text-ink lg:hidden"
+            aria-label="Buka menu"
+          />
+        }
+      >
         <Menu className="size-5" />
       </SheetTrigger>
-      <SheetContent side="left" showCloseButton={false} className="w-[280px] gap-0 bg-sidebar p-0 sm:max-w-[280px]">
-        <div className="flex h-16 shrink-0 items-center justify-between border-b border-sidebar-border px-5">
+      <SheetContent
+        side="left"
+        showCloseButton={false}
+        className="w-[280px] gap-0 bg-sidebar p-0 shadow-(--elev-drawer) data-[side=left]:border-r-0 sm:max-w-[280px]"
+      >
+        <div className="flex shrink-0 items-center justify-between pt-[22px] pr-3 pb-3 pl-4">
           <SheetTitle render={<div />}>
-            <AppBrand />
+            <AppBrand className="pb-0" />
           </SheetTitle>
-          <SheetClose render={<Button variant="ghost" size="icon-sm" aria-label="Tutup menu" />}>
+          <SheetClose render={<Button variant="ghost" size="icon-sm" className="size-10 rounded-[14px] text-ink-2 hover:bg-ink/[0.06]" aria-label="Tutup menu" />}>
             <X />
           </SheetClose>
         </div>

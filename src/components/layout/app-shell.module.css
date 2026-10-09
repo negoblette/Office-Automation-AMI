@@ -1,0 +1,74 @@
+/*
+ * Kerangka aplikasi (docs/design/prototipe-dashboard-oa.html): latar bertitik, sidebar di atas
+ * latar, stempel samar di bawah sidebar, dan transisi buka/tutup submenu. Token di globals.css.
+ */
+
+.ground {
+  background-color: var(--ground);
+  background-image: radial-gradient(var(--dots) 1px, transparent 1.3px);
+  background-size: 22px 22px;
+}
+
+/* Sidebar menutupi titik di bagian atas, lalu memudar ke latar. */
+.sidebar {
+  background: linear-gradient(180deg, var(--ground) 0%, var(--ground) 66%, var(--ground-0) 100%);
+}
+
+.seal {
+  position: absolute;
+  z-index: -1;
+  left: -104px;
+  bottom: -128px;
+  overflow: visible;
+  color: var(--brand);
+  opacity: 0.16;
+  transform: rotate(-18deg);
+  pointer-events: none;
+}
+
+.seal circle {
+  fill: none;
+  stroke: currentColor;
+}
+
+.seal text {
+  fill: currentColor;
+}
+
+/*
+ * Submenu: tinggi 0 → tinggi isi lewat transisi grid-template-rows. Submenu yang tertutup tetap
+ * di DOM tetapi visibility: hidden, jadi tidak bisa difokus dan tidak dibaca pembaca layar.
+ */
+.sub {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.45s var(--ease);
+}
+
+.subOpen {
+  grid-template-rows: 1fr;
+}
+
+.subList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  margin-left: 20px;
+  overflow: hidden;
+  visibility: hidden;
+  box-shadow: inset 1px 0 0 var(--rule);
+  transition: visibility 0s 0.45s;
+}
+
+.subOpen .subList {
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sub,
+  .subList {
+    transition: none;
+  }
+}

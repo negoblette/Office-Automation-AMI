@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
-  --font-heading: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-jakarta-sans), "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --font-heading: var(--font-jakarta-sans), "Segoe UI", ui-sans-serif, system-ui, sans-serif;
   --color-navy: var(--navy);
   --color-navy-foreground: var(--navy-foreground);
   --color-success: var(--success);
@@ -22,7 +22,41 @@
   --color-danger-soft: var(--danger-soft);
   --color-neutral: var(--neutral);
   --color-neutral-soft: var(--neutral-soft);
-  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 16px -4px rgb(15 23 42 / 0.06);
+  /* Garis tipis supaya kartu tetap terlihat batasnya di atas lembar putih kerangka. */
+  --shadow-card: 0 0 0 1px rgb(15 23 42 / 0.05), 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 16px -4px rgb(15 23 42 / 0.06);
+  /* Token tampilan baru (lihat blok :root di bawah). */
+  --color-ground: var(--ground);
+  --color-sheet: var(--sheet);
+  --color-panel: var(--panel);
+  --color-line: var(--line);
+  --color-rule: var(--rule);
+  --color-edge: var(--edge);
+  --color-skeleton: var(--skeleton);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-mute: var(--mute);
+  --color-veil: var(--veil);
+  --color-brand: var(--brand);
+  --color-brand-deep: var(--brand-deep);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-tint: var(--brand-tint);
+  --color-brand-pale: var(--brand-pale);
+  --color-brand-mid: var(--brand-mid);
+  --color-brand-ring: var(--brand-ring);
+  --color-shell: var(--shell);
+  --color-on-hero: var(--on-hero);
+  --color-on-hero-2: var(--on-hero-2);
+  --color-on-hero-3: var(--on-hero-3);
+  --color-amber: var(--amber);
+  --color-amber-ink: var(--amber-ink);
+  --color-amber-soft: var(--amber-soft);
+  --color-amber-deep: var(--amber-deep);
+  --color-green-soft: var(--green-soft);
+  --color-green-deep: var(--green-deep);
+  --ease-smooth: var(--ease);
+  --ease-spring: var(--spring);
+  --animate-rise: oa-rise 0.7s var(--ease) both;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -104,14 +138,69 @@
   --chart-4: #94a3b8;
   --chart-5: #f59e0b;
   --radius: 0.75rem;
-  --sidebar: #ffffff;
+  /* Sidebar di atas latar bertitik: item aktif = pil putih, hover = putih transparan. */
+  --sidebar: #eef2f9;
   --sidebar-foreground: #334155;
-  --sidebar-primary: #0f172a;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f1f5f9;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #0f172a;
+  --sidebar-accent: rgb(255 255 255 / 0.78);
   --sidebar-accent-foreground: #0f172a;
-  --sidebar-border: #edf0f5;
-  --sidebar-ring: #1d5fe0;
+  --sidebar-border: #e1e7f1;
+  --sidebar-ring: #0f172a;
+
+  /*
+   * Tampilan baru (docs/design/prototipe-dashboard-oa.html): sidebar & konten di atas latar
+   * bertitik, konten di satu lembar putih membulat, panel absensi biru jadi satu-satunya
+   * permukaan mencolok. Token lama di atas tidak diubah.
+   */
+  --ground: #eef2f9;
+  --ground-0: rgb(238 242 249 / 0);
+  --dots: #c6d1e4;
+  --sheet: #fdfeff;
+  --panel: #f4f7fc;
+  --line: #e1e7f1;
+  --rule: #c3cee2;
+  --edge: #8793a8;
+  --skeleton: #dce3f0;
+  --skeleton-2: #e3e9f4;
+  --ink: #0f172a;
+  --ink-2: #334155;
+  --ink-3: #475569;
+  --mute: #5b6b84;
+  --veil: rgb(255 255 255 / 0.78);
+  --brand: #2563eb;
+  --brand-deep: #173fae;
+  --brand-soft: #eaf0fe;
+  --brand-tint: #dce7ff;
+  --brand-pale: #c3d5fe;
+  --brand-mid: #93b2f7;
+  --brand-glyph: #6c97f5;
+  --brand-faint: #eef3ff;
+  --brand-ring: rgb(37 99 235 / 0.14);
+  --shell: #e4ecfd;
+  --hero-a: #2459e0;
+  --hero-b: #1e4dcb;
+  --hero-c: #173fae;
+  --on-hero: #ffffff;
+  --on-hero-2: #dce7ff;
+  --on-hero-3: #a9c1ff;
+  --amber: #e08a00;
+  --amber-ink: #8a5300;
+  --amber-soft: #fff1d6;
+  --amber-deep: #7a4700;
+  --green-soft: #ddf5ee;
+  --green-deep: #0b5e4a;
+  /* Komponen RGB untuk bayangan biru (glow) & gelap (shade). */
+  --glow: 23 50 140;
+  --shade: 15 23 42;
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --spring: cubic-bezier(0.2, 1.5, 0.4, 1);
+  /* Bayangan, dipakai lewat utility shadow-(--elev-*). */
+  --elev-pill: 0 0 0 1px rgb(var(--shade) / 0.05), 0 14px 26px -18px rgb(var(--glow) / 0.6);
+  --elev-sheet: 0 0 0 1px rgb(var(--shade) / 0.05), 0 40px 80px -50px rgb(var(--glow) / 0.5);
+  --elev-menu: 0 0 0 1px rgb(var(--shade) / 0.07), 0 24px 48px -20px rgb(var(--glow) / 0.45);
+  --elev-drawer: 0 0 0 1px rgb(var(--shade) / 0.06), 30px 0 60px -30px rgb(var(--glow) / 0.55);
+  --elev-cta: 0 12px 22px -14px var(--brand);
 }
 
 .dark {
@@ -169,5 +258,40 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+/*
+ * Gerak tampilan baru — hanya transform & opacity. Dipakai lewat utility `motion-safe:`
+ * sehingga mati saat prefers-reduced-motion: reduce.
+ */
+@keyframes oa-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes oa-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes oa-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }

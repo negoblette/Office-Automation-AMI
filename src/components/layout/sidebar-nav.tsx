@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BarChart3, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import shell from "./app-shell.module.css";
 import { type AppRole, type NavItem, getActiveChildHref, getNavForRole, isPathActive } from "./nav-config";
 
 /** Angka badge per href menu, mis. { "/approval": 3 }. */
@@ -17,22 +18,26 @@ type SidebarNavProps = {
   onNavigate?: () => void;
 };
 
-const itemBaseClass =
-  "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring";
+const motionClass = "transition-[background-color,color,box-shadow] duration-[350ms] ease-smooth motion-reduce:transition-none";
+const itemBaseClass = cn(
+  "flex min-h-11 w-full items-center gap-3 rounded-[14px] px-3 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+  motionClass,
+);
 const itemIdleClass = "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
-const itemActiveClass = "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm";
+/** Item aktif: pil putih berbayang, ikon biru. */
+const itemActiveClass = "bg-sidebar-primary font-bold text-sidebar-primary-foreground shadow-(--elev-pill) [&>svg:first-child]:text-brand";
+/** Induk submenu yang route-nya aktif: tebal + ikon biru (pil putih ada di sub-menu aktif). */
+const parentActiveClass = "font-bold text-ink hover:bg-sidebar-accent [&>svg:first-child]:text-brand";
 
 export function SidebarNav({ role, badges, onNavigate }: SidebarNavProps) {
   const pathname = usePathname();
   const groups = getNavForRole(role);
 
   return (
-    <nav aria-label="Menu utama" className="flex flex-col gap-5 px-3 py-4">
+    <nav aria-label="Menu utama" className="flex flex-col pt-1 pr-1 pb-7 pl-4">
       {groups.map((group) => (
-        <div key={group.label} className="flex flex-col gap-1">
-          <p className="px-3 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-            {group.label}
-          </p>
+        <div key={group.label} className="flex flex-col gap-0.5">
+          <p className="px-3 pt-3.5 pb-1.5 text-xs font-bold text-mute">{group.label}</p>
           {group.items.map((item) => (
             <SidebarItem key={item.href} item={item} badge={badges?.[item.href]} pathname={pathname} onNavigate={onNavigate} />
           ))}
@@ -40,14 +45,10 @@ export function SidebarNav({ role, badges, onNavigate }: SidebarNavProps) {
       ))}
 
       {role === "ADMIN" && (
-        <div
-          aria-disabled="true"
-          className={cn(itemBaseClass, "cursor-not-allowed text-muted-foreground/80")}
-          title="Modul laporan menyusul"
-        >
-          <BarChart3 className="size-4.5 shrink-0" aria-hidden />
+        <div aria-disabled="true" className="mt-3.5 flex min-h-11 cursor-not-allowed items-center gap-3 px-3 text-sm font-medium text-mute" title="Modul laporan menyusul">
+          <BarChart3 className="size-4.5 shrink-0" strokeWidth={1.75} aria-hidden />
           <span className="flex-1">Laporan</span>
-          <span className="text-[11px] font-medium">Menyusul</span>
+          <span className="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold shadow-[inset_0_0_0_1px_var(--rule)]">Menyusul</span>
         </div>
       )}
     </nav>
@@ -78,11 +79,11 @@ function SidebarItem({
         aria-current={isActive ? "page" : undefined}
         className={cn(itemBaseClass, isActive ? itemActiveClass : itemIdleClass)}
       >
-        <Icon className="size-4.5 shrink-0" aria-hidden />
+        <Icon className="size-4.5 shrink-0" strokeWidth={1.75} aria-hidden />
         <span className="flex-1 truncate">{item.label}</span>
         {badge ? (
-          <span className="rounded-full bg-danger-soft px-2 py-0.5 text-[11px] font-semibold text-danger" aria-label={`${badge} menunggu`}>
-            {badge} Pending
+          <span className="grid h-[22px] min-w-[22px] place-items-center rounded-full bg-brand px-1.5 text-xs font-bold text-white" aria-label={`${badge} menunggu`}>
+            {badge}
           </span>
         ) : null}
       </Link>
@@ -94,32 +95,39 @@ function SidebarItem({
   const submenuId = `submenu-${item.href.replaceAll("/", "-")}`;
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-0.5">
       <button
         type="button"
         aria-expanded={isOpen}
         aria-controls={submenuId}
         onClick={() => setManualOpen(!isOpen)}
-        className={cn(itemBaseClass, isActive ? itemActiveClass : itemIdleClass)}
+        className={cn(itemBaseClass, isActive ? parentActiveClass : itemIdleClass)}
       >
-        <Icon className="size-4.5 shrink-0" aria-hidden />
+        <Icon className="size-4.5 shrink-0" strokeWidth={1.75} aria-hidden />
         <span className="flex-1 truncate text-left">{item.label}</span>
-        <ChevronDown className={cn("size-4 shrink-0 transition-transform", isOpen && "rotate-180")} aria-hidden />
+        <ChevronDown
+          className={cn("size-4 shrink-0 text-mute transition-transform duration-[450ms] ease-smooth motion-reduce:transition-none", isOpen && "rotate-180")}
+          aria-hidden
+        />
       </button>
-      {isOpen && (
-        <ul id={submenuId} className="ml-5 flex flex-col gap-0.5 border-l border-sidebar-border pl-3">
+      {/* Tetap dirender saat tertutup (visibility: hidden) supaya buka/tutup bisa beranimasi. */}
+      <div className={cn(shell.sub, isOpen && shell.subOpen)}>
+        <ul id={submenuId} className={shell.subList}>
           {item.children.map((child) => {
             const isChildActive = child.href === activeChildHref;
             return (
               <li key={child.href}>
                 <Link
                   href={child.href}
+                  // Saat tertutup tidak di-prefetch, sama seperti dulu ketika link-nya belum dirender.
+                  prefetch={isOpen ? null : false}
                   onClick={onNavigate}
                   aria-current={isChildActive ? "page" : undefined}
                   className={cn(
-                    "block rounded-md px-3 py-1.5 text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                    "flex min-h-11 items-center rounded-r-[14px] pr-3 pl-5 text-[13.5px] outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-inset",
+                    motionClass,
                     isChildActive
-                      ? "bg-accent font-semibold text-primary"
+                      ? "bg-sidebar-primary font-bold text-sidebar-primary-foreground"
                       : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                   )}
                 >
@@ -129,7 +137,7 @@ function SidebarItem({
             );
           })}
         </ul>
-      )}
+      </div>
     </div>
   );
 }

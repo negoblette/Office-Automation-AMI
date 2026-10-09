@@ -23,6 +23,8 @@
 # misc
 .DS_Store
 *.pem
+.claude
+.claude\*
 
 # debug
 npm-debug.log*
@@ -51,3 +53,6 @@ next-env.d.ts
 # worker bundle & backup produksi
 /dist/
 /backups/
+
+
+

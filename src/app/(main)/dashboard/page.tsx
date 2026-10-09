@@ -1,25 +1,37 @@
-import { Briefcase, ClipboardCheck, HeartPulse, Inbox, MonitorSmartphone, Plane, Receipt, Users } from "lucide-react";
+import { ClipboardCheck, HeartPulse, Plane, Receipt } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ClockCard } from "@/app/(main)/absensi/attendance-ui";
-import { ApprovalQueueTable } from "@/app/(main)/approval/approval-tables";
 import { LeaveBalanceCard } from "@/app/(main)/cuti/leave-ui";
 import { HealthSummaryCard } from "@/app/(main)/kesehatan/health-ui";
-import { PageHeader } from "@/components/shared/page-header";
+import { LeaveCalendar } from "@/components/shared/leave-calendar";
 import { ProgressBar } from "@/components/shared/progress-bar";
-import { StatCard } from "@/components/shared/stat-card";
 import { buttonVariants } from "@/components/ui/button";
 import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
 import { type CurrentUser, requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
+import { toJakartaIsoDate } from "@/lib/format";
 import { canApprove } from "@/lib/roles";
 import { listMyApprovalQueue } from "@/lib/services/approval-queries";
 import { getTodayAttendance } from "@/lib/services/attendance-queries";
 import { getAdminDashboard, getStaffDashboard } from "@/lib/services/dashboard-queries";
-import { LeaveCalendar } from "@/components/shared/leave-calendar";
-import { toJakartaIsoDate } from "@/lib/format";
 import { getLeaveCalendar } from "@/lib/services/leave-queries";
-import { DashboardCard, ExpiringCard, MyRequestsList, StaffReminderCard } from "./dashboard-ui";
+import { cn } from "@/lib/utils";
+import { AttendanceHero } from "./attendance-hero";
+import styles from "./dashboard.module.css";
+import { DashboardHeader } from "./dashboard-header";
+import { IntroScope, PaperTray } from "./dashboard-motion";
+import {
+  DashboardCard,
+  ExpiringCard,
+  FolderPictogram,
+  MyRequestsList,
+  PeoplePictogram,
+  QueueSection,
+  StaffReminderCard,
+  StatItem,
+  StatsBand,
+  riseStyle,
+} from "./dashboard-ui";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -45,20 +57,22 @@ async function AdminDashboard({ user, calendar }: { user: CurrentUser; calendar:
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
+    <IntroScope className="relative flex flex-col gap-7">
+      <DashboardHeader
         title="Dashboard Operasional & Approval"
         description={`Ringkasan data kantor, antrian persetujuan Anda, serta sertifikat${data.assets ? " & unit" : ""} yang akan berakhir.`}
         breadcrumbs={[{ label: "Utama" }, { label: "Dashboard" }]}
       />
 
-      <ClockCard today={today} />
+      <AttendanceHero today={today} className={styles.rise} style={riseStyle(3)} />
 
-      <div className={data.assets ? "grid gap-4 sm:grid-cols-2 xl:grid-cols-4" : "grid gap-4 sm:grid-cols-3"}>
-        <StatCard
+      <StatsBand>
+        <StatItem
           label="Karyawan aktif"
           value={data.employees.active}
-          icon={Users}
+          order={0}
+          pictogram={<PeoplePictogram />}
+          warn={data.employees.incompleteDocuments > 0}
           footer={
             <Link href="/karyawan" className="hover:underline">
               {data.employees.joinedThisMonth > 0 && `+${data.employees.joinedThisMonth} bergabung bulan ini · `}
@@ -66,16 +80,16 @@ async function AdminDashboard({ user, calendar }: { user: CurrentUser; calendar:
             </Link>
           }
         />
-        <StatCard
+        <StatItem
           label="Antrian approval Anda"
           value={data.queue.length}
-          icon={Inbox}
-          tone={data.queue.length ? "danger" : "success"}
+          order={1}
+          pictogram={<PaperTray count={data.queue.length} />}
           footer={
             perModule.size ? (
               <span className="flex flex-wrap gap-1">
                 {[...perModule].map(([label, count]) => (
-                  <span key={label} className="rounded-md bg-muted px-1.5 py-0.5">
+                  <span key={label} className="rounded-md bg-white px-1.5 py-0.5 shadow-[inset_0_0_0_1px_var(--line)]">
                     {count} {label}
                   </span>
                 ))}
@@ -85,11 +99,11 @@ async function AdminDashboard({ user, calendar }: { user: CurrentUser; calendar:
             )
           }
         />
-        <StatCard
+        <StatItem
           label="Project aktif"
           value={data.activeProjects}
-          icon={Briefcase}
-          tone="neutral"
+          order={2}
+          pictogram={<FolderPictogram />}
           footer={
             <Link href="/project" className="hover:underline">
               Lihat project & customer
@@ -97,35 +111,37 @@ async function AdminDashboard({ user, calendar }: { user: CurrentUser; calendar:
           }
         />
         {data.assets && (
-          <StatCard
+          <StatItem
             label="Unit dipinjam"
             value={data.assets.assigned}
             unit={`/ ${data.assets.total} unit`}
-            icon={MonitorSmartphone}
-            tone="warning"
+            order={3}
             footer={<ProgressBar value={data.assets.total ? (data.assets.assigned / data.assets.total) * 100 : 0} label="Unit dipinjam" />}
           />
         )}
+      </StatsBand>
+
+      <QueueSection title="Antrian Persetujuan Butuh Tindakan" description="Pengajuan yang menunggu persetujuan Anda" rows={data.queue} />
+
+      <div className={cn(styles.panelCards, styles.calendarCard, styles.rise)} style={riseStyle(11)}>
+        {calendar}
       </div>
-
-      <DashboardCard
-        title="Antrian Persetujuan Butuh Tindakan"
-        description="Pengajuan yang menunggu persetujuan Anda"
-        icon={ClipboardCheck}
-        action={
-          <Link href="/approval" className="text-sm font-medium text-primary hover:underline">
-            Buka Approval Center
-          </Link>
-        }
-      >
-        <ApprovalQueueTable rows={data.queue} />
-      </DashboardCard>
-
-      {calendar}
-      <ExpiringCard items={data.expiring} includeAssets={data.assets !== null} />
-    </div>
+      <div className={styles.rise} style={riseStyle(12)}>
+        <ExpiringCard items={data.expiring} includeAssets={data.assets !== null} />
+      </div>
+    </IntroScope>
   );
 }
+
+/** Tombol aksi di kepala Dashboard Staf (link sama, tampilan pil). */
+const softAction = cn(
+  buttonVariants({ variant: "outline", size: "lg" }),
+  "h-11 gap-2 rounded-full border-transparent bg-brand-soft px-4 font-bold text-brand-deep hover:bg-brand-tint hover:text-brand-deep",
+);
+const primaryAction = cn(
+  buttonVariants({ size: "lg" }),
+  "h-11 gap-2 rounded-full bg-brand px-4 font-bold text-white shadow-(--elev-cta) hover:bg-brand hover:brightness-[1.07]",
+);
 
 async function StaffDashboard({ user, calendar }: { user: CurrentUser; calendar: React.ReactNode }) {
   const [data, today] = await Promise.all([
@@ -137,54 +153,47 @@ async function StaffDashboard({ user, calendar }: { user: CurrentUser; calendar:
     user.employeeId ? getTodayAttendance(prisma, user.employeeId) : null,
   ]);
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
+    <IntroScope className="relative flex flex-col gap-7">
+      <DashboardHeader
         title={`Halo, ${user.name}`}
         description="Status pengajuan, saldo cuti, sisa plafon kesehatan, dan hal yang perlu Anda lengkapi."
         breadcrumbs={[{ label: "Utama" }, { label: "Dashboard" }]}
         actions={
           <>
-            <Link href="/reimburse/baru" className={buttonVariants({ variant: "outline", size: "lg" })}>
+            <Link href="/reimburse/baru" className={softAction}>
               <Receipt aria-hidden /> Reimburse
             </Link>
-            <Link href="/cuti" className={buttonVariants({ variant: "outline", size: "lg" })}>
+            <Link href="/cuti" className={softAction}>
               <Plane aria-hidden /> Cuti
             </Link>
-            <Link href="/kesehatan" className={buttonVariants({ size: "lg" })}>
+            <Link href="/kesehatan" className={primaryAction}>
               <HeartPulse aria-hidden /> Klaim Kesehatan
             </Link>
           </>
         }
       />
 
-      <ClockCard today={today} />
+      <AttendanceHero today={today} className={styles.rise} style={riseStyle(3)} />
 
       {data.queue && (
-        <DashboardCard
-          title="Antrian Persetujuan Anda"
-          description="Pengajuan yang menunggu persetujuan Anda sebagai Approver"
-          icon={ClipboardCheck}
-          action={
-            <Link href="/approval" className="text-sm font-medium text-primary hover:underline">
-              Buka Approval Center
-            </Link>
-          }
-        >
-          <ApprovalQueueTable rows={data.queue} />
-        </DashboardCard>
+        <QueueSection title="Antrian Persetujuan Anda" description="Pengajuan yang menunggu persetujuan Anda sebagai Approver" rows={data.queue} />
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className={cn("grid gap-6 lg:grid-cols-2", styles.panelCards, styles.rise)} style={riseStyle(5)}>
         {data.balance && <LeaveBalanceCard balance={data.balance} />}
         {data.health && <HealthSummaryCard summary={data.health} />}
       </div>
 
-      <DashboardCard title="Status Pengajuan Saya" description="8 pengajuan terakhir" icon={ClipboardCheck}>
+      <DashboardCard title="Status Pengajuan Saya" description="8 pengajuan terakhir" icon={ClipboardCheck} className={styles.rise} style={riseStyle(8)}>
         <MyRequestsList rows={data.requests} />
       </DashboardCard>
 
-      {calendar}
-      <StaffReminderCard documentMissing={data.documentMissing} certificates={data.certificates} />
-    </div>
+      <div className={cn(styles.panelCards, styles.calendarCard, styles.rise)} style={riseStyle(11)}>
+        {calendar}
+      </div>
+      <div className={styles.rise} style={riseStyle(12)}>
+        <StaffReminderCard documentMissing={data.documentMissing} certificates={data.certificates} />
+      </div>
+    </IntroScope>
   );
 }
