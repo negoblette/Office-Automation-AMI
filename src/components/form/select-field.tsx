@@ -30,7 +30,7 @@ export function SelectField({
 }: SelectFieldProps) {
   return (
     <Select items={options} value={value ?? null} onValueChange={(next) => onChange(next as string | null)} disabled={disabled}>
-      <SelectTrigger id={id} className={cn("h-10 w-full bg-background", className)} {...aria}>
+      <SelectTrigger id={id} className={cn("w-full", className)} {...aria}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>

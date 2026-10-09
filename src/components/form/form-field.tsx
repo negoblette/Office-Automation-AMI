@@ -19,23 +19,23 @@ type FormFieldProps = {
  */
 export function FormField({ label, htmlFor, error, hint, required, className, children }: FormFieldProps) {
   return (
-    <div className={cn("flex flex-col gap-2", className)}>
-      <Label htmlFor={htmlFor} className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+    <div className={cn("flex flex-col gap-[7px]", className)}>
+      <Label htmlFor={htmlFor} className="gap-1 text-[13px] leading-snug font-bold text-ink-2">
         {label}
         {required && (
-          <span className="text-danger" aria-hidden>
+          <span className="text-red-ink" aria-hidden>
             *
           </span>
         )}
       </Label>
       {children}
       {error ? (
-        <p id={fieldDescriptionId(htmlFor)} className="text-xs font-medium text-danger">
+        <p id={fieldDescriptionId(htmlFor)} className="text-[12.5px] font-semibold text-red-ink">
           {error}
         </p>
       ) : (
         hint && (
-          <p id={fieldDescriptionId(htmlFor)} className="text-xs text-muted-foreground">
+          <p id={fieldDescriptionId(htmlFor)} className="text-[12.5px] text-ink-3">
             {hint}
           </p>
         )

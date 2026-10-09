@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { LeaveBalanceCard } from "@/app/(main)/cuti/leave-ui";
 import { HealthSummaryCard } from "@/app/(main)/kesehatan/health-ui";
+import { AttendanceHero } from "@/components/attendance/attendance-hero";
 import { LeaveCalendar } from "@/components/shared/leave-calendar";
 import { ProgressBar } from "@/components/shared/progress-bar";
 import { buttonVariants } from "@/components/ui/button";
@@ -10,13 +11,13 @@ import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
 import { type CurrentUser, requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { toJakartaIsoDate } from "@/lib/format";
+import { riseStyle } from "@/lib/motion";
 import { canApprove } from "@/lib/roles";
 import { listMyApprovalQueue } from "@/lib/services/approval-queries";
 import { getTodayAttendance } from "@/lib/services/attendance-queries";
 import { getAdminDashboard, getStaffDashboard } from "@/lib/services/dashboard-queries";
 import { getLeaveCalendar } from "@/lib/services/leave-queries";
 import { cn } from "@/lib/utils";
-import { AttendanceHero } from "./attendance-hero";
 import styles from "./dashboard.module.css";
 import { DashboardHeader } from "./dashboard-header";
 import { IntroScope, PaperTray } from "./dashboard-motion";
@@ -30,7 +31,6 @@ import {
   StaffReminderCard,
   StatItem,
   StatsBand,
-  riseStyle,
 } from "./dashboard-ui";
 
 export const metadata: Metadata = { title: "Dashboard" };
@@ -123,7 +123,7 @@ async function AdminDashboard({ user, calendar }: { user: CurrentUser; calendar:
 
       <QueueSection title="Antrian Persetujuan Butuh Tindakan" description="Pengajuan yang menunggu persetujuan Anda" rows={data.queue} />
 
-      <div className={cn(styles.panelCards, styles.calendarCard, styles.rise)} style={riseStyle(11)}>
+      <div className={styles.rise} style={riseStyle(11)}>
         {calendar}
       </div>
       <div className={styles.rise} style={riseStyle(12)}>
@@ -133,15 +133,9 @@ async function AdminDashboard({ user, calendar }: { user: CurrentUser; calendar:
   );
 }
 
-/** Tombol aksi di kepala Dashboard Staf (link sama, tampilan pil). */
-const softAction = cn(
-  buttonVariants({ variant: "outline", size: "lg" }),
-  "h-11 gap-2 rounded-full border-transparent bg-brand-soft px-4 font-bold text-brand-deep hover:bg-brand-tint hover:text-brand-deep",
-);
-const primaryAction = cn(
-  buttonVariants({ size: "lg" }),
-  "h-11 gap-2 rounded-full bg-brand px-4 font-bold text-white shadow-(--elev-cta) hover:bg-brand hover:brightness-[1.07]",
-);
+/** Tombol aksi di kepala Dashboard Staf (link sama): varian tombol bersama. */
+const softAction = buttonVariants({ variant: "secondary" });
+const primaryAction = buttonVariants();
 
 async function StaffDashboard({ user, calendar }: { user: CurrentUser; calendar: React.ReactNode }) {
   const [data, today] = await Promise.all([
@@ -161,13 +155,13 @@ async function StaffDashboard({ user, calendar }: { user: CurrentUser; calendar:
         actions={
           <>
             <Link href="/reimburse/baru" className={softAction}>
-              <Receipt aria-hidden /> Reimburse
+              <Receipt className="size-4" aria-hidden /> Reimburse
             </Link>
             <Link href="/cuti" className={softAction}>
-              <Plane aria-hidden /> Cuti
+              <Plane className="size-4" aria-hidden /> Cuti
             </Link>
             <Link href="/kesehatan" className={primaryAction}>
-              <HeartPulse aria-hidden /> Klaim Kesehatan
+              <HeartPulse className="size-4" aria-hidden /> Klaim Kesehatan
             </Link>
           </>
         }
@@ -188,7 +182,7 @@ async function StaffDashboard({ user, calendar }: { user: CurrentUser; calendar:
         <MyRequestsList rows={data.requests} />
       </DashboardCard>
 
-      <div className={cn(styles.panelCards, styles.calendarCard, styles.rise)} style={riseStyle(11)}>
+      <div className={styles.rise} style={riseStyle(11)}>
         {calendar}
       </div>
       <div className={styles.rise} style={riseStyle(12)}>

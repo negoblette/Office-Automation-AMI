@@ -34,7 +34,7 @@ export function AppTopbar({ user, badges }: AppTopbarProps) {
           <div className="hidden h-7 w-px bg-line sm:block" aria-hidden />
 
           <div className="flex items-center gap-2.5">
-            <PersonAvatar name={user.name} className="rounded-[14px] bg-brand-tint font-extrabold text-brand-deep" />
+            <PersonAvatar name={user.name} className="size-10 bg-brand-tint text-sm" />
             <div className="hidden leading-tight sm:block">
               <p className="max-w-[180px] truncate text-sm font-bold text-ink">{user.name}</p>
               <p className="text-xs text-ink-3">{ROLE_LABELS[user.role]}</p>
@@ -42,14 +42,7 @@ export function AppTopbar({ user, badges }: AppTopbarProps) {
           </div>
 
           <form action={logoutAction}>
-            <Button
-              type="submit"
-              variant="ghost"
-              size="icon"
-              aria-label="Keluar"
-              title="Keluar"
-              className="size-11 rounded-[14px] text-ink-2 hover:bg-ink/[0.06] hover:text-ink"
-            >
+            <Button type="submit" variant="ghost" size="icon" aria-label="Keluar" title="Keluar">
               <LogOut className="size-5" />
             </Button>
           </form>

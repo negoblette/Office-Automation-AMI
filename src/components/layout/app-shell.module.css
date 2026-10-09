@@ -1,6 +1,6 @@
 /*
- * Kerangka aplikasi (docs/design/prototipe-dashboard-oa.html): latar bertitik, sidebar di atas
- * latar, stempel samar di bawah sidebar, dan transisi buka/tutup submenu. Token di globals.css.
+ * Kerangka aplikasi: latar bertitik, sidebar di atas latar, dan transisi buka/tutup submenu.
+ * Token di globals.css. prefers-reduced-motion ditangani aturan global di globals.css.
  */
 
 .ground {
@@ -12,27 +12,6 @@
 /* Sidebar menutupi titik di bagian atas, lalu memudar ke latar. */
 .sidebar {
   background: linear-gradient(180deg, var(--ground) 0%, var(--ground) 66%, var(--ground-0) 100%);
-}
-
-.seal {
-  position: absolute;
-  z-index: -1;
-  left: -104px;
-  bottom: -128px;
-  overflow: visible;
-  color: var(--brand);
-  opacity: 0.16;
-  transform: rotate(-18deg);
-  pointer-events: none;
-}
-
-.seal circle {
-  fill: none;
-  stroke: currentColor;
-}
-
-.seal text {
-  fill: currentColor;
 }
 
 /*
@@ -64,11 +43,4 @@
 .subOpen .subList {
   visibility: visible;
   transition-delay: 0s;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sub,
-  .subList {
-    transition: none;
-  }
 }

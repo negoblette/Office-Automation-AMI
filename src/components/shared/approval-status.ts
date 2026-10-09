@@ -14,7 +14,7 @@ export function requestStatusBadge(
     case "DRAFT":
       return { label: "Draft", variant: "neutral" };
     case "PENDING":
-      return { label: currentLevel ? `Menunggu L${currentLevel}` : "Menunggu Persetujuan", variant: "info" };
+      return { label: currentLevel ? `Menunggu L${currentLevel}` : "Menunggu Persetujuan", variant: "pending" };
     case "APPROVED":
       return { label: "Disetujui", variant: "success" };
     case "REJECTED":

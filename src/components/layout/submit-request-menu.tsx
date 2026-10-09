@@ -24,14 +24,8 @@ const TILE_CLASSES: Record<(typeof REQUEST_LINKS)[number]["href"], string> = {
 export function SubmitRequestMenu() {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            size="lg"
-            className="h-11 gap-2 rounded-full bg-brand pr-4 pl-3.5 font-bold text-white shadow-(--elev-cta) transition-[filter,transform] duration-500 ease-smooth hover:bg-brand hover:brightness-[1.07] active:scale-[0.97] motion-reduce:transition-none"
-          />
-        }
-      >
+      {/* Tombol biru bersama (varian default): bayangan tipis, hover menggelap ke biru tua. */}
+      <DropdownMenuTrigger render={<Button className="pl-3.5" />}>
         <Plus className="size-4.5" aria-hidden />
         <span>Ajukan</span>
         <ChevronDown className="size-4" aria-hidden />

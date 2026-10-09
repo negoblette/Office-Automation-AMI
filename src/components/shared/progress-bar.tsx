@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 export type ProgressTone = "info" | "success" | "danger" | "warning" | "neutral";
 
 const toneClasses: Record<ProgressTone, string> = {
-  info: "bg-primary",
+  info: "bg-brand",
   success: "bg-success",
   danger: "bg-danger",
   warning: "bg-warning",
@@ -29,10 +29,10 @@ export function ProgressBar({ value, tone = "info", label, className }: Progress
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(clamped)}
-      className={cn("h-2 w-full overflow-hidden rounded-full bg-neutral-soft", className)}
+      className={cn("h-2 w-full overflow-hidden rounded-[4px] bg-line", className)}
     >
       <div
-        className={cn("h-full rounded-full transition-[width]", toneClasses[tone])}
+        className={cn("h-full rounded-[4px] transition-[width] duration-[600ms] ease-smooth", toneClasses[tone])}
         style={{ width: `${clamped}%` }}
       />
     </div>

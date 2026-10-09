@@ -34,8 +34,8 @@ describe("describeRange", () => {
 describe("requestStatusBadge (RMB-09)", () => {
   it.each([
     ["DRAFT", null, "Draft", "neutral"],
-    ["PENDING", 1, "Menunggu L1", "info"],
-    ["PENDING", 2, "Menunggu L2", "info"],
+    ["PENDING", 1, "Menunggu L1", "pending"],
+    ["PENDING", 2, "Menunggu L2", "pending"],
     ["APPROVED", null, "Disetujui", "success"],
     ["REJECTED", null, "Ditolak", "danger"],
   ] as const)("%s (level %s) → %s", (status, level, label, variant) => {

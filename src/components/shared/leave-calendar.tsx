@@ -3,6 +3,7 @@ import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import type { CalendarDay } from "@/lib/services/leave-queries";
 import { cn } from "@/lib/utils";
+import { sectionIconClass, sectionTitleClass } from "./section-header";
 
 const WEEKDAYS = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
 
@@ -30,14 +31,15 @@ export function LeaveCalendar({
   const people = new Set(leaveDays.flatMap((d) => d.leaves.map((l) => l.name)));
 
   return (
-    <section className={cn("flex min-w-0 flex-col gap-4 rounded-2xl bg-card p-5 shadow-card sm:p-6", className)}>
+    // Gaya kalender Dashboard: permukaan lembut, ubin ikon, judul bagian 21px.
+    <section className={cn("panel-surface flex min-w-0 flex-col gap-4 p-5 sm:p-6", className)}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-info-soft text-primary">
+        <div className="flex items-center gap-3.5">
+          <div className={sectionIconClass}>
             <CalendarDays className="size-5" aria-hidden />
           </div>
           <div>
-            <h2 className="text-base font-semibold">Kalender Cuti & Libur</h2>
+            <h2 className={sectionTitleClass}>Kalender Cuti & Libur</h2>
             <p className="text-sm text-muted-foreground">
               {people.size ? `${people.size} karyawan cuti di bulan ini` : "Tidak ada karyawan cuti di bulan ini"}
             </p>

@@ -18,7 +18,7 @@ type RupiahInputProps = Omit<React.ComponentProps<"input">, "value" | "onChange"
 export function RupiahInput({ value, onChange, className, ...props }: RupiahInputProps) {
   return (
     <div className="relative">
-      <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted-foreground">
+      <span className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 font-mono text-[13px] font-semibold text-ink-3">
         Rp
       </span>
       <Input
@@ -32,7 +32,7 @@ export function RupiahInput({ value, onChange, className, ...props }: RupiahInpu
           // Batasi 15 digit supaya tetap dalam rentang aman number.
           onChange(digits ? Number(digits.slice(0, 15)) : null);
         }}
-        className={cn("h-10 bg-background pl-10 tabular-nums", className)}
+        className={cn("pl-11 font-mono tabular-nums", className)}
       />
     </div>
   );

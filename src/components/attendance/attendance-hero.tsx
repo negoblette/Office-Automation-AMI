@@ -4,12 +4,12 @@ import { Check, Loader2, LogIn, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { clockInAction, clockOutAction } from "@/app/(main)/absensi/actions";
+import { useJakartaClock } from "@/components/shared/use-jakarta-clock";
 import { formatDuration } from "@/lib/attendance";
 import { formatDate } from "@/lib/format";
 import type { TodayAttendance } from "@/lib/services/attendance-queries";
 import { cn } from "@/lib/utils";
-import styles from "./dashboard.module.css";
-import { useJakartaClock } from "./dashboard-motion";
+import styles from "./attendance-hero.module.css";
 
 type HeroState = "in" | "out" | "done";
 
@@ -20,8 +20,8 @@ const STATUS_LABEL: Record<HeroState, string> = {
 };
 
 /**
- * Panel absensi di Dashboard (tampilan prototipe). Perilakunya sama persis dengan `ClockCard`
- * (absensi/attendance-ui.tsx, tetap dipakai di /absensi): aksi server yang sama, konfirmasi sebelum
+ * Panel absensi biru (Dashboard; halaman Absensi menyusul). Perilakunya sama persis dengan `ClockCard`
+ * (absensi/attendance-ui.tsx, masih dipakai di /absensi): aksi server yang sama, konfirmasi sebelum
  * clock out, refresh setelah berhasil, pesan error yang sama. Jam resmi dicatat server; jam berjalan
  * di sini hanya tampilan.
  */

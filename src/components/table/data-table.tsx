@@ -95,12 +95,13 @@ export function DataTable<TData extends RowData>({
   const totalRows = table.getFilteredRowModel().rows.length;
 
   return (
-    <div className="overflow-hidden rounded-2xl bg-card shadow-card">
+    // Versi tenang: tabel langsung di lembar (tanpa kartu); kotak cari & tabel sama dengan antrian Dashboard.
+    <div className="min-w-0">
       {(searchPlaceholder || toolbar) && (
-        <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
+        <div className="flex flex-col gap-3 pb-3.5 sm:flex-row sm:items-center">
           {searchPlaceholder && (
             <div className="relative sm:max-w-xs sm:flex-1">
-              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="pointer-events-none absolute top-1/2 left-4 size-[18px] -translate-y-1/2 text-ink-3" />
               <Input
                 value={globalFilter}
                 onChange={(event) => {
@@ -109,7 +110,7 @@ export function DataTable<TData extends RowData>({
                 }}
                 placeholder={searchPlaceholder}
                 aria-label={searchPlaceholder}
-                className="h-10 bg-background pl-9"
+                className="bg-panel pl-11 text-sm focus-visible:shadow-[inset_0_0_0_1px_var(--ink),0_0_0_3px_var(--brand-ring)]"
               />
             </div>
           )}
@@ -120,7 +121,7 @@ export function DataTable<TData extends RowData>({
       <Table>
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id} className="border-none bg-muted/60 hover:bg-muted/60">
+            <TableRow key={headerGroup.id}>
               {headerGroup.headers.map((header) => {
                 const canSort = header.column.getCanSort();
                 const sorted = header.column.getIsSorted();
@@ -128,14 +129,13 @@ export function DataTable<TData extends RowData>({
                 return (
                   <TableHead
                     key={header.id}
-                    className="h-11 px-4 text-xs font-semibold tracking-wider text-muted-foreground uppercase"
                     aria-sort={sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : undefined}
                   >
                     {canSort && label ? (
                       <button
                         type="button"
                         onClick={header.column.getToggleSortingHandler()}
-                        className="inline-flex items-center gap-1 uppercase hover:text-foreground"
+                        className="inline-flex min-h-11 items-center gap-1.5 font-bold transition-colors duration-300 ease-smooth hover:text-ink"
                       >
                         {label}
                         {sorted === "asc" ? (
@@ -160,15 +160,15 @@ export function DataTable<TData extends RowData>({
             table.getRowModel().rows.map((row) => (
               <TableRow key={row.id}>
                 {row.getAllCells().map((cell) => (
-                  <TableCell key={cell.id} className="px-4 py-4 align-middle whitespace-normal">
+                  <TableCell key={cell.id} className="whitespace-normal">
                     <table.FlexRender cell={cell} />
                   </TableCell>
                 ))}
               </TableRow>
             ))
           ) : (
-            <TableRow>
-              <TableCell colSpan={columns.length} className="h-28 text-center text-muted-foreground">
+            <TableRow className="[&:hover>td]:bg-transparent">
+              <TableCell colSpan={columns.length} className="h-28 text-center whitespace-normal text-ink-3">
                 {globalFilter ? `Tidak ada hasil untuk "${globalFilter}".` : emptyMessage}
               </TableCell>
             </TableRow>
@@ -176,8 +176,8 @@ export function DataTable<TData extends RowData>({
         </TableBody>
       </Table>
 
-      <div className="flex flex-col gap-3 border-t border-border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-muted-foreground">{describeRange(pageIndex, table.state.pagination.pageSize, totalRows, rowNoun)}</p>
+      <div className="flex flex-col gap-3 px-1 pt-1.5 text-[13px] sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-ink-3">{describeRange(pageIndex, table.state.pagination.pageSize, totalRows, rowNoun)}</p>
         {pageCount > 1 && (
           <nav aria-label="Paginasi" className="flex items-center gap-1">
             <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
@@ -185,7 +185,7 @@ export function DataTable<TData extends RowData>({
             </Button>
             {getPageNumbers(pageIndex + 1, pageCount).map((page, i) =>
               page === "…" ? (
-                <span key={`gap-${i}`} className="px-1 text-muted-foreground">
+                <span key={`gap-${i}`} className="px-1 text-ink-3">
                   …
                 </span>
               ) : (

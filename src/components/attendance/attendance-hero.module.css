@@ -1,0 +1,203 @@
+/*
+ * Panel absensi biru — satu-satunya permukaan biru, dipakai di Dashboard dan halaman Absensi.
+ * Gerak hanya transform & opacity, didefinisikan di dalam `prefers-reduced-motion: no-preference`.
+ */
+
+.heroShell {
+  position: relative;
+  padding: 6px;
+  border-radius: 30px;
+  background: var(--shell);
+  box-shadow: inset 0 0 0 1px var(--brand-ring);
+}
+
+.hero {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 28px;
+  overflow: hidden;
+  padding: 22px 28px;
+  border-radius: 24px;
+  color: var(--on-hero);
+  background: radial-gradient(130% 240% at 0% 0%, var(--hero-a) 0%, var(--hero-b) 46%, var(--hero-c) 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.3),
+    0 26px 46px -30px rgb(var(--glow) / 0.9);
+}
+
+/* Sorot cahaya statis di kanan atas. */
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(420px circle at 84% -20%, rgb(255 255 255 / 0.2), transparent 65%);
+}
+
+/* Titik halus yang memudar ke kiri. */
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: radial-gradient(rgb(255 255 255 / 0.17) 1px, transparent 1.3px);
+  background-size: 22px 22px;
+  -webkit-mask-image: linear-gradient(110deg, transparent 30%, #000 100%);
+  mask-image: linear-gradient(110deg, transparent 30%, #000 100%);
+}
+
+.hero :where(a, button):focus-visible {
+  outline: 2px solid var(--on-hero);
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  .hero {
+    padding: 20px;
+  }
+}
+
+/* Cap MASUK / PULANG. */
+.punch {
+  --r: -4deg;
+  display: block;
+  padding: 5px 12px;
+  border: 2px solid var(--on-hero);
+  border-radius: 9px;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  transform: rotate(var(--r));
+}
+
+.punchOut {
+  --r: 3deg;
+}
+
+/* Tombol absen dengan tiga keadaan. */
+.cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 52px;
+  padding: 6px 6px 6px 22px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 800;
+  transition:
+    background-color 0.45s var(--ease),
+    color 0.45s var(--ease),
+    box-shadow 0.45s var(--ease),
+    transform 0.5s var(--ease);
+}
+
+.cta:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.cta:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.knob {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  transition:
+    transform 0.5s var(--ease),
+    background-color 0.45s var(--ease),
+    color 0.45s var(--ease);
+}
+
+.cta:hover:not(:disabled) .knob {
+  transform: translate(2px, -1px) scale(1.06);
+}
+
+.ctaIn {
+  color: var(--brand-deep);
+  background: #fff;
+  box-shadow: 0 14px 26px -14px rgb(8 20 70 / 0.7);
+}
+
+.ctaIn .knob {
+  color: #fff;
+  background: var(--brand);
+}
+
+.ctaOut {
+  color: var(--on-hero);
+  background: rgb(255 255 255 / 0.14);
+  box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.6);
+}
+
+.ctaOut .knob {
+  color: var(--brand-deep);
+  background: #fff;
+}
+
+.ctaDone {
+  cursor: default;
+  color: var(--on-hero-2);
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.3);
+}
+
+.ctaDone .knob {
+  color: var(--on-hero);
+  background: rgb(255 255 255 / 0.16);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .punch {
+    animation: thunk 0.36s var(--spring) both;
+  }
+
+  .swap .ctaLabel {
+    animation: swapin 0.45s var(--ease) both;
+  }
+
+  .swap .knob {
+    animation: knobpop 0.5s var(--spring) both;
+  }
+}
+
+@keyframes thunk {
+  from {
+    opacity: 0;
+    transform: rotate(var(--r)) scale(1.9);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(var(--r)) scale(1);
+  }
+}
+
+@keyframes swapin {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes knobpop {
+  from {
+    transform: scale(0.55) rotate(-50deg);
+  }
+  to {
+    transform: none;
+  }
+}

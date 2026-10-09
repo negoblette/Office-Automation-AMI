@@ -124,10 +124,11 @@ function SidebarItem({
                   onClick={onNavigate}
                   aria-current={isChildActive ? "page" : undefined}
                   className={cn(
-                    "flex min-h-11 items-center rounded-r-[14px] pr-3 pl-5 text-[13.5px] outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-inset",
+                    // Garis fokus hanya untuk fokus keyboard, di dalam pil; tanda aktif = pil putih.
+                    "flex min-h-11 items-center rounded-r-[14px] pr-3 pl-5 text-[13.5px] outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ink focus-visible:outline-solid",
                     motionClass,
                     isChildActive
-                      ? "bg-sidebar-primary font-bold text-sidebar-primary-foreground"
+                      ? "bg-sidebar-primary font-bold text-sidebar-primary-foreground shadow-(--elev-pill)"
                       : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                   )}
                 >

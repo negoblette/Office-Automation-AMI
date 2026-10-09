@@ -1,0 +1,136 @@
+/*
+ * Pita angka (docs/design/prototipe-halaman-oa.html §7): satu permukaan lembut (utility panel-surface)
+ * berisi beberapa angka yang dipisah garis. Angka saja, tanpa ikon dan gambar.
+ * Varian `lg` dipakai Dashboard: angka 48px, ruang untuk piktogram, sorot putih saat disentuh.
+ */
+
+.band {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  overflow: hidden;
+}
+
+.stat {
+  display: flex;
+  flex: 1 1 220px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 16px 22px 17px 24px;
+}
+
+.stat + .stat {
+  box-shadow: -1px 0 0 var(--line);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.label {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+
+.value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 7px;
+}
+
+.num {
+  font-size: 32px;
+  line-height: 1.25;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.unit {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+
+.sub {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+/* Keterangan yang perlu perhatian. */
+.warn {
+  font-weight: 600;
+  color: var(--amber-ink);
+}
+
+/* Empat bagian: dua per baris pada layar di bawah 1280px. */
+@media (max-width: 1279px) {
+  .four .stat {
+    flex-basis: 40%;
+  }
+
+  .four .stat:nth-child(n + 3) {
+    box-shadow:
+      -1px 0 0 var(--line),
+      0 -1px 0 var(--line);
+  }
+}
+
+/* ---------- varian lg (Dashboard) ---------- */
+
+.lg .stat {
+  flex-basis: 250px;
+  gap: 6px;
+  padding: 18px 22px 18px 24px;
+  transition: background-color 0.35s var(--ease);
+}
+
+.lg .stat:hover {
+  background: #fff;
+}
+
+.lg .top {
+  min-height: 82px;
+}
+
+.lg .num {
+  font-size: 48px;
+  line-height: 1.1;
+  letter-spacing: -0.045em;
+}
+
+.lg .sub {
+  font-weight: 500;
+}
+
+/* Di Dashboard keterangan perlu perhatian diberi titik kuning. */
+.lg .warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+}
+
+.lg .warn::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--amber);
+}
+
+@media (max-width: 560px) {
+  .stat + .stat,
+  .four .stat:nth-child(n + 3) {
+    box-shadow: 0 -1px 0 var(--line);
+  }
+}

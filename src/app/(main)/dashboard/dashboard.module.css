@@ -1,8 +1,9 @@
 /*
- * Dashboard — tampilan dari docs/design/prototipe-dashboard-oa.html (token di globals.css).
- * Komponen bersama (tabel antrian, kalender, kartu saldo/plafon) di-restyle hanya dari pembungkus
- * di sini, tanpa mengubah file komponennya. Gerak hanya transform & opacity, dan semua animasi
- * didefinisikan di dalam `prefers-reduced-motion: no-preference`.
+ * Dashboard — bagian yang khas Dashboard (jam analog, piktogram, varian tabel antrian, stempel TUNTAS,
+ * gerak pembuka). Gaya yang dipakai halaman lain sudah ada di komponen bersama: judul halaman
+ * (PageHeader), panel absensi (AttendanceHero), pita angka (StatsBand), tabel/kotak cari/pil filter
+ * (DataTable, FilterPills), dan kalender (LeaveCalendar). Gerak hanya transform & opacity, dan semua
+ * animasi didefinisikan di dalam `prefers-reduced-motion: no-preference`.
  */
 
 /* ---------- jam analog di kanan judul ---------- */
@@ -97,245 +98,17 @@
   opacity: 0.6;
 }
 
-/* ---------- panel absensi ---------- */
+/* ---------- pita angka: piktogram (varian lg ada di stats-band.module.css) ---------- */
 
-.heroShell {
-  position: relative;
-  padding: 6px;
-  border-radius: 30px;
-  background: var(--shell);
-  box-shadow: inset 0 0 0 1px var(--brand-ring);
-}
-
-.hero {
-  position: relative;
-  isolation: isolate;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 14px 28px;
-  overflow: hidden;
-  padding: 22px 28px;
-  border-radius: 24px;
-  color: var(--on-hero);
-  background: radial-gradient(130% 240% at 0% 0%, var(--hero-a) 0%, var(--hero-b) 46%, var(--hero-c) 100%);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.3),
-    0 26px 46px -30px rgb(var(--glow) / 0.9);
-}
-
-/* Sorot cahaya statis di kanan atas. */
-.hero::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background: radial-gradient(420px circle at 84% -20%, rgb(255 255 255 / 0.2), transparent 65%);
-}
-
-/* Titik halus yang memudar ke kiri. */
-.hero::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background-image: radial-gradient(rgb(255 255 255 / 0.17) 1px, transparent 1.3px);
-  background-size: 22px 22px;
-  -webkit-mask-image: linear-gradient(110deg, transparent 30%, #000 100%);
-  mask-image: linear-gradient(110deg, transparent 30%, #000 100%);
-}
-
-.hero :where(a, button):focus-visible {
-  outline: 2px solid var(--on-hero);
-  outline-offset: 2px;
-}
-
-@media (max-width: 560px) {
-  .hero {
-    padding: 20px;
-  }
-}
-
-/* Cap MASUK / PULANG. */
-.punch {
-  --r: -4deg;
-  display: block;
-  padding: 5px 12px;
-  border: 2px solid var(--on-hero);
-  border-radius: 9px;
-  font-family: var(--font-plex-mono), ui-monospace, monospace;
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  white-space: nowrap;
-  transform: rotate(var(--r));
-}
-
-.punchOut {
-  --r: 3deg;
-}
-
-/* Tombol absen dengan tiga keadaan. */
-.cta {
-  display: inline-flex;
-  align-items: center;
-  gap: 14px;
-  min-height: 52px;
-  padding: 6px 6px 6px 22px;
-  border-radius: 999px;
-  font-size: 15px;
-  font-weight: 800;
-  transition:
-    background-color 0.45s var(--ease),
-    color 0.45s var(--ease),
-    box-shadow 0.45s var(--ease),
-    transform 0.5s var(--ease);
-}
-
-.cta:active:not(:disabled) {
-  transform: scale(0.97);
-}
-
-.cta:disabled {
-  cursor: default;
-  opacity: 0.85;
-}
-
-.knob {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  transition:
-    transform 0.5s var(--ease),
-    background-color 0.45s var(--ease),
-    color 0.45s var(--ease);
-}
-
-.cta:hover:not(:disabled) .knob {
-  transform: translate(2px, -1px) scale(1.06);
-}
-
-.ctaIn {
-  color: var(--brand-deep);
-  background: #fff;
-  box-shadow: 0 14px 26px -14px rgb(8 20 70 / 0.7);
-}
-
-.ctaIn .knob {
-  color: #fff;
-  background: var(--brand);
-}
-
-.ctaOut {
-  color: var(--on-hero);
-  background: rgb(255 255 255 / 0.14);
-  box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.6);
-}
-
-.ctaOut .knob {
-  color: var(--brand-deep);
-  background: #fff;
-}
-
-.ctaDone {
-  cursor: default;
-  color: var(--on-hero-2);
-  background: transparent;
-  box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.3);
-}
-
-.ctaDone .knob {
-  color: var(--on-hero);
-  background: rgb(255 255 255 / 0.16);
-}
-
-/* ---------- pita statistik ---------- */
-
-.stats {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  overflow: hidden;
-  border-radius: 22px;
-  background: var(--panel);
-  box-shadow: inset 0 0 0 1px rgb(var(--shade) / 0.05);
-}
-
+/* Penanda tiap bagian pita, untuk gerak piktogram saat disentuh. */
 .stat {
-  display: flex;
-  flex: 1 1 250px;
-  flex-direction: column;
-  gap: 6px;
-  padding: 18px 22px 18px 24px;
-  transition: background-color 0.35s var(--ease);
+  position: relative;
 }
 
-.stat:hover {
-  background: #fff;
-}
-
-.stat + .stat {
-  box-shadow: -1px 0 0 var(--line);
-}
-
-@media (max-width: 560px) {
-  .stat + .stat {
-    box-shadow: 0 -1px 0 var(--line);
-  }
-}
-
-.statTop {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 82px;
-}
-
-.statLabel {
-  display: block;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--ink-3);
-}
-
+/* Angka yang menghitung naik / "bump" saat berubah. */
 .statNum {
   display: inline-block;
-  font-size: 48px;
-  line-height: 1.1;
-  font-weight: 800;
-  letter-spacing: -0.045em;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
   transform-origin: 0 80%;
-}
-
-.statSub {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ink-3);
-}
-
-/* Titik kuning untuk keterangan yang perlu perhatian (mis. dokumen belum lengkap). */
-.statWarn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-weight: 600;
-  color: var(--amber-ink);
-}
-
-.statWarn::before {
-  content: "";
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--amber);
 }
 
 /* Piktogram orang (Karyawan aktif). */
@@ -575,210 +348,28 @@
   transform: translateY(-8px);
 }
 
-/* ---------- tabel antrian (ApprovalQueueTable + DataTable dipakai apa adanya) ---------- */
+/*
+ * ---------- tabel antrian: varian khusus Dashboard ----------
+ * Gaya dasar (pil filter, kotak cari, kepala, baris, paginasi) ada di FilterPills & DataTable.
+ */
 
 /* Akar ApprovalQueueTable: [pil filter] lalu [DataTable]. */
 .queueTable > div {
   gap: 14px;
 }
 
-/* Pil filter (FilterPills). */
-.queueTable [role="group"] {
-  gap: 8px;
-}
-
-.queueTable [role="group"] > span {
-  margin-right: 4px;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--ink-3);
-}
-
-.queueTable [role="group"] > button {
-  display: inline-flex;
-  align-items: center;
-  height: 36px;
-  padding: 0 14px;
-  border-radius: 999px;
-  font-size: 13.5px;
-  font-weight: 700;
-  color: var(--ink-2);
-  background: #fff;
-  box-shadow: inset 0 0 0 1px var(--edge);
-  transition:
-    background-color 0.35s var(--ease),
-    color 0.35s var(--ease),
-    box-shadow 0.35s var(--ease),
-    transform 0.5s var(--ease);
-}
-
-.queueTable [role="group"] > button:hover {
-  color: var(--ink);
-  background: #fff;
-  box-shadow: inset 0 0 0 1px var(--ink);
-}
-
-.queueTable [role="group"] > button:active {
-  transform: scale(0.95);
-}
-
-.queueTable [role="group"] > button[aria-pressed="true"] {
-  color: #fff;
-  background: var(--ink);
-  box-shadow: inset 0 0 0 1px var(--ink);
-}
-
-.queueTable [role="group"] > button:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
-}
-
-/* Kartu DataTable dibuat rata di atas lembar putih. */
-.queueTable > div > div:not([role="group"]) {
-  overflow: visible;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-/* Baris kotak cari. */
-.queueTable > div > div:not([role="group"]) > div:first-child {
-  padding: 0 0 14px;
-  border-bottom: 0;
-}
-
-.queueTable [data-slot="input"] {
-  height: 46px;
-  padding-left: 44px;
-  border: 0;
-  border-radius: 14px;
-  font-size: 14px;
-  color: var(--ink);
-  background: var(--panel);
-  box-shadow: inset 0 0 0 1px var(--edge);
-  transition: box-shadow 0.3s var(--ease);
-}
-
-.queueTable [data-slot="input"]:hover {
-  box-shadow: inset 0 0 0 1px var(--ink);
-}
-
-.queueTable [data-slot="input"]:focus-visible {
-  outline: none;
-  box-shadow:
-    inset 0 0 0 1px var(--ink),
-    0 0 0 3px var(--brand-ring);
-}
-
-.queueTable [data-slot="input"]::placeholder {
-  color: var(--mute);
-}
-
-.queueTable div:has(> [data-slot="input"]) > svg {
-  left: 16px;
-  width: 18px;
-  height: 18px;
-  color: var(--ink-3);
-}
-
-/* Tabel: digeser ke samping di layar sempit, halaman tidak ikut bergeser. */
+/* Tabel digeser ke samping di layar sempit, halaman tidak ikut bergeser. */
 .queueTable [data-slot="table"] {
   min-width: 920px;
-  border-collapse: separate;
-  border-spacing: 0;
 }
 
-.queueTable thead tr,
-.queueTable thead tr:hover,
-.queueTable tbody tr,
-.queueTable tbody tr:hover {
-  border: 0;
-  background: transparent;
-}
-
-.queueTable th {
-  height: 44px;
-  padding: 0 12px;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--ink-3);
-  background: var(--panel);
-}
-
-.queueTable th:first-child {
-  border-radius: 14px 0 0 14px;
-}
-
-.queueTable th:last-child {
-  border-radius: 0 14px 14px 0;
-}
-
-.queueTable th button {
-  min-height: 44px;
-  gap: 6px;
-  font-weight: 700;
-  text-transform: none;
-  transition: color 0.3s var(--ease);
-}
-
-.queueTable th button:hover {
-  color: var(--ink);
-}
-
-.queueTable tbody td {
-  height: 68px;
-  padding: 10px 12px;
-  transition: background-color 0.3s var(--ease);
-}
-
-.queueTable tbody tr:hover td {
-  background: var(--panel);
-}
-
-.queueTable tbody td:first-child {
-  border-radius: 16px 0 0 16px;
-}
-
-.queueTable tbody td:last-child {
-  border-radius: 0 16px 16px 0;
-}
-
-/* Kolom pemohon: avatar kotak membulat. */
-.queueTable td:first-child span[aria-hidden="true"],
-.queueTable td:first-child img {
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
-}
-
+/* Kolom pemohon: avatar biru. */
 .queueTable td:first-child span[aria-hidden="true"] {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--brand-deep);
   background: var(--brand-tint);
 }
 
-.queueTable td:first-child p:first-child {
-  font-weight: 700;
-  color: var(--ink);
-}
-
-.queueTable td:first-child p + p {
-  font-size: 12.5px;
-  color: var(--ink-3);
-}
-
-/* Kolom kategori: label kotak. */
+/* Kolom kategori: label berwarna. */
 .queueTable td:nth-child(2) > span {
-  height: 24px;
-  padding: 0 9px;
-  border-radius: 8px;
-  font-size: 12.5px;
-  font-weight: 700;
   color: var(--brand-deep);
   background: var(--brand-soft);
 }
@@ -796,8 +387,9 @@
   color: var(--ink-2);
 }
 
-/* Kolom aksi: tombol pil. Setujui = biru muda, jadi biru saat baris disorot. */
+/* Kolom aksi: tombol pil polos. Setujui = biru muda, jadi biru saat baris disorot. */
 .queueTable td:last-child button {
+  gap: 4px;
   height: 40px;
   padding: 0 16px;
   border: 0;
@@ -806,15 +398,22 @@
   font-weight: 700;
   color: var(--ink-2);
   background: transparent;
+  box-shadow: none;
   transition:
     background-color 0.3s var(--ease),
     color 0.3s var(--ease),
     transform 0.5s var(--ease);
 }
 
+.queueTable td:last-child button svg {
+  width: 14px;
+  height: 14px;
+}
+
 .queueTable td:last-child button:hover {
   color: var(--ink);
   background: rgb(var(--shade) / 0.07);
+  box-shadow: none;
 }
 
 .queueTable td:last-child button:active {
@@ -831,17 +430,6 @@
 .queueTable td:last-child button[class*="bg-foreground"]:focus-visible {
   color: #fff;
   background: var(--brand);
-}
-
-/* Baris keterangan "Menampilkan x dari y" + paginasi. */
-.queueTable > div > div:not([role="group"]) > div:last-child {
-  padding: 6px 4px 0;
-  border-top: 0;
-  font-size: 13px;
-}
-
-.queueTable > div > div:not([role="group"]) > div:last-child p {
-  color: var(--ink-3);
 }
 
 .queueTable tbody tr:nth-child(2) {
@@ -1009,7 +597,10 @@
   max-width: 330px;
 }
 
-/* ---------- kartu bersama (kalender, saldo cuti, plafon) di atas lembar putih ---------- */
+/*
+ * ---------- kartu saldo cuti & plafon kesehatan (Dashboard Staf) di atas lembar putih ----------
+ * Sementara di sini sampai putaran 4 (Cuti) membuat varian kartu saldo.
+ */
 
 .panelCards > section {
   border-radius: 22px;
@@ -1017,29 +608,7 @@
   box-shadow: inset 0 0 0 1px rgb(var(--shade) / 0.05);
 }
 
-/* Kepala kalender disamakan dengan kepala bagian lain. */
-.calendarCard > section > div:first-child > div:first-child {
-  align-items: center;
-  gap: 14px;
-}
-
-.calendarCard > section > div:first-child > div:first-child > div:first-child {
-  width: 46px;
-  height: 46px;
-  border-radius: 15px;
-  color: var(--brand);
-  background: var(--brand-soft);
-}
-
-.calendarCard > section h2 {
-  font-size: 21px;
-  line-height: 1.25;
-  font-weight: 800;
-  letter-spacing: -0.025em;
-  color: var(--ink);
-}
-
-/* ---------- gerak ---------- */
+/* ---------- gerak pembuka (prefers-reduced-motion ditangani aturan global di globals.css) ---------- */
 
 @media (prefers-reduced-motion: no-preference) {
   /* Pembuka: hanya selama data-intro ada (2 detik pertama, lihat IntroScope). */
@@ -1069,18 +638,6 @@
     animation-delay: calc(620ms + var(--row, 0) * 60ms);
   }
 
-  .punch {
-    animation: thunk 0.36s var(--spring) both;
-  }
-
-  .swap .ctaLabel {
-    animation: swapin 0.45s var(--ease) both;
-  }
-
-  .swap .knob {
-    animation: knobpop 0.5s var(--spring) both;
-  }
-
   .bump {
     animation: bump 0.5s var(--spring);
   }
@@ -1097,13 +654,6 @@
   /* backwards: setelah selesai, rotasi diambil dari .seal sehingga hover tetap jalan. */
   .seal {
     animation: sealin 0.5s var(--spring) 0.15s backwards;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .motionScope,
-  .motionScope * {
-    transition: none !important;
   }
 }
 
@@ -1134,37 +684,6 @@
   }
   to {
     opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes thunk {
-  from {
-    opacity: 0;
-    transform: rotate(var(--r)) scale(1.9);
-  }
-  to {
-    opacity: 1;
-    transform: rotate(var(--r)) scale(1);
-  }
-}
-
-@keyframes swapin {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes knobpop {
-  from {
-    transform: scale(0.55) rotate(-50deg);
-  }
-  to {
     transform: none;
   }
 }

@@ -39,7 +39,7 @@ export function MobileNav({ role, badges }: { role: AppRole; badges?: NavBadges 
             <X />
           </SheetClose>
         </div>
-        <div className="flex-1 overflow-y-auto [scrollbar-width:thin]">
+        <div className="flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <SidebarNav role={role} badges={badges} onNavigate={() => setOpen(false)} />
         </div>
       </SheetContent>

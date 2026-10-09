@@ -17,19 +17,20 @@ type PersonAvatarProps = {
   className?: string;
 };
 
+/** Avatar kotak membulat, satu warna untuk semua orang (versi tenang). */
 export function PersonAvatar({ name, imageUrl, size = "md", className }: PersonAvatarProps) {
-  const sizeClass = size === "sm" ? "size-8 text-xs" : "size-10 text-sm";
+  const sizeClass = size === "sm" ? "size-8 rounded-[11px] text-xs" : "size-[42px] rounded-[14px] text-[13px]";
   if (imageUrl) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- file dilayani /api/files dengan cek akses
-      <img src={imageUrl} alt={name} className={cn("shrink-0 rounded-full object-cover", sizeClass, className)} />
+      <img src={imageUrl} alt={name} className={cn("shrink-0 object-cover", sizeClass, className)} />
     );
   }
   return (
     <span
       aria-hidden
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full bg-info-soft font-semibold text-primary",
+        "flex shrink-0 items-center justify-center bg-brand-soft font-extrabold text-brand-deep",
         sizeClass,
         className,
       )}
@@ -53,8 +54,8 @@ export function PersonCell({ name, subtitle, imageUrl, className }: PersonCellPr
     <div className={cn("flex min-w-0 items-center gap-3", className)}>
       <PersonAvatar name={name} imageUrl={imageUrl} />
       <div className="min-w-0">
-        <p className="truncate text-sm font-semibold text-foreground">{name}</p>
-        {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
+        <p className="truncate text-sm font-bold text-ink">{name}</p>
+        {subtitle && <p className="truncate text-[12.5px] text-ink-3">{subtitle}</p>}
       </div>
     </div>
   );

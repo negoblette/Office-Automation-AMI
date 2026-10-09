@@ -2,36 +2,36 @@ import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
 
+// Versi tenang (docs/design/prototipe-halaman-oa.html §4): semua tombol berbentuk pil.
+// default = .btn-blue, outline = .btn-line, secondary = .btn-tint, ghost = .ghost, link = .linkish.
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center gap-2 rounded-full border-0 text-sm font-bold whitespace-nowrap transition-[background-color,color,box-shadow,transform] duration-300 ease-smooth outline-none select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink focus-visible:outline-solid active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 aria-invalid:shadow-[inset_0_0_0_2px_var(--red)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4.5",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/80",
+        default: "bg-brand text-white shadow-(--elev-btn) hover:bg-brand-deep",
         outline:
-          "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
-        secondary:
-          "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
-        ghost:
-          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+          "bg-white text-ink-2 shadow-[inset_0_0_0_1px_var(--edge)] hover:text-ink hover:shadow-[inset_0_0_0_1px_var(--ink)] aria-expanded:text-ink aria-expanded:shadow-[inset_0_0_0_1px_var(--ink)] disabled:bg-transparent disabled:text-mute disabled:opacity-100 disabled:shadow-[inset_0_0_0_1px_var(--line)]",
+        secondary: "bg-brand-soft text-brand-deep hover:bg-brand-tint aria-expanded:bg-brand-tint",
+        ghost: "text-ink-2 hover:bg-ink/[0.07] hover:text-ink active:scale-95 aria-expanded:bg-ink/[0.07]",
         destructive:
-          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
-        link: "text-primary underline-offset-4 hover:underline",
+          "bg-red-soft text-red-deep hover:bg-[color-mix(in_srgb,var(--red-soft),var(--red)_12%)] focus-visible:outline-red",
+        link: "rounded-lg text-brand-deep underline-offset-4 hover:text-brand hover:underline active:scale-100",
       },
       size: {
-        default:
-          "h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-        xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
-        lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-        icon: "size-8",
-        "icon-xs":
-          "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
-        "icon-sm":
-          "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
-        "icon-lg": "size-9",
+        default: "h-11 px-4",
+        xs: "h-8 gap-1 px-3 text-xs [&_svg:not([class*='size-'])]:size-3.5",
+        sm: "h-9 gap-1.5 px-3.5 text-[13.5px] [&_svg:not([class*='size-'])]:size-4",
+        lg: "h-11 px-4",
+        icon: "size-11 rounded-[14px]",
+        "icon-xs": "size-8 rounded-[10px] [&_svg:not([class*='size-'])]:size-3.5",
+        "icon-sm": "size-9 rounded-[12px] [&_svg:not([class*='size-'])]:size-4",
+        "icon-lg": "size-11 rounded-[14px]",
       },
     },
+    compoundVariants: [
+      { variant: "link", size: ["default", "xs", "sm", "lg"], class: "h-auto min-h-9 px-1" },
+    ],
     defaultVariants: {
       variant: "default",
       size: "default",

@@ -54,6 +54,14 @@
   --color-amber-deep: var(--amber-deep);
   --color-green-soft: var(--green-soft);
   --color-green-deep: var(--green-deep);
+  --color-brand-faint: var(--brand-faint);
+  --color-red: var(--red);
+  --color-red-ink: var(--red-ink);
+  --color-red-soft: var(--red-soft);
+  --color-red-deep: var(--red-deep);
+  --color-red-ring: var(--red-ring);
+  --color-scrim: var(--scrim);
+  --color-tone-soft: var(--tone-soft);
   --ease-smooth: var(--ease);
   --ease-spring: var(--spring);
   --animate-rise: oa-rise 0.7s var(--ease) both;
@@ -190,6 +198,14 @@
   --amber-deep: #7a4700;
   --green-soft: #ddf5ee;
   --green-deep: #0b5e4a;
+  /* Versi tenang (docs/design/prototipe-halaman-oa.html): merah hanya untuk arti "salah". */
+  --red: #d2382c;
+  --red-ink: #a62a1f;
+  --red-soft: #fdece9;
+  --red-deep: #7d1d14;
+  --red-ring: rgb(210 56 44 / 0.16);
+  --scrim: rgb(15 23 42 / 0.42);
+  --tone-soft: #e6eaf2;
   /* Komponen RGB untuk bayangan biru (glow) & gelap (shade). */
   --glow: 23 50 140;
   --shade: 15 23 42;
@@ -200,7 +216,10 @@
   --elev-sheet: 0 0 0 1px rgb(var(--shade) / 0.05), 0 40px 80px -50px rgb(var(--glow) / 0.5);
   --elev-menu: 0 0 0 1px rgb(var(--shade) / 0.07), 0 24px 48px -20px rgb(var(--glow) / 0.45);
   --elev-drawer: 0 0 0 1px rgb(var(--shade) / 0.06), 30px 0 60px -30px rgb(var(--glow) / 0.55);
-  --elev-cta: 0 12px 22px -14px var(--brand);
+  /* Tombol biru: bayangan tipis, tanpa pendar. */
+  --elev-btn: inset 0 1px 0 rgb(255 255 255 / 0.2), 0 1px 2px rgb(var(--shade) / 0.2);
+  --elev-seg: 0 0 0 1px rgb(var(--shade) / 0.05), 0 6px 12px -8px rgb(var(--shade) / 0.35);
+  --elev-dialog: 0 0 0 1px rgb(var(--shade) / 0.06), 0 30px 60px -30px rgb(var(--shade) / 0.5);
 }
 
 .dark {
@@ -293,5 +312,52 @@
   }
   to {
     opacity: 1;
+  }
+}
+
+@keyframes oa-rise-soft {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes oa-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Permukaan lembut (pita angka, kalender, baki isian): radius 22, latar panel, garis tipis. */
+@utility panel-surface {
+  border-radius: 22px;
+  background-color: var(--panel);
+  box-shadow: inset 0 0 0 1px rgb(var(--shade) / 0.05);
+}
+
+/* Halaman kerja: isi naik sedikit saat dibuka, jeda 30 ms per blok (`--i`, lihat riseStyle). */
+@utility rise {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: oa-rise-soft 0.45s var(--ease) both;
+    animation-delay: calc(var(--i, 0) * 30ms);
+  }
+}
+
+/* prefers-reduced-motion mematikan semua gerak (animasi & transisi). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
   }
 }

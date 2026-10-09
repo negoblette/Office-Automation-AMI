@@ -3,42 +3,12 @@
 // Komponen gerak Dashboard — murni tampilan: tidak membaca/mengubah data dan tidak memanggil aksi.
 // Animasi CSS-nya ada di dashboard.module.css (mati saat prefers-reduced-motion).
 import { useEffect, useRef, useState } from "react";
+import { useJakartaClock } from "@/components/shared/use-jakarta-clock";
 import { cn } from "@/lib/utils";
 import styles from "./dashboard.module.css";
 
-const jakartaTime = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "Asia/Jakarta",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hourCycle: "h23",
-});
-
-export type JakartaClock = { hm: string; ss: string; secondsOfDay: number };
-
-function readClock(date: Date): JakartaClock {
-  const text = jakartaTime.format(date); // "14:05:09"
-  const [h, m, s] = text.split(":").map(Number);
-  return { hm: text.slice(0, 5), ss: text.slice(5), secondsOfDay: h * 3600 + m * 60 + s };
-}
-
 function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
-/**
- * Jam Jakarta yang berjalan, hanya untuk tampilan (jam absen resmi tetap dari server).
- * `null` sebelum terpasang di browser supaya tidak terjadi hydration mismatch.
- */
-export function useJakartaClock(): JakartaClock | null {
-  const [clock, setClock] = useState<JakartaClock | null>(null);
-  useEffect(() => {
-    const tick = () => setClock(readClock(new Date()));
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, []);
-  return clock;
 }
 
 /** Menandai 2 detik pertama setelah halaman dibuka; animasi pembuka di CSS hanya berjalan selama itu. */
@@ -49,7 +19,7 @@ export function IntroScope({ className, children }: { className?: string; childr
     return () => clearTimeout(id);
   }, []);
   return (
-    <div className={cn(styles.motionScope, className)} data-intro={intro ? "" : undefined}>
+    <div className={className} data-intro={intro ? "" : undefined}>
       {children}
     </div>
   );

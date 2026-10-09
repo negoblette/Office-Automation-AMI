@@ -84,19 +84,20 @@ export function FileUpload({ id, value, onChange, disabled, compact, className, 
           if (file && !disabled && !isPending) upload(file);
         }}
         className={cn(
-          "flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-primary/30 bg-info-soft/60 text-center transition-colors hover:bg-info-soft",
-          compact ? "gap-2 px-3 py-2 text-sm" : "flex-col gap-2 px-4 py-8",
-          dragging && "border-primary bg-info-soft",
+          // Versi tenang (.drop): tombol unggah bergaris putus.
+          "flex cursor-pointer items-center justify-center rounded-[14px] border-[1.5px] border-dashed border-edge text-center font-bold text-brand-deep transition-[border-color,background-color,transform] duration-300 ease-smooth hover:border-brand hover:bg-brand-faint active:scale-[0.98]",
+          compact ? "min-h-[46px] gap-2 px-3.5 text-sm" : "flex-col gap-2 px-4 py-8",
+          dragging && "border-brand bg-brand-faint",
           (disabled || isPending) && "pointer-events-none opacity-60",
         )}
       >
         {isPending ? (
-          <Loader2 className={cn("animate-spin text-primary", compact ? "size-4" : "size-7")} aria-hidden />
+          <Loader2 className={cn("animate-spin", compact ? "size-4.5" : "size-7")} aria-hidden />
         ) : (
-          <CloudUpload className={cn("text-primary", compact ? "size-4" : "size-7")} aria-hidden />
+          <CloudUpload className={compact ? "size-4.5" : "size-7"} aria-hidden />
         )}
-        <span className="font-medium text-foreground">{isPending ? "Mengunggah…" : compact ? "Unggah file" : "Klik atau seret file ke sini"}</span>
-        {!compact && <span className="text-xs text-muted-foreground">PDF, JPG, atau PNG · maks {MAX_UPLOAD_MB} MB</span>}
+        <span>{isPending ? "Mengunggah…" : compact ? "Unggah file" : "Klik atau seret file ke sini"}</span>
+        {!compact && <span className="text-xs font-medium text-ink-3">PDF, JPG, atau PNG · maks {MAX_UPLOAD_MB} MB</span>}
       </label>
       <input
         ref={inputRef}
@@ -113,7 +114,7 @@ export function FileUpload({ id, value, onChange, disabled, compact, className, 
         {...aria}
       />
       {error && (
-        <p role="alert" className="mt-1.5 text-xs font-medium text-danger">
+        <p role="alert" className="mt-1.5 text-[12.5px] font-semibold text-red-ink">
           {error}
         </p>
       )}

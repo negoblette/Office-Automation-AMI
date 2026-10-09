@@ -45,7 +45,7 @@ export function TextInputField({
   const { error, aria } = useFieldState(name);
   return (
     <FormField label={label} htmlFor={name} required={required} hint={hint} error={error} className={className}>
-      <Input id={name} className="h-10 bg-background" {...inputProps} {...aria} {...register(name)} />
+      <Input id={name} {...inputProps} {...aria} {...register(name)} />
     </FormField>
   );
 }
@@ -62,7 +62,7 @@ export function TextareaField({
   const { error, aria } = useFieldState(name);
   return (
     <FormField label={label} htmlFor={name} required={required} hint={hint} error={error} className={className}>
-      <Textarea id={name} className="min-h-20 bg-background" {...props} {...aria} {...register(name)} />
+      <Textarea id={name} {...props} {...aria} {...register(name)} />
     </FormField>
   );
 }
@@ -110,7 +110,10 @@ export function SelectInputField({
   );
 }
 
-/** Kartu pengelompok field form dengan judul, mis. "Data Diri". */
+/**
+ * Pengelompok field form dengan judul, mis. "Data Diri". Versi tenang: tanpa kartu, langsung di
+ * lembar; bagian berikutnya dipisah garis tipis.
+ */
 export function FormSection({
   title,
   description,
@@ -123,10 +126,10 @@ export function FormSection({
   className?: string;
 }) {
   return (
-    <section className={cn("rounded-2xl bg-card p-5 shadow-card sm:p-6", className)}>
-      <div className="mb-5 space-y-1">
-        <h2 className="text-base font-semibold text-foreground">{title}</h2>
-        {description && <p className="text-sm text-muted-foreground">{description}</p>}
+    <section className={cn("flex flex-col gap-5 [section+&]:pt-[26px] [section+&]:shadow-[inset_0_1px_0_var(--line)]", className)}>
+      <div className="space-y-0.5">
+        <h2 className="text-[21px] leading-tight font-extrabold tracking-[-0.025em] text-ink">{title}</h2>
+        {description && <p className="text-sm text-ink-3">{description}</p>}
       </div>
       <div className="grid gap-5 sm:grid-cols-2">{children}</div>
     </section>
@@ -174,7 +177,7 @@ export function CheckboxField({
           </label>
         )}
       />
-      {error ? <p className="text-xs font-medium text-danger">{error}</p> : hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      {error ? <p className="text-[12.5px] font-semibold text-red-ink">{error}</p> : hint && <p className="text-[12.5px] text-ink-3">{hint}</p>}
     </div>
   );
 }
@@ -185,9 +188,9 @@ export function CheckboxGroupField({ name, label, options, required, className }
   const { error } = useFieldState(name);
   return (
     <fieldset className={cn("flex flex-col gap-2", className)}>
-      <legend className="mb-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+      <legend className="mb-2 text-[13px] font-bold text-ink-2">
         {label}
-        {required && <span className="text-danger"> *</span>}
+        {required && <span className="text-red-ink"> *</span>}
       </legend>
       <Controller
         control={control}
@@ -213,7 +216,7 @@ export function CheckboxGroupField({ name, label, options, required, className }
           );
         }}
       />
-      {error && <p className="text-xs font-medium text-danger">{error}</p>}
+      {error && <p className="text-[12.5px] font-semibold text-red-ink">{error}</p>}
     </fieldset>
   );
 }

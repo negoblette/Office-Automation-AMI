@@ -7,51 +7,20 @@ import { CorrectionList } from "@/app/(main)/approval/correction-ui";
 import { ApprovalStepper } from "@/components/shared/approval-stepper";
 import { requestStatusBadge } from "@/components/shared/approval-status";
 import { EmptyState } from "@/components/shared/empty-state";
+import { SectionHeader } from "@/components/shared/section-header";
+import { Stat, StatsBand as SharedStatsBand } from "@/components/shared/stats-band";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
 import { APP_TIME_ZONE, formatDate } from "@/lib/format";
+import { riseStyle } from "@/lib/motion";
 import type { ApprovalRow } from "@/lib/services/approval-queries";
 import type { ExpiringItem } from "@/lib/services/dashboard-queries";
 import { cn } from "@/lib/utils";
 import styles from "./dashboard.module.css";
 import { StatNumber } from "./dashboard-motion";
 
-/** Urutan animasi pembuka (`styles.rise`): jeda = urutan × 70 ms. */
-export function riseStyle(order: number): React.CSSProperties {
-  return { "--i": order } as React.CSSProperties;
-}
-
-/** Kepala bagian: ikon dalam kotak, judul besar, keterangan, aksi di kanan. */
-function SectionHead({
-  icon: Icon,
-  title,
-  titleId,
-  description,
-  action,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  titleId?: string;
-  description?: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2.5">
-      <div className="flex items-center gap-3.5">
-        <span className="flex size-[46px] shrink-0 items-center justify-center rounded-[15px] bg-brand-soft text-brand" aria-hidden>
-          <Icon className="size-[22px]" />
-        </span>
-        <div>
-          <h2 id={titleId} className="text-[21px] leading-tight font-extrabold tracking-[-0.025em] text-ink">
-            {title}
-          </h2>
-          {description && <p className="mt-0.5 text-sm text-ink-3">{description}</p>}
-        </div>
-      </div>
-      {action}
-    </div>
-  );
-}
+// Dashboard dikunci (CATATAN-IMPLEMENTASI-HALAMAN.md, Keputusan 8): label status & keadaan kosong
+// di sini memakai tampilan lama (`look="pill"` / `look="card"`).
 
 export function DashboardCard({
   title,
@@ -71,23 +40,20 @@ export function DashboardCard({
   style?: React.CSSProperties;
 }) {
   return (
-    <section
-      className={cn("relative flex min-w-0 flex-col gap-4 rounded-[22px] bg-panel p-5 shadow-[inset_0_0_0_1px_rgb(15_23_42/0.05)] sm:p-6", className)}
-      style={style}
-    >
-      <SectionHead icon={icon} title={title} description={description} action={action} />
+    <section className={cn("panel-surface relative flex min-w-0 flex-col gap-4 p-5 sm:p-6", className)} style={style}>
+      <SectionHeader icon={icon} title={title} description={description} action={action} />
       {children}
     </section>
   );
 }
 
-/* ---------- pita statistik ---------- */
+/* ---------- pita statistik (varian lg dari pita bersama) ---------- */
 
 export function StatsBand({ children }: { children: React.ReactNode }) {
   return (
-    <section aria-label="Ringkasan" className={cn(styles.stats, styles.rise)} style={riseStyle(5)}>
+    <SharedStatsBand size="lg" className={styles.rise} style={riseStyle(5)}>
       {children}
-    </section>
+    </SharedStatsBand>
   );
 }
 
@@ -111,19 +77,15 @@ export function StatItem({
   warn?: boolean;
 }) {
   return (
-    <div className={styles.stat}>
-      <div className={styles.statTop}>
-        <div className="min-w-0">
-          <span className={styles.statLabel}>{label}</span>
-          <span className="flex items-baseline gap-1.5">
-            <StatNumber value={value} order={order} className={styles.statNum} />
-            {unit && <span className="text-sm text-ink-3">{unit}</span>}
-          </span>
-        </div>
-        {pictogram}
-      </div>
-      {footer && <div className={cn(styles.statSub, warn && styles.statWarn)}>{footer}</div>}
-    </div>
+    <Stat
+      className={styles.stat}
+      label={label}
+      value={<StatNumber value={value} order={order} className={styles.statNum} />}
+      unit={unit}
+      aside={pictogram}
+      sub={footer}
+      warn={warn}
+    />
   );
 }
 
@@ -161,7 +123,7 @@ export function QueueSection({ title, description, rows }: { title: string; desc
   return (
     <section aria-labelledby="antrian-judul" className="relative flex flex-col gap-3.5">
       <div className={styles.rise} style={riseStyle(7)}>
-        <SectionHead
+        <SectionHeader
           icon={ClipboardCheck}
           title={title}
           titleId="antrian-judul"
@@ -283,7 +245,7 @@ export function ExpiringCard({ items, includeAssets }: { items: ExpiringItem[]; 
                     {item.label} · {item.detail}
                   </p>
                 </div>
-                <StatusBadge variant={item.daysLeft <= 7 ? "danger" : "warning"}>
+                <StatusBadge look="pill" variant={item.daysLeft <= 7 ? "danger" : "warning"}>
                   {item.daysLeft === 0 ? "Hari ini" : `${item.daysLeft} hari lagi`}
                 </StatusBadge>
               </Link>
@@ -299,7 +261,7 @@ export function ExpiringCard({ items, includeAssets }: { items: ExpiringItem[]; 
 /** Status pengajuan milik user (Staf). */
 export function MyRequestsList({ rows }: { rows: ApprovalRow[] }) {
   if (rows.length === 0) {
-    return <EmptyState title="Belum ada pengajuan" description="Pengajuan reimburse, cuti, dan klaim kesehatan Anda akan tampil di sini." />;
+    return <EmptyState look="card" title="Belum ada pengajuan" description="Pengajuan reimburse, cuti, dan klaim kesehatan Anda akan tampil di sini." />;
   }
   return (
     <ul className="flex flex-col gap-1">
@@ -320,7 +282,9 @@ export function MyRequestsList({ rows }: { rows: ApprovalRow[] }) {
             </Link>
             <div className="flex flex-wrap items-center gap-3">
               <ApprovalStepper steps={row.steps} requestStatus={row.status} compact />
-              <StatusBadge variant={badge.variant}>{badge.label}</StatusBadge>
+              <StatusBadge look="pill" variant={badge.variant}>
+                {badge.label}
+              </StatusBadge>
             </div>
           </li>
         );
@@ -344,7 +308,7 @@ export function StaffReminderCard({ documentMissing, certificates }: { documentM
             <li key={c.id}>
               <Link href="/profil/sertifikat" className="flex items-center justify-between gap-3 rounded-[14px] bg-warning-soft px-3 py-2.5 hover:underline">
                 <span className="min-w-0 truncate font-medium">Sertifikat {c.name}</span>
-                <StatusBadge variant={c.status === "EXPIRED" ? "danger" : "warning"}>
+                <StatusBadge look="pill" variant={c.status === "EXPIRED" ? "danger" : "warning"}>
                   {c.status === "EXPIRED" ? "Kadaluarsa" : c.daysLeft === 0 ? "Berakhir hari ini" : `${c.daysLeft} hari lagi`}
                 </StatusBadge>
               </Link>
