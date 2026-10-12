@@ -4,9 +4,10 @@ import { PrintToolbar } from "@/components/print/print-button";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { formatDate, formatNpwp, formatPhone } from "@/lib/format";
-import { CERTIFICATE_TYPE_LABEL, DIVISION_LABEL, DOCUMENT_TYPE_LABEL, FAMILY_RELATION_LABEL, GENDER_LABEL, MARITAL_STATUS_LABEL } from "@/lib/labels";
+import { CERTIFICATE_TYPE_LABEL, EDUCATION_LEVEL_LABEL, DOCUMENT_TYPE_LABEL, FAMILY_RELATION_LABEL, GENDER_LABEL, MARITAL_STATUS_LABEL } from "@/lib/labels";
 import { listEmployeeAssetItems } from "@/lib/services/employee-asset";
 import { getEmployeeCertificates, getEmployeeDetail, getEmployeeDocuments } from "@/lib/services/employee-queries";
+import { divisionLabels } from "@/lib/services/division";
 
 export const metadata: Metadata = { title: "Biodata Karyawan" };
 
@@ -69,7 +70,7 @@ export default async function BiodataPage({ params }: { params: Promise<{ employ
             ["Nama lengkap", employee.fullName],
             ["NIP", employee.employeeNo ?? "Belum ada"],
             ["Jabatan", employee.position],
-            ["Divisi", DIVISION_LABEL[employee.division]],
+            ["Divisi", (await divisionLabels(prisma))[employee.division] ?? employee.division],
             ["Level / grade", employee.level],
             ["Tanggal masuk", date(currentPeriod?.startDate)],
             ["Email", employee.email],
@@ -156,8 +157,12 @@ export default async function BiodataPage({ params }: { params: Promise<{ employ
             {certificates.map((c) => (
               <li key={c.id} className="py-0.5">
                 <span className="font-medium">{c.name}</span> · {CERTIFICATE_TYPE_LABEL[c.type]}
-                {c.issuer && ` · ${c.issuer}`} · diambil {date(c.startDate)}
-                {c.endDate && ` · berlaku s/d ${date(c.endDate)}`}
+                {c.degree && ` ${EDUCATION_LEVEL_LABEL[c.degree]}`}
+                {c.level && ` · Level ${c.level}`}
+                {c.issuer && ` · ${c.issuer}`}
+                {c.type === "IJAZAH"
+                  ? ` · mulai ${date(c.startDate)}${c.graduationDate ? ` · lulus ${date(c.graduationDate)}` : ""}`
+                  : ` · diambil ${date(c.startDate)}${c.endDate ? ` · berlaku s/d ${date(c.endDate)}` : " · permanen"}`}
                 {c.verification === "APPROVED" ? " · terverifikasi" : " · belum terverifikasi"}
               </li>
             ))}

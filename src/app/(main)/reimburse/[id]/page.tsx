@@ -10,9 +10,10 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { formatDate, formatDateTime, formatRupiah } from "@/lib/format";
-import { DIVISION_LABEL, PAYMENT_METHOD_LABEL } from "@/lib/labels";
+import { PAYMENT_METHOD_LABEL } from "@/lib/labels";
 import { getReimbursementDetail } from "@/lib/services/reimbursement-queries";
 import { DraftActions } from "./draft-actions";
+import { divisionLabels } from "@/lib/services/division";
 
 export const metadata: Metadata = { title: "Detail Reimburse" };
 
@@ -41,16 +42,16 @@ export default async function DetailReimbursePage({ params }: { params: Promise<
         breadcrumbs={[{ label: "Pengajuan & Keuangan" }, { label: "Reimburse", href: "/reimburse" }, { label: title }]}
         description={
           <span className="flex flex-wrap items-center gap-2">
-            {r.employeeName} · {r.employeePosition} · {DIVISION_LABEL[r.division]}
+            {r.employeeName} · {r.employeePosition} · {(await divisionLabels(prisma))[r.division] ?? r.division}
             <StatusBadge variant={badge.variant}>{badge.label}</StatusBadge>
           </span>
         }
-        actions={isOwner && r.status === "DRAFT" ? <DraftActions reimbursementId={r.id} /> : undefined}
+        actions={isOwner && (r.status === "DRAFT" || r.status === "REJECTED") ? <DraftActions reimbursementId={r.id} rejected={r.status === "REJECTED"} /> : undefined}
       />
 
       <section className="grid gap-4 rounded-2xl bg-card p-5 shadow-card sm:grid-cols-4">
-        <Info label="Subtotal Cash" value={formatRupiah(r.totalCash)} />
-        <Info label="Subtotal Kartu Kredit" value={formatRupiah(r.totalCc)} />
+        <Info label="Subtotal Personal" value={formatRupiah(r.totalPersonal)} />
+        <Info label="Subtotal Corporate" value={formatRupiah(r.totalCorporate)} />
         <Info label="Total" value={<span className="text-lg font-bold">{formatRupiah(r.total)}</span>} />
         <Info
           label={r.approvedAt ? "Disetujui" : r.submittedAt ? "Diajukan" : "Dibuat"}

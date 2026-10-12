@@ -3,11 +3,12 @@ import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { profileCompleteness } from "@/lib/employee-profile";
 import { formatDate } from "@/lib/format";
-import { DIVISION_LABEL, ROLE_LABEL } from "@/lib/labels";
+import { ROLE_LABEL } from "@/lib/labels";
 import { getEmployeeFormValues } from "@/lib/services/employee-queries";
 import { NoEmployeeRecord, ProfileShell } from "./profile-shell";
 import { ProfileForm } from "./profile-form";
 import { ProfileSpotlight } from "./profile-spotlight";
+import { divisionLabels } from "@/lib/services/division";
 
 export const metadata: Metadata = { title: "Profil Saya" };
 
@@ -23,7 +24,7 @@ export default async function ProfilPage() {
       employeeId={user.employeeId}
     >
       {employee ? (
-        <ProfileContent values={employee.values} />
+        <ProfileContent values={employee.values} adminEditHref={user.role === "ADMIN" ? `/karyawan/${user.employeeId}/edit` : null} />
       ) : (
         <NoEmployeeRecord />
       )}
@@ -31,7 +32,14 @@ export default async function ProfilPage() {
   );
 }
 
-function ProfileContent({ values }: { values: NonNullable<Awaited<ReturnType<typeof getEmployeeFormValues>>>["values"] }) {
+async function ProfileContent({
+  values,
+  adminEditHref,
+}: {
+  values: NonNullable<Awaited<ReturnType<typeof getEmployeeFormValues>>>["values"];
+  /** Admin: tautan untuk mengubah Akun & Pekerjaan miliknya sendiri. */
+  adminEditHref: string | null;
+}) {
   const { email, division, role, startDate, employeeNo, fullName, position, level, ...selfValues } = values;
   const completeness = profileCompleteness(selfValues);
 
@@ -39,10 +47,11 @@ function ProfileContent({ values }: { values: NonNullable<Awaited<ReturnType<typ
     <div className="flex flex-col gap-6">
       <ProfileSpotlight name={fullName} position={position} email={email} roleLabel={ROLE_LABEL[role]} completeness={completeness} />
       <ProfileForm
+        adminEditHref={adminEditHref}
         defaultValues={selfValues}
         readOnly={{
           email,
-          division: DIVISION_LABEL[division],
+          division: (await divisionLabels(prisma))[division] ?? division,
           role: ROLE_LABEL[role],
           startDate: startDate ? formatDate(`${startDate}T00:00:00Z`) : "—",
           employeeNo: employeeNo || null,

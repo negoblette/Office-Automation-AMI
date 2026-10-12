@@ -32,7 +32,7 @@ export function PersonalDocumentsPanel({ data, canEdit }: { data: EmployeeDocume
       <section className="rounded-2xl bg-card p-5 shadow-card sm:p-6">
         <div className="mb-4 space-y-1">
           <h2 className="text-base font-semibold">Dokumen Pribadi</h2>
-          <p className="text-sm text-muted-foreground">PDF, JPG, atau PNG, maksimal 5 MB per file.</p>
+          <p className="text-sm text-muted-foreground">Hanya PDF, maksimal 5 MB per file.</p>
         </div>
         <h3 className="mb-3 text-xs font-semibold tracking-wider text-muted-foreground uppercase">Kelompok I — Identitas</h3>
         <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

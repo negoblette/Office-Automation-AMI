@@ -1,4 +1,5 @@
-// Validasi file upload: PDF/JPG/PNG, maks MAX_UPLOAD_MB (default 5 MB).
+// Validasi file upload: hanya PDF (2026-10-12; sebelumnya juga JPG/PNG), maks MAX_UPLOAD_MB (default 5 MB).
+// JPG/PNG tetap dikenali supaya file lama tetap bisa diunduh dan pesan error jelas.
 // Jenis file dideteksi dari isi (magic bytes), bukan dari nama/ekstensi (Tech Spec §5).
 
 export type FileExtension = "pdf" | "jpg" | "png";
@@ -34,6 +35,6 @@ export function validateUpload(bytes: Uint8Array, maxBytes = MAX_UPLOAD_BYTES): 
     return { ok: false, error: `Ukuran file maksimal ${Math.round(maxBytes / 1024 / 1024)} MB` };
   }
   const ext = detectFileType(bytes);
-  if (!ext) return { ok: false, error: "File harus berupa PDF, JPG, atau PNG" };
+  if (ext !== "pdf") return { ok: false, error: "File harus berupa PDF" };
   return { ok: true, ext, mimeType: MIME_TYPES[ext] };
 }

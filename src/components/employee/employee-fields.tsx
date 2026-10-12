@@ -3,10 +3,12 @@
 // Kelompok field data karyawan, dipakai form Admin (/karyawan) dan Profil Saya (/profil).
 import { DateInputField, FormSection, type FormSectionLayout, SelectInputField, TextareaField, TextInputField } from "@/components/form/fields";
 import { toJakartaIsoDate } from "@/lib/format";
-import { DIVISION_LABEL, GENDER_LABEL, MARITAL_STATUS_LABEL, ROLE_LABEL, toOptions } from "@/lib/labels";
+import { GENDER_LABEL, MARITAL_STATUS_LABEL, ROLE_LABEL, toOptions } from "@/lib/labels";
+import { useDivisions } from "@/components/shared/divisions-context";
 
 /** Akun & pekerjaan yang dikelola Admin. `mode="create"` menambah password awal. */
 export function EmployeeAccountSection({ mode }: { mode: "create" | "edit" }) {
+  const divisions = useDivisions();
   return (
     <FormSection title="Akun & Pekerjaan" description="Divisi menentukan alur approval dan tipe reimburse.">
       <TextInputField name="fullName" label="Nama lengkap" required autoComplete="off" />
@@ -22,7 +24,7 @@ export function EmployeeAccountSection({ mode }: { mode: "create" | "edit" }) {
         />
       )}
       <SelectInputField name="role" label="Role" required options={toOptions(ROLE_LABEL)} />
-      <SelectInputField name="division" label="Divisi" required options={toOptions(DIVISION_LABEL)} />
+      <SelectInputField name="division" label="Divisi" required options={divisions.options} />
       <TextInputField name="position" label="Jabatan" required />
       <DateInputField name="startDate" label="Tanggal masuk" required />
       {mode === "edit" && (

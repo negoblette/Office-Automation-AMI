@@ -8,7 +8,7 @@ export type ReimbursementFormValues = z.input<typeof reimbursementFormSchema>;
 export type ReimbursementVisitValues = ReimbursementFormValues["visits"][number];
 export type ReimbursementLineValues = ReimbursementVisitValues["lines"][number];
 
-/** Satu baris kosong: payment Cash, tanpa kwitansi. */
+/** Satu baris kosong: payment Personal, tanpa kwitansi. */
 export function emptyLine(): ReimbursementLineValues {
   return {
     activity: "",
@@ -16,7 +16,7 @@ export function emptyLine(): ReimbursementLineValues {
     location: "",
     typeId: "",
     hasReceipt: false,
-    paymentMethod: "CASH",
+    paymentMethod: "PERSONAL",
     amount: null as unknown as number,
   };
 }

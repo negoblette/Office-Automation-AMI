@@ -5,7 +5,7 @@
 import type { PrismaClient, ReminderKind } from "@/generated/prisma/client";
 import { daysUntil, EXPIRY_WARNING_DAYS } from "@/lib/certificate-status";
 import { formatDate, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
-import { CERTIFICATE_TYPE_LABEL } from "@/lib/labels";
+import { CERTIFICATE_TYPE_LABEL, DOCUMENT_TYPE_LABEL } from "@/lib/labels";
 import { addDays } from "@/lib/leave";
 import { appUrl } from "@/lib/mail/app-url";
 import type { OutgoingEmail } from "@/lib/mail/queue";
@@ -96,6 +96,35 @@ export async function certificateReminders(db: PrismaClient, todayIso = toJakart
       detailLine: `Pemilik: ${c.employee.fullName}${c.issuer ? ` · Penerbit: ${c.issuer}` : ""}`,
       recipients: [...owner, ...admins.map((a) => ({ ...a, path: `/karyawan/${c.employee.id}?tab=sertifikat` }))],
     };
+  });
+  return claimAndBuild(db, items, todayIso);
+}
+
+/** `reminder.document` (2026-10-12): dokumen karyawan aktif yang masa berlakunya berakhir H-30 → karyawan + Admin. */
+export async function documentReminders(db: PrismaClient, todayIso = toJakartaIsoDate()) {
+  const documents = await db.document.findMany({
+    where: { validUntil: window(todayIso), deletedAt: null, employee: { status: "ACTIVE" } },
+    include: {
+      employee: { select: { id: true, fullName: true, user: { select: { email: true, isActive: true } } } },
+      familyMember: { select: { fullName: true } },
+    },
+    orderBy: { validUntil: "asc" },
+  });
+  const admins = await activeAdmins(db);
+  const items: DueItem[] = documents.flatMap((d) => {
+    if (!d.employee) return [];
+    const owner = d.employee.user?.isActive ? [{ email: d.employee.user.email, name: d.employee.fullName, path: "/profil/dokumen" }] : [];
+    return [
+      {
+        kind: "DOCUMENT" as const,
+        entityId: d.id,
+        dueDate: d.validUntil as Date,
+        itemKind: "Dokumen",
+        itemName: `${DOCUMENT_TYPE_LABEL[d.docType]}${d.familyMember ? ` — ${d.familyMember.fullName}` : ""}`,
+        detailLine: `Pemilik: ${d.employee.fullName} · File: ${d.fileName}`,
+        recipients: [...owner, ...admins.map((a) => ({ ...a, path: `/karyawan/${d.employee!.id}?tab=dokumen` }))],
+      },
+    ];
   });
   return claimAndBuild(db, items, todayIso);
 }

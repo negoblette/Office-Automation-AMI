@@ -9,7 +9,7 @@ import { FormDialog } from "@/components/form/form-dialog";
 import { Button } from "@/components/ui/button";
 import { PERSONAL_DOCUMENT_TYPES } from "@/lib/employee-documents";
 import { toJakartaIsoDate } from "@/lib/format";
-import { CANDIDATE_STATUS_LABEL, DIVISION_LABEL, DOCUMENT_TYPE_LABEL, ROLE_LABEL, toOptions } from "@/lib/labels";
+import { CANDIDATE_STATUS_LABEL, DOCUMENT_TYPE_LABEL, ROLE_LABEL, toOptions } from "@/lib/labels";
 import type { CandidateDetail } from "@/lib/services/candidate-queries";
 import { candidateSchema, convertCandidateSchema } from "@/lib/validators/candidate";
 import {
@@ -19,6 +19,7 @@ import {
   deleteCandidateDocumentAction,
   saveCandidateAction,
 } from "./actions";
+import { useDivisions } from "@/components/shared/divisions-context";
 
 export function CandidateDialog({ candidate }: { candidate?: CandidateDetail }) {
   const router = useRouter();
@@ -91,6 +92,7 @@ export function DeleteCandidateButton({ candidate }: { candidate: CandidateDetai
 
 /** Jadikan karyawan (CAN-03): nama & email dari data kandidat; Admin melengkapi data akun. */
 export function ConvertCandidateDialog({ candidate }: { candidate: CandidateDetail }) {
+  const divisions = useDivisions();
   const router = useRouter();
   return (
     <FormDialog
@@ -111,7 +113,7 @@ export function ConvertCandidateDialog({ candidate }: { candidate: CandidateDeta
       }}
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <SelectInputField name="division" label="Divisi" required options={toOptions(DIVISION_LABEL)} />
+        <SelectInputField name="division" label="Divisi" required options={divisions.options} />
         <TextInputField name="position" label="Jabatan" required />
         <DateInputField name="startDate" label="Tanggal masuk" required />
         <SelectInputField name="role" label="Role" required options={toOptions(ROLE_LABEL)} />

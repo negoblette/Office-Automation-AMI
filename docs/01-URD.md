@@ -209,7 +209,7 @@ Approval bersifat berurutan. Approval Level 2 (atau level terakhir) adalah final
 | OI-02 | Masa berlaku carry over cuti | **Terjawab** (2026-09-24) | Carry over (maks 3 hari) berlaku sepanjang tahun berikutnya, hangus 31 Des |
 | OI-03 | Periode cuti: tahun kalender atau ulang tahun masuk kerja? Masa kerja rehire? | **Terjawab** (2026-09-24) | **Tahun kalender** (Jan–Des, cutoff 31 Des). Cuti bisa dipakai setelah genap 1 tahun masa kerja; tahun kalender saat genap 1 tahun mendapat jatah prorata 12 − bulan genap 1 tahun (diubah 2026-09-25, LV-09); jatah tahun berikutnya menurut masa kerja per 1 Januari (naik tingkat mulai Januari). Rehire: dihitung ulang dari periode kerja terbaru |
 | OI-04 | Pembulatan plafon bulanan kesehatan | **Tidak berlaku** (2026-09-29) | Plafon hanya per tahun, tidak ada plafon bulanan |
-| OI-05 | Alur Reject / Revisi | Ditunda | Status REJECTED disiapkan di database, belum ada UI |
+| OI-05 | Alur Reject / Revisi | **Selesai (2026-10-12)** | Approver menolak dengan alasan; pemohon merevisi lalu mengajukan ulang (approval mulai lagi dari L1, nomor tetap) |
 | OI-06 | Detail data revenue project | Ditunda | Field minimal: tanggal, deskripsi, nominal |
 | OI-07 | Approver untuk Ko Rudy/Leonard/Ci Ika | **Terjawab** | Lihat §2.2 |
 | OI-08 | Jenis laporan | Setelah sistem jadi | — |

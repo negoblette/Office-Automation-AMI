@@ -3,7 +3,7 @@
 // Divisi, role, email login, tanggal masuk/keluar, NIP, nama lengkap, jabatan, dan level HANYA ada di
 // schema Admin (nama/jabatan/level: permintaan 2026-10-05).
 import { z } from "zod";
-import { Division, Gender, MaritalStatus, Role } from "@/generated/prisma/enums";
+import { Gender, MaritalStatus, Role } from "@/generated/prisma/enums";
 import {
   bpjsKesSchema,
   bpjsTkSchema,
@@ -19,7 +19,7 @@ import {
   textSchema,
 } from "./common";
 
-const divisionSchema = z.enum(Division, { error: "Divisi wajib dipilih" });
+const divisionSchema = z.string({ error: "Divisi wajib dipilih" }).min(1, { error: "Divisi wajib dipilih" });
 const roleSchema = z.enum(Role, { error: "Role wajib dipilih" });
 const positionSchema = textSchema("Jabatan", { min: 2, max: 100 });
 

@@ -8,9 +8,10 @@ import { StatCard } from "@/components/shared/stat-card";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
-import { formatDate, formatRupiah } from "@/lib/format";
+import { formatDate, formatRupiah, toJakartaIsoDate } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL, PROJECT_TYPE_LABEL, projectLabel } from "@/lib/labels";
-import { getProjectDetail, type ProjectCostRow } from "@/lib/services/project-queries";
+import { getProjectDetail, type ProjectCostRow, projectYears } from "@/lib/services/project-queries";
+import { QuerySelect } from "@/components/shared/query-select";
 import { ExpenseDialog } from "../project-dialogs";
 
 export const metadata: Metadata = { title: "Detail Project" };
@@ -34,7 +35,7 @@ function Section({ title, action, children }: { title: string; action?: React.Re
   );
 }
 
-function CostTable({ rows, showPerson }: { rows: ProjectCostRow[]; showPerson: boolean }) {
+function CostTable({ rows, showPerson, canRevise = false, projectId }: { rows: ProjectCostRow[]; showPerson: boolean; canRevise?: boolean; projectId?: string }) {
   if (!rows.length) return <EmptyState title="Belum ada biaya untuk project ini" className="py-8" />;
   return (
     <div className="overflow-x-auto rounded-2xl bg-card shadow-card">
@@ -67,7 +68,20 @@ function CostTable({ rows, showPerson }: { rows: ProjectCostRow[]; showPerson: b
               <td className="px-4 py-3">{row.paymentMethod ? PAYMENT_METHOD_LABEL[row.paymentMethod] : "—"}</td>
               <td className="px-4 py-3 text-right tabular-nums">{formatRupiah(row.amount)}</td>
               <td className="px-4 py-3">
-                <Status status={row.status} level={row.currentLevel} />
+                <div className="flex flex-col items-start gap-1">
+                  <Status status={row.status} level={row.currentLevel} />
+                  {row.rejection && (
+                    <span className="max-w-56 text-xs text-danger">
+                      {row.rejection.by}: {row.rejection.reason}
+                    </span>
+                  )}
+                  {canRevise && row.source === "EXPENSE" && row.status === "REJECTED" && projectId && (
+                    <ExpenseDialog
+                      projectId={projectId}
+                      revise={{ id: row.id, number: row.number, date: row.date, description: row.description, paymentMethod: row.paymentMethod ?? "PERSONAL", amount: row.amount }}
+                    />
+                  )}
+                </div>
               </td>
             </tr>
           ))}
@@ -77,11 +91,16 @@ function CostTable({ rows, showPerson }: { rows: ProjectCostRow[]; showPerson: b
   );
 }
 
-export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ProjectDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tahun?: string }> }) {
   const user = await requireUser();
   const isAdmin = user.role === "ADMIN";
   const { id } = await params;
-  const project = await getProjectDetail(prisma, id, user);
+  const { tahun } = await searchParams;
+  // Cutoff per tahun kalender (2026-10-12).
+  const currentYear = Number(toJakartaIsoDate().slice(0, 4));
+  const years = await projectYears(prisma, currentYear);
+  const year = years.includes(Number(tahun)) ? Number(tahun) : currentYear;
+  const project = await getProjectDetail(prisma, id, user, year);
   if (!project) notFound();
   const { totals } = project;
 
@@ -102,10 +121,15 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         }
       />
 
+      <div className="flex flex-wrap items-end gap-3">
+        <QuerySelect label="Tahun" param="tahun" value={String(year)} options={years.map((y) => ({ value: String(y), label: y === currentYear ? `${y} (berjalan)` : `${y} (history)` }))} />
+        {year !== currentYear && <p className="pb-2 text-sm font-medium text-warning">History tahun {year} (cutoff 31 Desember {year}).</p>}
+      </div>
+
       {/* Total biaya project terlihat semua karyawan (2026-10-06); daftar rinci expense Admin tetap khusus Admin. */}
       <div className="grid gap-4 sm:grid-cols-2">
         <StatCard
-          label="Total biaya project"
+          label={`Total biaya project ${year}`}
           value={formatRupiah(totals.expense)}
           tone="danger"
           footer={`Disetujui · Reimburse ${formatRupiah(totals.reimburse)} + Expense Admin ${formatRupiah(totals.directExpense)}`}
@@ -125,7 +149,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             <b>disetujui</b> masuk total.
           </p>
         )}
-        <CostTable rows={project.costs} showPerson={isAdmin} />
+        <CostTable rows={project.costs} showPerson={isAdmin} canRevise={isAdmin && project.isActive} projectId={project.id} />
       </Section>
     </div>
   );

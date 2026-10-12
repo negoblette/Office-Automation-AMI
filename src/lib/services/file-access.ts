@@ -9,6 +9,8 @@ export type FileOwner = {
   employeeId: string | null;
   /** User yang tercantum sebagai approver pengajuan terkait file ini (mis. verifikator sertifikat). */
   approverIds?: string[];
+  /** File milik permintaan perubahan data yang belum diterapkan (2026-10-12). */
+  pendingChange?: boolean;
   fileName: string;
   mimeType: string;
 };
@@ -32,7 +34,7 @@ function mimeOf(key: string): string {
 }
 
 /** Cukup `prisma` atau `tx` dari `$transaction`. */
-export type FileAccessDb = Pick<PrismaClient, "document" | "certificate" | "reimbursementItem" | "healthClaim" | "approvalRequest">;
+export type FileAccessDb = Pick<PrismaClient, "document" | "certificate" | "reimbursementItem" | "healthClaim" | "approvalRequest" | "profileChangeRequest">;
 
 export function prismaFileAccessRepository(db: FileAccessDb): FileAccessRepository {
   return {
@@ -63,6 +65,22 @@ export function prismaFileAccessRepository(db: FileAccessDb): FileAccessReposito
           fileName: `${certificate.name}.${key.split(".").pop()}`,
           mimeType: mimeOf(key),
           approverIds: request?.steps.flatMap((s) => s.approverIds) ?? [],
+        };
+      }
+
+      // Dokumen yang masih menunggu persetujuan perubahan (2026-10-12): pemilik & approver-nya.
+      const change = await db.profileChangeRequest.findFirst({ where: { fileKey: key }, select: { id: true, employeeId: true, fileName: true } });
+      if (change) {
+        const request = await db.approvalRequest.findUnique({
+          where: { module_entityId: { module: "PROFILE_CHANGE", entityId: change.id } },
+          select: { steps: { select: { approverIds: true } } },
+        });
+        return {
+          employeeId: change.employeeId,
+          fileName: change.fileName ?? key,
+          mimeType: mimeOf(key),
+          approverIds: request?.steps.flatMap((s) => s.approverIds) ?? [],
+          pendingChange: true,
         };
       }
 

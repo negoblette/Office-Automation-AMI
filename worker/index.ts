@@ -1,6 +1,6 @@
 // Worker pg-boss (`npm run worker`) — Tech Spec §7. Proses terpisah dari aplikasi web.
 // Job: `email.send` (on-demand), `leave.rollover` (harian 00:30 WIB),
-// `reminder.certificate` & `reminder.asset` (harian 07:00 WIB, H-30), `invoice.purge` (harian 02:00 WIB), `attendance.deduct` (harian 01:00 WIB).
+// `reminder.certificate`, `reminder.document` & `reminder.asset` (harian 07:00 WIB, H-30), `invoice.purge` (harian 02:00 WIB), `attendance.deduct` (harian 01:00 WIB).
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PgBoss } from "pg-boss";
@@ -13,11 +13,12 @@ import { deductUnexcusedAbsences } from "@/lib/services/attendance-appeal";
 import { purgeOldInvoices } from "@/lib/services/invoice-purge";
 // Adapter langsung (bukan "@/lib/storage" yang ber-"server-only" & tidak bisa dimuat di Node biasa).
 import { LocalStorage } from "@/lib/storage/local";
-import { assetReminders, certificateReminders } from "@/lib/services/reminder";
+import { assetReminders, certificateReminders, documentReminders } from "@/lib/services/reminder";
 
 const LEAVE_ROLLOVER_QUEUE = "leave.rollover";
 const REMINDER_JOBS: Record<string, typeof certificateReminders> = {
   "reminder.certificate": certificateReminders,
+  "reminder.document": documentReminders,
   ...(FEATURES.inventory ? { "reminder.asset": assetReminders } : {}),
 };
 

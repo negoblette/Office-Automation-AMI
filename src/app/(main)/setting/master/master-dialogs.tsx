@@ -4,10 +4,9 @@ import { Pencil, Plus } from "lucide-react";
 import { CheckboxField, CheckboxGroupField, TextInputField } from "@/components/form/fields";
 import { FormDialog } from "@/components/form/form-dialog";
 import { Button } from "@/components/ui/button";
-import type { Division } from "@/generated/prisma/enums";
-import { DIVISION_LABEL, toOptions } from "@/lib/labels";
 import { healthCategorySchema, reimburseTypeSchema } from "@/lib/validators/project";
 import { saveHealthCategoryAction, saveReimburseTypeAction } from "./actions";
+import { useDivisions } from "@/components/shared/divisions-context";
 
 function Trigger({ label, editing }: { label: string; editing: boolean }) {
   return editing ? (
@@ -21,7 +20,8 @@ function Trigger({ label, editing }: { label: string; editing: boolean }) {
   );
 }
 
-export function ReimburseTypeDialog({ type }: { type?: { id: string; name: string; divisions: Division[]; isActive: boolean } }) {
+export function ReimburseTypeDialog({ type }: { type?: { id: string; name: string; divisions: string[]; isActive: boolean } }) {
+  const divisions = useDivisions();
   return (
     <FormDialog
       trigger={<Trigger label={type?.name ?? "Tipe"} editing={Boolean(type)} />}
@@ -32,7 +32,7 @@ export function ReimburseTypeDialog({ type }: { type?: { id: string; name: strin
       action={(values) => saveReimburseTypeAction(type?.id ?? null, values)}
     >
       <TextInputField name="name" label="Nama tipe" required />
-      <CheckboxGroupField name="divisions" label="Boleh dipakai divisi" required options={toOptions(DIVISION_LABEL)} />
+      <CheckboxGroupField name="divisions" label="Boleh dipakai divisi" required options={divisions.options} />
       <CheckboxField name="isActive" label="Aktif" hint="Tipe nonaktif tidak muncul di form reimburse baru." />
     </FormDialog>
   );

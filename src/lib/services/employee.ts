@@ -8,6 +8,7 @@ import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { assertCanLoseApproverRights } from "./user-admin";
 import { canApprove } from "@/lib/roles";
+import { assertDivisions } from "./division";
 
 type Tx = Prisma.TransactionClient;
 
@@ -80,6 +81,7 @@ async function getEmployeeOrThrow(tx: Tx, employeeId: string) {
  */
 export async function createEmployeeInTx(tx: Tx, actorId: string, input: EmployeeCreateInput, passwordHash: string) {
   await assertEmailAvailable(tx, input.email);
+  await assertDivisions(tx, [input.division]);
 
   const employee = await tx.employee.create({
     data: {
@@ -112,17 +114,20 @@ export async function createEmployee(db: PrismaClient, actorId: string, input: E
 
 /** Staf melengkapi/mengubah data dirinya sendiri (EMP-06). */
 export async function updateSelf(db: PrismaClient, actorId: string, employeeId: string, input: EmployeeSelfInput) {
-  return db.$transaction(async (tx) => {
-    const before = await getEmployeeOrThrow(tx, employeeId);
-    if (before.status !== "ACTIVE") throw new ServiceError("Data karyawan yang sudah resign tidak bisa diubah");
-    await assertNikAvailable(tx, input.nik, employeeId);
+  return db.$transaction((tx) => applySelfDataInTx(tx, actorId, employeeId, input));
+}
 
-    // NIP, nama, jabatan, level tidak termasuk data diri (hanya Admin, Fase 14).
-    const after = await tx.employee.update({ where: { id: employeeId }, data: selfData(input) });
+/** Terapkan data diri (dipakai langsung & saat permintaan perubahan disetujui Ci Ika, 2026-10-12). */
+export async function applySelfDataInTx(tx: Tx, actorId: string, employeeId: string, input: EmployeeSelfInput) {
+  const before = await getEmployeeOrThrow(tx, employeeId);
+  if (before.status !== "ACTIVE") throw new ServiceError("Data karyawan yang sudah resign tidak bisa diubah");
+  await assertNikAvailable(tx, input.nik, employeeId);
 
-    await logAudit(tx, { actorId, action: "UPDATE", entity: "Employee", entityId: employeeId, before, after });
-    return after;
-  });
+  // NIP, nama, jabatan, level tidak termasuk data diri (hanya Admin, Fase 14).
+  const after = await tx.employee.update({ where: { id: employeeId }, data: selfData(input) });
+
+  await logAudit(tx, { actorId, action: "UPDATE", entity: "Employee", entityId: employeeId, before, after });
+  return after;
 }
 
 /** Admin mengubah semua data, termasuk divisi, role, email login, dan tanggal masuk periode terakhir. */
@@ -133,6 +138,7 @@ export async function updateByAdmin(
   input: EmployeeAdminUpdateInput,
 ) {
   return db.$transaction(async (tx) => {
+    await assertDivisions(tx, [input.division]);
     const before = await getEmployeeOrThrow(tx, employeeId);
     if (before.user?.id === actorId && before.user.role !== input.role) {
       throw new ServiceError("Anda tidak bisa mengubah role akun Anda sendiri", "role");

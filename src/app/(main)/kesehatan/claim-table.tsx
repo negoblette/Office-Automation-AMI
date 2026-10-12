@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { DataTable, type DataTableColumn, dataTableColumnHelper } from "@/components/table/data-table";
 import { formatDate, formatRupiah } from "@/lib/format";
 import type { HealthClaimRow } from "@/lib/services/health-queries";
+import { HealthClaimDialog } from "./claim-form";
 
 const col = dataTableColumnHelper<HealthClaimRow>();
 const monthLabel = (yearMonth: string) => formatDate(`${yearMonth}-01T00:00:00Z`, "short").replace(/^1 /, "");
@@ -50,7 +51,16 @@ const restColumns = [
     header: "Status",
     cell: ({ row }) => {
       const badge = requestStatusBadge(row.original.status, row.original.currentLevel);
-      return <StatusBadge variant={badge.variant}>{badge.label}</StatusBadge>;
+      return (
+        <div className="flex max-w-60 flex-col items-start gap-1">
+          <StatusBadge variant={badge.variant}>{badge.label}</StatusBadge>
+          {row.original.rejection && (
+            <span className="text-xs text-danger">
+              {row.original.rejection.by}: {row.original.rejection.reason}
+            </span>
+          )}
+        </div>
+      );
     },
   }),
   col.display({
@@ -72,10 +82,40 @@ const restColumns = [
   }),
 ];
 
-export function HealthClaimTable({ rows, showRequester }: { rows: HealthClaimRow[]; showRequester: boolean }) {
+/** Data form untuk tombol Revisi (klaim milik sendiri yang ditolak). */
+export type ClaimReviseContext = { categories: { value: string; label: string }[]; remaining: number };
+
+export function HealthClaimTable({ rows, showRequester, revise }: { rows: HealthClaimRow[]; showRequester: boolean; revise?: ClaimReviseContext }) {
   const columns = useMemo(
-    () => [numberColumn, ...(showRequester ? [requesterColumn] : []), ...restColumns] as DataTableColumn<HealthClaimRow>[],
-    [showRequester],
+    () =>
+      [
+        numberColumn,
+        ...(showRequester ? [requesterColumn] : []),
+        ...restColumns,
+        ...(revise
+          ? [
+              col.display({
+                id: "actions",
+                header: () => <span className="sr-only">Aksi</span>,
+                cell: ({ row }) =>
+                  row.original.own && row.original.status === "REJECTED" ? (
+                    <HealthClaimDialog
+                      {...revise}
+                      revise={{
+                        id: row.original.id,
+                        number: row.original.number,
+                        categoryId: row.original.categoryId,
+                        claimDate: row.original.claimDate,
+                        amount: row.original.amount,
+                        note: row.original.note,
+                      }}
+                    />
+                  ) : null,
+              }),
+            ]
+          : []),
+      ] as DataTableColumn<HealthClaimRow>[],
+    [showRequester, revise],
   );
   return (
     <DataTable

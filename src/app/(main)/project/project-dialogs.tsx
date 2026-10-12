@@ -148,20 +148,37 @@ function AmountField() {
 }
 
 /** Input expense project (PRJ-02) → approval. */
-export function ExpenseDialog({ projectId }: { projectId: string }) {
+export function ExpenseDialog({
+  projectId,
+  revise,
+}: {
+  projectId: string;
+  /** Revisi expense yang ditolak (2026-10-12): nomor tetap, diajukan ulang. */
+  revise?: { id: string; number: string; date: string; description: string; paymentMethod: "PERSONAL" | "CORPORATE"; amount: number };
+}) {
   return (
     <FormDialog
       trigger={
-        <Button size="lg" className="bg-foreground text-background hover:bg-foreground/90">
-          <Plus aria-hidden /> Input Expense
-        </Button>
+        revise ? (
+          <Button size="sm" variant="outline">
+            <Pencil aria-hidden /> Revisi
+          </Button>
+        ) : (
+          <Button size="lg" className="bg-foreground text-background hover:bg-foreground/90">
+            <Plus aria-hidden /> Input Expense
+          </Button>
+        )
       }
-      title="Input Expense Project"
+      title={revise ? `Revisi Expense ${revise.number}` : "Input Expense Project"}
       description="Diajukan ke approval (alur sama dengan reimburse)."
       schema={projectExpenseSchema}
-      defaults={{ date: toJakartaIsoDate(), description: "", paymentMethod: "CASH", amount: null as unknown as number }}
-      submitLabel="Ajukan"
-      action={(values) => submitProjectExpenseAction(projectId, values)}
+      defaults={
+        revise
+          ? { date: revise.date, description: revise.description, paymentMethod: revise.paymentMethod, amount: revise.amount }
+          : { date: toJakartaIsoDate(), description: "", paymentMethod: "PERSONAL", amount: null as unknown as number }
+      }
+      submitLabel={revise ? "Ajukan Ulang" : "Ajukan"}
+      action={(values) => submitProjectExpenseAction(projectId, values, revise?.id ?? null)}
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <DateInputField name="date" label="Tanggal" required />

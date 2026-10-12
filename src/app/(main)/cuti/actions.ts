@@ -18,10 +18,10 @@ function revalidateLeave() {
 }
 
 /** Ajukan cuti untuk diri sendiri (LV-06). Email approval di-enqueue setelah commit. */
-export async function submitLeaveAction(values: unknown): Promise<ActionResult<{ number: string }>> {
+export async function submitLeaveAction(values: unknown, reviseId?: string | null): Promise<ActionResult<{ number: string }>> {
   const user = await requireUser();
   try {
-    const result = await submitLeaveRequest(prisma, user, leaveRequestSchema.parse(values));
+    const result = await submitLeaveRequest(prisma, user, leaveRequestSchema.parse(values), z.string().min(1).nullish().parse(reviseId) ?? undefined);
     await enqueueApprovalNotifications(prisma, result.notifications);
     revalidateLeave();
     return { ok: true, data: { number: result.number } };

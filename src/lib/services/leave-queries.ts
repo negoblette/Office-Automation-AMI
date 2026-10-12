@@ -4,6 +4,8 @@ import type { PrismaClient, RequestStatus } from "@/generated/prisma/client";
 import { fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { addDays, firstUsableDate, leaveYear, remainingDays } from "@/lib/leave";
 import { currentEmploymentStart, ensureLeaveBalance, getMaxCarryOver } from "./leave-balance";
+import { DIRECTOR_DIVISION } from "./division";
+import { rejectionsOf } from "./approval";
 
 export type LeaveBalanceView = {
   employeeId: string;
@@ -78,6 +80,10 @@ export type LeaveRequestRow = {
   status: RequestStatus;
   currentLevel: number | null;
   submittedAt: string | null;
+  /** Milik user yang login (boleh direvisi bila ditolak). */
+  own: boolean;
+  /** Alasan penolakan (status REJECTED). */
+  rejection: { reason: string; by: string } | null;
 };
 
 /**
@@ -101,6 +107,7 @@ export async function listLeaveRequests(db: PrismaClient, viewer: { role: Role; 
     select: { entityId: true, currentLevel: true },
   });
   const levelOf = new Map(approvals.map((a) => [a.entityId, a.currentLevel]));
+  const rejections = await rejectionsOf(db, "LEAVE", requests.filter((r) => r.status === "REJECTED").map((r) => r.id));
   return requests.map<LeaveRequestRow>((request) => ({
     id: request.id,
     number: request.number,
@@ -113,6 +120,8 @@ export async function listLeaveRequests(db: PrismaClient, viewer: { role: Role; 
     status: request.status,
     currentLevel: levelOf.get(request.id) ?? null,
     submittedAt: request.submittedAt?.toISOString() ?? null,
+    own: request.employeeId === viewer.employeeId,
+    rejection: rejections.get(request.id) ?? null,
   }));
 }
 
@@ -146,7 +155,7 @@ export async function listDirectorLeaves(db: PrismaClient, fromIso: string, toIs
   const leaves = await db.leaveRequest.findMany({
     where: {
       status: "APPROVED",
-      employee: { division: "DIRECTOR" },
+      employee: { division: DIRECTOR_DIVISION },
       startDate: { lte: fromIsoDate(toIso) },
       endDate: { gte: fromIsoDate(fromIso) },
     },
@@ -247,7 +256,7 @@ export async function getLeaveCalendar(db: PrismaClient, yearMonth: string): Pro
           ? []
           : leaves
               .filter((l) => toJakartaIsoDate(l.startDate) <= day && toJakartaIsoDate(l.endDate) >= day)
-              .map((l) => ({ name: l.employee.fullName, isDirector: l.employee.division === "DIRECTOR" })),
+              .map((l) => ({ name: l.employee.fullName, isDirector: l.employee.division === DIRECTOR_DIVISION })),
     });
   }
   return weeks;

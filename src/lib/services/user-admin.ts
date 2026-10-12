@@ -4,17 +4,21 @@
 import argon2 from "argon2";
 import type { Prisma, PrismaClient, Role } from "@/generated/prisma/client";
 import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
-import { DIVISION_LABEL } from "@/lib/labels";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { APPROVER_ROLES, canApprove } from "@/lib/roles";
+import { divisionLabels } from "./division";
 
 type Tx = Prisma.TransactionClient;
 
-export function flowLabel(flow: { module: keyof typeof APPROVAL_MODULE_META | null; division: keyof typeof DIVISION_LABEL | null; scope: string }) {
+/** `divisions` = peta kode → nama divisi (master, 2026-10-12); tanpa peta, kode yang tampil. */
+export function flowLabel(
+  flow: { module: keyof typeof APPROVAL_MODULE_META | null; division: string | null; scope: string },
+  divisions: Record<string, string> = {},
+) {
   if (flow.scope === "FALLBACK") return "Fallback";
   const moduleLabel = flow.module ? APPROVAL_MODULE_META[flow.module].label : "—";
-  return `${moduleLabel} · ${flow.division ? DIVISION_LABEL[flow.division] : "Semua divisi"}`;
+  return `${moduleLabel} · ${flow.division ? (divisions[flow.division] ?? flow.division) : "Semua divisi"}`;
 }
 
 /**
@@ -29,9 +33,10 @@ export async function assertCanLoseApproverRights(tx: Tx, userId: string, displa
     where: { flow: { isActive: true, deletedAt: null }, approvers: { some: { userId } } },
     include: { flow: true, approvers: { select: { userId: true } } },
   });
+  const labels = await divisionLabels(tx);
   const blockingFlows: string[] = [];
   for (const step of flowSteps) {
-    if (!(await isOtherActiveAdmin(step.approvers.map((a) => a.userId)))) blockingFlows.push(`${flowLabel(step.flow)} L${step.level}`);
+    if (!(await isOtherActiveAdmin(step.approvers.map((a) => a.userId)))) blockingFlows.push(`${flowLabel(step.flow, labels)} L${step.level}`);
   }
   if (blockingFlows.length) {
     throw new ServiceError(
@@ -56,7 +61,7 @@ export type UserRow = {
   id: string;
   email: string;
   name: string;
-  division: keyof typeof DIVISION_LABEL | null;
+  division: string | null;
   position: string | null;
   employeeId: string | null;
   employeeStatus: "ACTIVE" | "RESIGNED" | null;

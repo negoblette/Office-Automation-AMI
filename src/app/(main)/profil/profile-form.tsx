@@ -2,6 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CheckCircle2 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
@@ -29,7 +30,7 @@ export type ProfileReadOnly = {
   level: string | null;
 };
 
-export function ProfileForm({ defaultValues, readOnly }: { defaultValues: Input; readOnly: ProfileReadOnly }) {
+export function ProfileForm({ defaultValues, readOnly, adminEditHref = null }: { defaultValues: Input; readOnly: ProfileReadOnly; adminEditHref?: string | null }) {
   const router = useRouter();
   const [saved, setSaved] = useState(false);
   const form = useForm<Input, unknown, Output>({ resolver: zodResolver(employeeSelfSchema), defaultValues });
@@ -53,7 +54,18 @@ export function ProfileForm({ defaultValues, readOnly }: { defaultValues: Input;
         <FormSection
           layout="aside"
           title="Akun & Pekerjaan"
-          description="Bagian ini hanya bisa diisi & diubah Admin. Hubungi Admin bila ada yang salah."
+          description={
+            adminEditHref ? (
+              <>
+                Bagian ini diisi & diubah Admin.{" "}
+                <Link href={adminEditHref} className="font-semibold text-brand hover:underline">
+                  Ubah Akun & Pekerjaan
+                </Link>
+              </>
+            ) : (
+              "Bagian ini hanya bisa diisi & diubah Admin. Hubungi Admin bila ada yang salah."
+            )
+          }
         >
           <ReadOnlyList
             items={[
@@ -72,11 +84,11 @@ export function ProfileForm({ defaultValues, readOnly }: { defaultValues: Input;
         <div className="flex flex-col-reverse items-stretch gap-3 pt-1 sm:flex-row sm:items-center sm:justify-end">
           {saved && (
             <p role="status" className="flex items-center gap-1.5 text-sm font-medium text-success">
-              <CheckCircle2 className="size-4" aria-hidden /> Data tersimpan
+              <CheckCircle2 className="size-4" aria-hidden /> Perubahan dikirim — menunggu persetujuan Ci Ika
             </p>
           )}
           <Button type="submit" size="lg" disabled={pending}>
-            Simpan Data Diri
+            Ajukan Perubahan Data Diri
           </Button>
         </div>
       </form>

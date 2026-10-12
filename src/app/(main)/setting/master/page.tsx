@@ -3,9 +3,9 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { requireAdmin } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
-import { DIVISION_LABEL } from "@/lib/labels";
 import { listMasterData } from "@/lib/services/project-queries";
 import { HealthCategoryDialog, ReimburseTypeDialog } from "./master-dialogs";
+import { divisionLabels } from "@/lib/services/division";
 
 export const metadata: Metadata = { title: "Master Data" };
 
@@ -15,7 +15,7 @@ function ActiveBadge({ active }: { active: boolean }) {
 
 export default async function MasterDataPage() {
   await requireAdmin();
-  const { types, categories } = await listMasterData(prisma);
+  const [{ types, categories }, divisionLabel] = await Promise.all([listMasterData(prisma), divisionLabels(prisma)]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -42,7 +42,7 @@ export default async function MasterDataPage() {
               <div className="flex flex-wrap gap-1">
                 {type.divisions.map((division) => (
                   <StatusBadge key={division} variant="info" dot={false}>
-                    {DIVISION_LABEL[division]}
+                    {divisionLabel[division] ?? division}
                   </StatusBadge>
                 ))}
               </div>

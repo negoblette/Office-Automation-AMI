@@ -1,11 +1,12 @@
 // Customer, Project, Expense & Revenue — URD PRJ-01..04, Tech Spec §6.5. Dikelola Admin;
-// semua karyawan boleh MENAMBAH customer & project baru (Fase 14, `createOnly`), tidak mengubah/menghapus.
+// divisi Sales boleh MENAMBAH customer & project baru (2026-10-12, `createOnly`), tidak mengubah/menghapus.
+// Biaya project dihitung per tahun kalender (cutoff 31 Des, 2026-10-12) — `projectTotals(…, year)`.
 // Expense & revenue lewat approval engine (flow sama dengan Reimburse) dengan nomor EXP/REV.
 import type { PrismaClient } from "@/generated/prisma/client";
 import { fromIsoDate } from "@/lib/format";
 import type { ProjectExpenseInput, ProjectInput, ProjectRevenueInput } from "@/lib/validators/project";
 import type { Actor } from "./access";
-import { type ApprovalNotification, buildApproval } from "./approval";
+import { type ApprovalNotification, buildApproval, restartApproval } from "./approval";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { nextDocumentNumber } from "./numbering";
@@ -15,6 +16,26 @@ import { nextDocumentNumber } from "./numbering";
 // ---------------------------------------------------------------------
 
 type SaveMasterOptions = { createOnly?: boolean };
+
+/** Divisi yang boleh menambah customer & project selain Admin (keputusan user 2026-10-12). */
+export const MASTER_CREATOR_DIVISION = "SALES";
+
+/** Admin atau karyawan divisi Sales. */
+export async function canAddCustomerProject(db: Pick<PrismaClient, "employee">, user: { role: string; employeeId: string | null }) {
+  if (user.role === "ADMIN") return true;
+  if (!user.employeeId) return false;
+  const employee = await db.employee.findUnique({ where: { id: user.employeeId }, select: { division: true, status: true } });
+  return employee?.status === "ACTIVE" && employee.division === MASTER_CREATOR_DIVISION;
+}
+
+export async function assertCanAddCustomerProject(db: Pick<PrismaClient, "employee">, user: { role: string; employeeId: string | null }) {
+  if (!(await canAddCustomerProject(db, user))) throw new ServiceError("Hanya divisi Sales dan Admin yang bisa menambah customer & project");
+}
+
+/** Rentang tanggal satu tahun kalender (filter `date`). */
+export function yearRange(year: number) {
+  return { gte: fromIsoDate(`${year}-01-01`), lte: fromIsoDate(`${year}-12-31`) };
+}
 
 export async function saveCustomer(db: PrismaClient, actorId: string, customerId: string | null, name: string, options: SaveMasterOptions = {}) {
   if (options.createOnly && customerId) throw new ServiceError("Hanya Admin yang bisa mengubah customer");
@@ -87,25 +108,36 @@ async function activeProject(tx: Parameters<Parameters<PrismaClient["$transactio
   return project;
 }
 
-export async function submitProjectExpense(db: PrismaClient, actor: Actor, projectId: string, input: ProjectExpenseInput): Promise<SubmitProjectEntryResult> {
+/** `reviseId` (2026-10-12, OI-05) = revisi expense yang ditolak: nomor tetap, approval mulai lagi. */
+export async function submitProjectExpense(
+  db: PrismaClient,
+  actor: Actor,
+  projectId: string,
+  input: ProjectExpenseInput,
+  reviseId?: string,
+): Promise<SubmitProjectEntryResult> {
   if (actor.role !== "ADMIN") throw new ServiceError("Hanya Admin yang bisa menginput expense project");
   return db.$transaction(async (tx) => {
     await activeProject(tx, projectId);
-    const number = await nextDocumentNumber(tx, "EXP");
-    const expense = await tx.projectExpense.create({
-      data: {
-        number,
-        projectId,
-        date: fromIsoDate(input.date),
-        description: input.description,
-        paymentMethod: input.paymentMethod,
-        amount: BigInt(input.amount),
-        status: "PENDING",
-        createdById: actor.id,
-      },
-    });
-    const approval = await buildApproval(tx, { module: "EXPENSE", entityId: expense.id, entityNumber: number, requesterId: actor.id });
-    await logAudit(tx, { actorId: actor.id, action: "CREATE", entity: "ProjectExpense", entityId: expense.id, after: expense });
+    const revised = reviseId ? await tx.projectExpense.findUnique({ where: { id: reviseId } }) : null;
+    if (reviseId) {
+      if (!revised || revised.projectId !== projectId) throw new ServiceError("Expense tidak ditemukan");
+      if (revised.status !== "REJECTED") throw new ServiceError("Hanya expense yang ditolak yang bisa direvisi");
+    }
+    const number = revised ? revised.number : await nextDocumentNumber(tx, "EXP");
+    const data = {
+      date: fromIsoDate(input.date),
+      description: input.description,
+      paymentMethod: input.paymentMethod,
+      amount: BigInt(input.amount),
+      status: "PENDING" as const,
+    };
+    const expense = revised
+      ? await tx.projectExpense.update({ where: { id: revised.id }, data })
+      : await tx.projectExpense.create({ data: { ...data, number, projectId, createdById: actor.id } });
+    // Pemohon approval = Admin yang menginput pertama (supaya ia sendiri tidak ikut menyetujui).
+    const approval = await restartApproval(tx, { module: "EXPENSE", entityId: expense.id, entityNumber: number, requesterId: revised?.createdById ?? actor.id });
+    await logAudit(tx, { actorId: actor.id, action: revised ? "UPDATE" : "CREATE", entity: "ProjectExpense", entityId: expense.id, before: revised, after: expense });
     return { id: expense.id, number, status: approval.status, notifications: approval.notifications };
   });
 }
@@ -136,14 +168,20 @@ export async function submitProjectRevenue(db: PrismaClient, actor: Actor, proje
  * Total project (Tech Spec §6.5): expense = Σ baris reimburse APPROVED yang memilih project ini
  * + Σ ProjectExpense APPROVED (PRJ-03); revenue = Σ ProjectRevenue APPROVED.
  */
-export async function projectTotals(db: Pick<PrismaClient, "reimbursementItem" | "projectExpense" | "projectRevenue">, projectId: string) {
+export async function projectTotals(
+  db: Pick<PrismaClient, "reimbursementItem" | "projectExpense" | "projectRevenue">,
+  projectId: string,
+  /** Tahun kalender (cutoff per tahun, 2026-10-12); tanpa tahun = sepanjang masa. */
+  year?: number,
+) {
+  const date = year ? yearRange(year) : undefined;
   const [reimburse, expense, revenue, pendingExpense, pendingRevenue, pendingReimburse] = await Promise.all([
-    db.reimbursementItem.aggregate({ _sum: { amount: true }, where: { projectId, reimbursement: { status: "APPROVED" } } }),
-    db.projectExpense.aggregate({ _sum: { amount: true }, where: { projectId, status: "APPROVED" } }),
-    db.projectRevenue.aggregate({ _sum: { amount: true }, where: { projectId, status: "APPROVED" } }),
-    db.projectExpense.aggregate({ _sum: { amount: true }, where: { projectId, status: "PENDING" } }),
-    db.projectRevenue.aggregate({ _sum: { amount: true }, where: { projectId, status: "PENDING" } }),
-    db.reimbursementItem.aggregate({ _sum: { amount: true }, where: { projectId, reimbursement: { status: "PENDING" } } }),
+    db.reimbursementItem.aggregate({ _sum: { amount: true }, where: { projectId, date, reimbursement: { status: "APPROVED" } } }),
+    db.projectExpense.aggregate({ _sum: { amount: true }, where: { projectId, date, status: "APPROVED" } }),
+    db.projectRevenue.aggregate({ _sum: { amount: true }, where: { projectId, date, status: "APPROVED" } }),
+    db.projectExpense.aggregate({ _sum: { amount: true }, where: { projectId, date, status: "PENDING" } }),
+    db.projectRevenue.aggregate({ _sum: { amount: true }, where: { projectId, date, status: "PENDING" } }),
+    db.reimbursementItem.aggregate({ _sum: { amount: true }, where: { projectId, date, reimbursement: { status: "PENDING" } } }),
   ]);
   const n = (value: bigint | null) => Number(value ?? 0);
   const reimburseTotal = n(reimburse._sum.amount);

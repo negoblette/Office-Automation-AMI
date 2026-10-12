@@ -31,11 +31,11 @@ async function submitAndi() {
   const typeId = (await testDb.reimburseType.findUniqueOrThrow({ where: { code: "TRANSPORT" } })).id;
   const customerId = (await saveCustomer(testDb, u.ika, null, "PT Maju Selaras")).id;
   otherCustomerId = (await saveCustomer(testDb, u.ika, null, "PT Lain")).id;
-  const row = (amount: number, activity: string, paymentMethod = "CASH") => ({
+  const row = (amount: number, activity: string, paymentMethod = "PERSONAL") => ({
     date: "2026-09-12", customerId, projectId: "", activity, participants: "Andi – Engineer", location: "Jakarta",
     typeId, hasReceipt: false, paymentMethod, amount, receiptFileKey: "", receiptFileName: "",
   });
-  const draft = await saveReimbursementDraft(testDb, actors.andi, null, reimbursementSchema.parse({ note: "", items: [row(200_000, "Tol"), row(300_000, "Bensin", "CC")] }));
+  const draft = await saveReimbursementDraft(testDb, actors.andi, null, reimbursementSchema.parse({ note: "", items: [row(200_000, "Tol"), row(300_000, "Bensin", "CORPORATE")] }));
   await submitReimbursement(testDb, actors.andi, draft.reimbursementId);
   const request = await testDb.approvalRequest.findUniqueOrThrow({ where: { module_entityId: { module: "REIMBURSE", entityId: draft.reimbursementId } } });
   return { reimbursementId: draft.reimbursementId, requestId: request.id };
@@ -50,19 +50,19 @@ describe("koreksi approver (Fase 14, diperluas 2026-10-06)", () => {
     const project = await saveProject(testDb, u.ika, null, projectSchema.parse({ customerId: otherCustomerId, code: "PRJ-0100", name: "Core", type: "RUNNING", isActive: true }));
     const targets = await getCorrectionTargets(testDb, requestId, u.yosep);
     expect(targets.map((t) => [field(t, "activity"), field(t, "amount"), field(t, "paymentMethod")])).toEqual([
-      ["Tol", 200_000, "CASH"],
-      ["Bensin", 300_000, "CC"],
+      ["Tol", 200_000, "PERSONAL"],
+      ["Bensin", 300_000, "CORPORATE"],
     ]);
     const mealsId = (await testDb.reimburseType.findUniqueOrThrow({ where: { code: "MEALS" } })).id;
 
     await correctRequest(testDb, u.yosep, requestId, [
-      { targetId: targets[0].targetId, values: { amount: 150_000, activity: "Tol Cikampek", date: "2026-09-11", typeId: mealsId, paymentMethod: "CC" } },
+      { targetId: targets[0].targetId, values: { amount: 150_000, activity: "Tol Cikampek", date: "2026-09-11", typeId: mealsId, paymentMethod: "CORPORATE" } },
       // Ganti company + pilih project milik company baru; tidak berubah lainnya.
       { targetId: targets[1].targetId, values: { customerId: otherCustomerId, project: project.id, hasReceipt: true } },
     ]);
     const r = await testDb.reimbursement.findUniqueOrThrow({ where: { id: reimbursementId }, include: { items: { orderBy: { id: "asc" } } } });
-    expect([Number(r.totalCash), Number(r.totalCc), Number(r.total)]).toEqual([0, 450_000, 450_000]);
-    expect(r.items[0]).toMatchObject({ activity: "Tol Cikampek", typeId: mealsId, paymentMethod: "CC" });
+    expect([Number(r.totalPersonal), Number(r.totalCorporate), Number(r.total)]).toEqual([0, 450_000, 450_000]);
+    expect(r.items[0]).toMatchObject({ activity: "Tol Cikampek", typeId: mealsId, paymentMethod: "CORPORATE" });
     expect(r.items[0].date.toISOString().slice(0, 10)).toBe("2026-09-11");
     expect(r.items[1]).toMatchObject({ customerId: otherCustomerId, projectId: project.id, hasReceipt: true, newAcquisition: false });
 
@@ -70,7 +70,7 @@ describe("koreksi approver (Fase 14, diperluas 2026-10-06)", () => {
     expect(corrections.map((c) => [c.label, c.before, c.after])).toEqual([
       ["Baris 1 · Tanggal", "12 Sep 2026", "11 Sep 2026"],
       ["Baris 1 · Tipe", "Transport", "Meals"],
-      ["Baris 1 · Payment", "Cash", "Kartu Kredit"],
+      ["Baris 1 · Payment", "Personal", "Corporate"],
       ["Baris 1 · Nominal", "Rp 200.000", "Rp 150.000"],
       ["Baris 1 · Aktivitas", "Tol", "Tol Cikampek"],
       ["Baris 2 · Company", "PT Maju Selaras", "PT Lain"],

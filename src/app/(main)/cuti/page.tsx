@@ -61,7 +61,15 @@ export default async function CutiPage({ searchParams }: { searchParams: Promise
           </p>
         )}
       </form>
-      <LeaveTable rows={rows} showRequester={isAdmin} />
+      <LeaveTable
+        rows={rows}
+        showRequester={isAdmin}
+        revise={
+          balance
+            ? { holidays: holidays.map((h) => h.date), remaining: balance.remaining, eligibleFrom: balance.eligibleFrom ?? balance.firstEligibleDate }
+            : undefined
+        }
+      />
     </div>
   );
 }

@@ -330,3 +330,46 @@ export function StaffReminderCard({ documentMissing, certificates }: { documentM
     </DashboardCard>
   );
 }
+
+/**
+ * Peringatan masa berlaku (2026-10-12): banner mencolok di atas dashboard — karyawan melihat miliknya,
+ * Ci Ika / Admin melihat semua karyawan. Tiap baris langsung menuju halaman untuk memperbarui.
+ */
+export function ExpiryAlert({ items, forAdmin }: { items: ExpiringItem[]; forAdmin: boolean }) {
+  if (items.length === 0) return null;
+  const expired = items.filter((i) => i.daysLeft < 0).length;
+  return (
+    <section role="alert" className="rounded-[22px] border-2 border-danger/40 bg-danger-soft p-4 sm:p-5">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <FileWarning className="size-5 text-danger" aria-hidden />
+        <h2 className="text-base font-bold text-ink">
+          {items.length} {forAdmin ? "dokumen / sertifikat karyawan" : "dokumen / sertifikat Anda"} perlu diperbarui
+        </h2>
+        {expired > 0 && (
+          <StatusBadge look="pill" variant="danger">
+            {expired} sudah kadaluarsa
+          </StatusBadge>
+        )}
+      </div>
+      <ul className="grid gap-2 sm:grid-cols-2">
+        {items.slice(0, 6).map((item) => (
+          <li key={item.key}>
+            <Link href={item.href} className="flex items-center justify-between gap-3 rounded-2xl bg-white px-3 py-2.5 shadow-sm hover:underline">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-ink">{item.name}</p>
+                <p className="truncate text-xs text-ink-3">
+                  {item.label}
+                  {item.detail ? ` · ${item.detail}` : ""}
+                </p>
+              </div>
+              <StatusBadge look="pill" variant={item.daysLeft < 0 || item.daysLeft <= 7 ? "danger" : "warning"}>
+                {item.daysLeft < 0 ? "Kadaluarsa" : item.daysLeft === 0 ? "Hari ini" : `${item.daysLeft} hari lagi`}
+              </StatusBadge>
+            </Link>
+          </li>
+        ))}
+      </ul>
+      {items.length > 6 && <p className="mt-2 text-xs text-ink-3">+{items.length - 6} lainnya</p>}
+    </section>
+  );
+}

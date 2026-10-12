@@ -3,6 +3,7 @@ import type { Role } from "@/generated/prisma/enums";
 import type { PrismaClient, RequestStatus } from "@/generated/prisma/client";
 import { fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { remainingPlafond } from "@/lib/health";
+import { rejectionsOf } from "./approval";
 
 const yearRange = (year: number) => ({ gte: fromIsoDate(`${year}-01-01`), lte: fromIsoDate(`${year}-12-31`) });
 
@@ -61,6 +62,10 @@ export type HealthClaimRow = {
   status: RequestStatus;
   currentLevel: number | null;
   payouts: { month: string; amount: number; paid: boolean }[];
+  categoryId: string;
+  /** Milik user yang login (boleh direvisi bila ditolak). */
+  own: boolean;
+  rejection: { reason: string; by: string } | null;
 };
 
 /** Staf: klaim sendiri; Admin: semua. */
@@ -79,6 +84,7 @@ export async function listHealthClaims(db: PrismaClient, viewer: { role: Role; e
     select: { entityId: true, currentLevel: true },
   });
   const levelOf = new Map(approvals.map((a) => [a.entityId, a.currentLevel]));
+  const rejections = await rejectionsOf(db, "HEALTH", claims.filter((c) => c.status === "REJECTED").map((c) => c.id));
   return claims.map<HealthClaimRow>((claim) => ({
     id: claim.id,
     number: claim.number,
@@ -92,6 +98,9 @@ export async function listHealthClaims(db: PrismaClient, viewer: { role: Role; e
     status: claim.status,
     currentLevel: levelOf.get(claim.id) ?? null,
     payouts: claim.payouts.map((p) => ({ month: toJakartaIsoDate(p.periodMonth).slice(0, 7), amount: Number(p.amount), paid: p.paidAt !== null })),
+    categoryId: claim.categoryId,
+    own: claim.employeeId === viewer.employeeId,
+    rejection: rejections.get(claim.id) ?? null,
   }));
 }
 

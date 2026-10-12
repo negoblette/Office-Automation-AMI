@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { getReimbursementFormOptions } from "@/lib/services/reimbursement-queries";
 import { emptyVisit } from "../form-defaults";
 import { ReimbursementForm } from "../reimbursement-form";
+import { canAddCustomerProject } from "@/lib/services/project";
 
 export const metadata: Metadata = { title: "Pengajuan Reimburse" };
 
@@ -26,7 +27,7 @@ export default async function ReimburseBaruPage() {
         <ReimbursementForm
           reimbursementId={null}
           defaultValues={{ note: "", visits: [emptyVisit()] }}
-          options={await getReimbursementFormOptions(prisma, employee.division)}
+          options={await getReimbursementFormOptions(prisma, employee.division, await canAddCustomerProject(prisma, user))}
         />
       ) : (
         <EmptyState title="Tidak bisa mengajukan" description="Akun Anda belum terhubung ke data karyawan aktif. Hubungi Admin." />

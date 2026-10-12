@@ -33,7 +33,7 @@ function arcPath(start: number, end: number): string {
  * Donut persentase total biaya (disetujui) per project / per customer (2026-10-06). Legenda di
  * sampingnya sekaligus tabel nilai (nama, nominal, persen) — warna tidak pernah satu-satunya penanda.
  */
-export function ExpenseShareChart({ projects }: { projects: ExpenseShareProject[] }) {
+export function ExpenseShareChart({ projects, year }: { projects: ExpenseShareProject[]; year: number }) {
   const [mode, setMode] = useState<Mode>("project");
   const [hover, setHover] = useState<string | null>(null);
 
@@ -75,7 +75,7 @@ export function ExpenseShareChart({ projects }: { projects: ExpenseShareProject[
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold">Persentase Biaya</h2>
-          <p className="text-sm text-muted-foreground">Porsi total biaya project yang disetujui.</p>
+          <p className="text-sm text-muted-foreground">Porsi total biaya project yang disetujui tahun {year}.</p>
         </div>
         <FilterPills
           label="Per"

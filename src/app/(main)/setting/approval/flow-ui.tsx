@@ -10,10 +10,10 @@ import type { SelectOption } from "@/components/form/select-field";
 import { Button } from "@/components/ui/button";
 import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
 import type { ActionResult } from "@/lib/actions";
-import { DIVISION_LABEL, toOptions } from "@/lib/labels";
 import type { FlowView } from "@/lib/services/approval-flow";
 import { approvalFlowSchema, fallbackFlowSchema } from "@/lib/validators/setting";
 import { deleteFlowAction, saveFlowAction, setFlowActiveAction } from "./actions";
+import { useDivisions } from "@/components/shared/divisions-context";
 
 // Revenue project tidak dipakai lagi (permintaan 2026-10-05) → tidak ditawarkan untuk alur baru.
 const MODULE_OPTIONS = Object.entries(APPROVAL_MODULE_META)
@@ -82,6 +82,7 @@ function RegularFlowOptions({ approvers }: { approvers: SelectOption[] }) {
 }
 
 export function FlowDialog({ flow, approvers }: { flow?: FlowView; approvers: SelectOption[] }) {
+  const divisions = useDivisions();
   const steps = flow?.steps.map((s) => ({ approverIds: s.approvers.filter((a) => a.usable).map((a) => a.id) })) ?? [{ approverIds: [] }];
   const trigger = flow ? (
     <Button variant="ghost" size="icon-sm" aria-label={`Ubah ${flow.label}`}>
@@ -133,7 +134,7 @@ export function FlowDialog({ flow, approvers }: { flow?: FlowView; approvers: Se
         <SelectInputField
           name="division"
           label="Divisi pemohon"
-          options={[{ value: "", label: "Semua divisi" }, ...toOptions(DIVISION_LABEL)]}
+          options={[{ value: "", label: "Semua divisi" }, ...divisions.options]}
           hint="Flow divisi spesifik diutamakan daripada flow semua divisi."
         />
       </div>

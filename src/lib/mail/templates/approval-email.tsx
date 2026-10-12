@@ -2,13 +2,15 @@
 import { Body, Button, Container, Head, Heading, Hr, Html, Preview, Section, Text } from "@react-email/components";
 
 export type ApprovalEmailProps = {
-  template: "approval-requested" | "approval-progress" | "approval-final";
+  template: "approval-requested" | "approval-progress" | "approval-final" | "approval-rejected";
   recipientName: string;
   requesterName: string;
   moduleLabel: string;
   entityNumber: string;
   /** Kalimat status, mis. "Disetujui L1 oleh Yosep, menunggu persetujuan L2." */
   statusLine: string;
+  /** Rincian isi pengajuan, mis. tanggal & alasan cuti. */
+  details?: string[];
   url: string;
 };
 
@@ -16,12 +18,14 @@ const HEADINGS: Record<ApprovalEmailProps["template"], string> = {
   "approval-requested": "Pengajuan menunggu persetujuan Anda",
   "approval-progress": "Pengajuan Anda sedang diproses",
   "approval-final": "Pengajuan telah disetujui",
+  "approval-rejected": "Pengajuan Anda ditolak — silakan revisi",
 };
 
 const BUTTONS: Record<ApprovalEmailProps["template"], string> = {
   "approval-requested": "Buka Antrian Approval",
   "approval-progress": "Lihat Pengajuan",
   "approval-final": "Lihat Pengajuan",
+  "approval-rejected": "Revisi Pengajuan",
 };
 
 export function ApprovalEmail(props: ApprovalEmailProps) {
@@ -42,6 +46,11 @@ export function ApprovalEmail(props: ApprovalEmailProps) {
               <strong>{props.moduleLabel}</strong> · {props.entityNumber}
             </Text>
             <Text style={row}>Pemohon: {props.requesterName}</Text>
+            {props.details?.map((line) => (
+              <Text key={line} style={row}>
+                {line}
+              </Text>
+            ))}
             <Text style={row}>{props.statusLine}</Text>
           </Section>
           <Button

@@ -8,7 +8,7 @@ import { APPEAL_REASON_LABEL, appealDeadline, isWorkday } from "@/lib/attendance
 import { formatDate, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { addDays } from "@/lib/leave";
 import type { Actor } from "./access";
-import { type ApprovalNotification, buildApproval } from "./approval";
+import { type ApprovalNotification, restartApproval } from "./approval";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { addLeaveAdjustment } from "./leave-balance";
@@ -53,14 +53,16 @@ export async function submitAppeal(db: PrismaClient, actor: Actor, input: Appeal
       where: { employeeId, status: { in: ["PENDING", "APPROVED"] }, startDate: { lte: fromIsoDate(date) }, endDate: { gte: fromIsoDate(date) } },
     });
     if (onLeave) throw new ServiceError(`Tanggal tersebut sudah tercatat cuti (${onLeave.number})`, "date");
-    if (await tx.attendanceAppeal.findUnique({ where: { employeeId_date: { employeeId, date: fromIsoDate(date) } } })) {
-      throw new ServiceError("Appeal untuk tanggal tersebut sudah pernah diajukan", "date");
-    }
+    // Appeal yang ditolak boleh direvisi & diajukan ulang (2026-10-12, OI-05) selama masih dalam batas 7 hari.
+    const existing = await tx.attendanceAppeal.findUnique({ where: { employeeId_date: { employeeId, date: fromIsoDate(date) } } });
+    if (existing && existing.status !== "REJECTED") throw new ServiceError("Appeal untuk tanggal tersebut sudah pernah diajukan", "date");
 
-    const number = await nextDocumentNumber(tx, "APL");
-    const appeal = await tx.attendanceAppeal.create({ data: { number, employeeId, date: fromIsoDate(date), reason: input.reason, note: input.note } });
-    const approval = await buildApproval(tx, { module: "ATTENDANCE_APPEAL", entityId: appeal.id, entityNumber: number, requesterId: actor.id });
-    await logAudit(tx, { actorId: actor.id, action: "CREATE", entity: "AttendanceAppeal", entityId: appeal.id, after: appeal });
+    const number = existing ? existing.number : await nextDocumentNumber(tx, "APL");
+    const appeal = existing
+      ? await tx.attendanceAppeal.update({ where: { id: existing.id }, data: { reason: input.reason, note: input.note, status: "PENDING", approvedAt: null } })
+      : await tx.attendanceAppeal.create({ data: { number, employeeId, date: fromIsoDate(date), reason: input.reason, note: input.note } });
+    const approval = await restartApproval(tx, { module: "ATTENDANCE_APPEAL", entityId: appeal.id, entityNumber: number, requesterId: actor.id });
+    await logAudit(tx, { actorId: actor.id, action: existing ? "UPDATE" : "CREATE", entity: "AttendanceAppeal", entityId: appeal.id, before: existing, after: appeal });
     return { appealId: appeal.id, number, status: approval.status, notifications: approval.notifications as ApprovalNotification[] };
   });
 }

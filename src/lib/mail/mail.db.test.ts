@@ -2,10 +2,13 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { buildApprovalEmails } from "@/lib/mail/approval-emails";
 import type { EmailJobData } from "@/lib/mail/queue";
 import { renderEmail } from "@/lib/mail/render";
+import type { ApprovalEmailProps } from "@/lib/mail/templates/approval-email";
 import { type MailTransport, processEmailJob } from "@/lib/mail/send-email";
 import { approveRequest, buildApproval } from "@/lib/services/approval";
 import { testDb } from "@/test/db";
 import { createApprovalEntity } from "@/test/entities";
+import { submitLeaveRequest } from "@/lib/services/leave";
+import { leaveRequestSchema } from "@/lib/validators/leave";
 import { resetAndSeed } from "@/test/seed";
 
 let u: Record<string, string>;
@@ -61,6 +64,23 @@ describe("buildApprovalEmails (NTF-01..03)", () => {
       ["andi", "ika", "leonard", "rudy"].map((k) => `${k}@artha-mitra.local`), // Admin = Ika, Rudy, Leonard
     );
     expect(finalEmails[0]).toMatchObject({ subject: "[Disetujui] Reimburse RMB/2026/09/0007", props: { statusLine: "Disetujui final oleh Rudy." } });
+  });
+});
+
+describe("rincian pengajuan di email (2026-10-12)", () => {
+  it("pengajuan cuti → email ke approver memuat tanggal, jumlah hari, dan alasan", async () => {
+    const andi = await testDb.user.findUniqueOrThrow({ where: { id: u.andi } });
+    const result = await submitLeaveRequest(
+      testDb,
+      { id: andi.id, role: andi.role, employeeId: andi.employeeId },
+      leaveRequestSchema.parse({ startDate: "2026-10-05", endDate: "2026-10-06", reason: "Acara keluarga" }),
+    );
+    const [email] = await buildApprovalEmails(testDb, result.notifications[0]);
+    const props = email.props as ApprovalEmailProps;
+    expect(email.to).toBe("rudy@artha-mitra.local");
+    expect(props.details).toEqual(["Tanggal cuti: 5 Oktober 2026 – 6 Oktober 2026 (2 hari kerja)", "Alasan: Acara keluarga"]);
+    const { text } = await renderEmail("approval-requested", props);
+    expect(text).toContain("Alasan: Acara keluarga");
   });
 });
 

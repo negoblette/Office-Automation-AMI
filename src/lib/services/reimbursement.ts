@@ -2,11 +2,12 @@
 // Draft (nomor sementara) → Ajukan (nomor RMB + approval dalam satu transaksi) → APPROVED
 // (efek final di approval-effects.ts). Hanya pemohon yang boleh mengubah/menghapus DRAFT.
 import { randomUUID } from "node:crypto";
-import type { Division, Prisma, PrismaClient } from "@/generated/prisma/client";
+import type { PaymentMethod } from "@/generated/prisma/enums";
+import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { fromIsoDate } from "@/lib/format";
 import { type ReimbursementInput, reimbursementTotals } from "@/lib/validators/reimbursement";
 import type { Actor } from "./access";
-import { type ApprovalNotification, buildApproval } from "./approval";
+import { type ApprovalNotification, restartApproval } from "./approval";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { nextDocumentNumber } from "./numbering";
@@ -30,7 +31,8 @@ async function getOwnDraft(tx: Tx, actor: Actor, reimbursementId: string) {
   });
   if (!reimbursement) throw new ServiceError("Reimburse tidak ditemukan");
   if (reimbursement.employeeId !== actor.employeeId) throw new ServiceError("Hanya pemohon yang bisa mengubah reimburse ini");
-  if (reimbursement.status !== "DRAFT") throw new ServiceError("Reimburse yang sudah diajukan tidak bisa diubah");
+  // Draft, atau ditolak approver → boleh direvisi lalu diajukan ulang (2026-10-12, OI-05).
+  if (reimbursement.status !== "DRAFT" && reimbursement.status !== "REJECTED") throw new ServiceError("Reimburse yang sudah diajukan tidak bisa diubah");
   return reimbursement;
 }
 
@@ -38,9 +40,13 @@ async function getOwnDraft(tx: Tx, actor: Actor, reimbursementId: string) {
  * Validasi & ubah baris input → data Prisma. Fase 14 (2026-10-05): Company wajib dari master;
  * project harus milik company itu, atau ditandai prospek New Acquisition (tanpa project).
  */
-async function buildItems(tx: Tx, division: Division, input: ReimbursementInput) {
+/** Satu-satunya tipe yang boleh tanpa Names – Position. */
+export const PARTICIPANTS_OPTIONAL_TYPE = "TRANSPORT";
+
+async function buildItems(tx: Tx, division: string, input: ReimbursementInput) {
   const types = await tx.reimburseType.findMany({ where: { isActive: true, divisions: { has: division } } });
   const allowedTypes = new Set(types.map((type) => type.id));
+  const typeById = new Map(types.map((type) => [type.id, type]));
   const customers = new Map(
     (await tx.customer.findMany({ where: { id: { in: input.items.map((i) => i.customerId) }, deletedAt: null } })).map((c) => [c.id, c]),
   );
@@ -50,6 +56,11 @@ async function buildItems(tx: Tx, division: Division, input: ReimbursementInput)
     const row = `Baris ${index + 1}`;
     // RMB-04: tipe harus sesuai divisi pemohon.
     if (!allowedTypes.has(item.typeId)) throw new ServiceError(`${row}: tipe reimburse tidak tersedia untuk divisi Anda`);
+    // Names – Position wajib untuk semua tipe kecuali Transport (2026-10-12).
+    const type = typeById.get(item.typeId)!;
+    if (type.code !== PARTICIPANTS_OPTIONAL_TYPE && item.participants.length < 2) {
+      throw new ServiceError(`${row}: Names – Position wajib diisi untuk tipe ${type.name}`);
+    }
     const customer = customers.get(item.customerId);
     if (!customer) throw new ServiceError(`${row}: company tidak ditemukan di master`);
     if (item.projectId && item.newAcquisition) throw new ServiceError(`${row}: pilih project atau New Acquisition, bukan keduanya`);
@@ -77,9 +88,9 @@ async function buildItems(tx: Tx, division: Division, input: ReimbursementInput)
 }
 
 /** Total dihitung ulang di server (Tech Spec §6.4) — nilai dari client tidak dipercaya. */
-function totalsOf(items: { paymentMethod: "CASH" | "CC"; amount: bigint }[]) {
-  const { cash, cc, total } = reimbursementTotals(items.map((item) => ({ paymentMethod: item.paymentMethod, amount: Number(item.amount) })));
-  return { totalCash: BigInt(cash), totalCc: BigInt(cc), total: BigInt(total) };
+function totalsOf(items: { paymentMethod: PaymentMethod; amount: bigint }[]) {
+  const { personal, corporate, total } = reimbursementTotals(items.map((item) => ({ paymentMethod: item.paymentMethod, amount: Number(item.amount) })));
+  return { totalPersonal: BigInt(personal), totalCorporate: BigInt(corporate), total: BigInt(total) };
 }
 
 export type SaveDraftResult = { reimbursementId: string };
@@ -125,14 +136,16 @@ export async function submitReimbursement(db: PrismaClient, actor: Actor, reimbu
     const draft = await getOwnDraft(tx, actor, reimbursementId);
     if (draft.items.length === 0) throw new ServiceError("Tambahkan minimal 1 baris sebelum mengajukan");
 
-    const number = await nextDocumentNumber(tx, "RMB");
+    // Ajukan ulang setelah ditolak: nomor tetap, approval dimulai lagi dari level 1.
+    const resubmit = draft.status === "REJECTED";
+    const number = resubmit ? draft.number : await nextDocumentNumber(tx, "RMB");
     await tx.reimbursement.update({
       where: { id: draft.id },
       data: { number, status: "PENDING", submittedAt: new Date(), division: employee.division },
     });
-    const approval = await buildApproval(tx, { module: "REIMBURSE", entityId: draft.id, entityNumber: number, requesterId: actor.id });
+    const approval = await restartApproval(tx, { module: "REIMBURSE", entityId: draft.id, entityNumber: number, requesterId: actor.id });
 
-    await logAudit(tx, { actorId: actor.id, action: "UPDATE", entity: "Reimbursement", entityId: draft.id, before: { status: "DRAFT" }, after: { status: approval.status, number } });
+    await logAudit(tx, { actorId: actor.id, action: "UPDATE", entity: "Reimbursement", entityId: draft.id, before: { status: draft.status }, after: { status: approval.status, number, resubmit } });
     return { number, status: approval.status, notifications: approval.notifications };
   });
 }

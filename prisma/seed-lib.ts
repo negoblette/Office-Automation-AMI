@@ -8,7 +8,6 @@
 import type {
   PrismaClient,
   ApprovalModule,
-  Division,
   FlowScope,
   Prisma,
   Role,
@@ -16,6 +15,25 @@ import type {
 
 
 export const EMAIL_DOMAIN = "artha-mitra.local";
+
+/** Kode divisi (master `Division`, 2026-10-12). */
+type Division = string;
+
+// Divisi bawaan; HR & Finance mengikuti alur approval Umum (keputusan user 2026-10-12).
+export const DIVISIONS = [
+  { code: "UMUM", name: "Umum", followsCode: null, sortOrder: 1 },
+  { code: "ENGINEER", name: "Engineer", followsCode: null, sortOrder: 2 },
+  { code: "SALES", name: "Sales", followsCode: null, sortOrder: 3 },
+  { code: "DIRECTOR", name: "Direktur", followsCode: null, sortOrder: 4 },
+  { code: "HR", name: "HR", followsCode: "UMUM", sortOrder: 5 },
+  { code: "FINANCE", name: "Finance", followsCode: "UMUM", sortOrder: 6 },
+];
+
+export async function seedDivisions(prisma: PrismaClient) {
+  for (const division of DIVISIONS) {
+    await prisma.division.upsert({ where: { code: division.code }, create: division, update: {} });
+  }
+}
 
 export type SeedPerson = {
   key: string; // dipakai untuk referensi antar-seed (mis. approver flow)
@@ -100,7 +118,7 @@ const APP_SETTINGS: Record<string, Prisma.InputJsonValue> = {
 };
 
 // v1.14: 6 tipe bebas dipilih semua divisi. Parkir -> Allowance; bensin & tol -> Transport.
-const ALL_DIVISIONS: Division[] = ["SALES", "ENGINEER", "UMUM", "DIRECTOR"];
+const ALL_DIVISIONS: Division[] = DIVISIONS.map((d) => d.code);
 const REIMBURSE_TYPES = [
   { code: "ENTERTAINMENT", name: "Entertainment", divisions: ALL_DIVISIONS },
   { code: "MEALS", name: "Meals", divisions: ALL_DIVISIONS },
@@ -150,7 +168,8 @@ type SeedFlow = {
 
 // Reimburse; Expense & Revenue project sama dengan reimburse.
 const REGULAR_MODULES: ApprovalModule[] = ["REIMBURSE", "EXPENSE", "REVENUE"];
-const DIVISION_STEPS: Record<Division, string[][]> = {
+// HR & Finance tidak punya alur sendiri: mengikuti Umum lewat `Division.followsCode`.
+const DIVISION_STEPS: Record<string, string[][]> = {
   // Fase 14 (2026-10-02): Sales satu level (salah satu cukup); Umum Bu Ika / Ko Leonard.
   SALES: [["darwin", "leonard"]],
   ENGINEER: [["yosep"], ["rudy"]],
@@ -174,7 +193,10 @@ export const APPROVAL_FLOWS: SeedFlow[] = [
   { scope: "REGULAR", module: "LEAVE", division: null, steps: [["rudy"]] },
   { scope: "REGULAR", module: "LEAVE", division: "DIRECTOR", steps: [] },
   // Verifikasi sertifikat: Ko Yosep -> Bu Ika (Fase 14, 2026-10-05).
-  { scope: "REGULAR", module: "CERTIFICATE", division: null, steps: [["yosep"], ["ika"]] },
+  // Verifikasi sertifikat -> Ci Ika saja (2026-10-12; sebelumnya Ko Yosep -> Bu Ika); milik Ci Ika -> Fallback.
+  { scope: "REGULAR", module: "CERTIFICATE", division: null, steps: [["ika"]] },
+  // Perubahan data diri / keluarga / dokumen oleh karyawan sendiri -> Ci Ika (2026-10-12).
+  { scope: "REGULAR", module: "PROFILE_CHANGE", division: null, steps: [["ika"]] },
   // Appeal absensi (sakit / kunjungan keluar) -> Bu Ika; appeal Bu Ika -> Fallback (Fase 14).
   { scope: "REGULAR", module: "ATTENDANCE_APPEAL", division: null, steps: [["ika"]] },
   // Klaim kesehatan -> Bu Ika; klaim Bu Ika sendiri -> Fallback.
@@ -219,6 +241,7 @@ export async function seedAll(prisma: PrismaClient, passwordHash: string, { log 
   const original = console.log;
   if (!log) console.log = () => undefined;
   try {
+    await seedDivisions(prisma);
     const userIds = await seedPeople(prisma, passwordHash);
     await seedMasterData(prisma);
     await seedApprovalFlows(prisma, userIds);

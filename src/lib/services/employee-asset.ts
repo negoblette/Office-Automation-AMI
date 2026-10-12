@@ -1,5 +1,5 @@
 // Daftar aset sederhana per karyawan (Fase 14, keputusan user 2026-10-05). Dicatat Admin,
-// dilihat karyawan di Profil → Aset Saya. Bukan modul Inventory (masih ditunda).
+// dilihat karyawan di Profil → Inventory Kantor. Bukan modul Inventory (masih ditunda).
 import type { PrismaClient } from "@/generated/prisma/client";
 import { fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import type { EmployeeAssetInput } from "@/lib/validators/employee-asset";

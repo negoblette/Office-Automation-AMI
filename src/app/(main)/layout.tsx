@@ -5,6 +5,8 @@ import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { canApprove } from "@/lib/roles";
 import { countPendingApprovals } from "@/lib/services/approval-queries";
+import { listDivisions } from "@/lib/services/division";
+import { DivisionsProvider } from "@/components/shared/divisions-context";
 import { cn } from "@/lib/utils";
 
 /**
@@ -18,6 +20,7 @@ import { cn } from "@/lib/utils";
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   const badges = canApprove(user.role) ? { "/approval": await countPendingApprovals(prisma, user.id) } : undefined;
+  const divisions = (await listDivisions(prisma, { includeInactive: true })).map((d) => ({ code: d.code, name: d.name, isActive: d.isActive }));
 
   return (
     <div className={cn("flex min-h-screen flex-1 flex-col", shell.ground)}>
@@ -32,7 +35,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
         <div className="flex min-w-0 flex-1 flex-col overflow-clip rounded-[22px] bg-sheet shadow-(--elev-sheet) lg:rounded-[28px]">
           <AppTopbar user={{ name: user.name, role: user.role }} badges={badges} />
           <main id="konten" tabIndex={-1} className="mx-auto w-full max-w-[1200px] flex-1 px-[clamp(18px,3vw,36px)] pt-3.5 pb-12 outline-none">
-            {children}
+            <DivisionsProvider divisions={divisions}>{children}</DivisionsProvider>
           </main>
         </div>
       </div>

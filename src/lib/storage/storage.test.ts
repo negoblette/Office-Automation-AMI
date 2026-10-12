@@ -13,20 +13,19 @@ const EXE = new Uint8Array([0x4d, 0x5a, 0x90, 0x00]); // MZ
 const TEXT = new TextEncoder().encode("ini file teks yang diganti namanya jadi .pdf");
 
 describe("validateUpload", () => {
-  it.each([
-    ["PDF", PDF, "pdf", "application/pdf"],
-    ["PNG", PNG, "png", "image/png"],
-    ["JPG", JPG, "jpg", "image/jpeg"],
-  ])("%s diterima (dideteksi dari isi)", (_, bytes, ext, mimeType) => {
-    expect(validateUpload(bytes)).toEqual({ ok: true, ext, mimeType });
+  it("PDF diterima (dideteksi dari isi)", () => {
+    expect(validateUpload(PDF)).toEqual({ ok: true, ext: "pdf", mimeType: "application/pdf" });
   });
 
   it.each([
+    // 2026-10-12: hanya PDF.
+    ["PNG", PNG],
+    ["JPG", JPG],
     ["GIF", GIF],
     ["EXE", EXE],
     ["teks berekstensi .pdf", TEXT],
   ])("%s ditolak", (_, bytes) => {
-    expect(validateUpload(bytes)).toEqual({ ok: false, error: "File harus berupa PDF, JPG, atau PNG" });
+    expect(validateUpload(bytes)).toEqual({ ok: false, error: "File harus berupa PDF" });
   });
 
   it("file kosong ditolak", () => {

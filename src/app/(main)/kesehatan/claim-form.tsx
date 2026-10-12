@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { HeartPulse, Loader2 } from "lucide-react";
+import { HeartPulse, Loader2, Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Controller, FormProvider, useForm } from "react-hook-form";
@@ -30,22 +30,33 @@ type Input = z.input<typeof healthClaimSchema>;
 type Output = z.output<typeof healthClaimSchema>;
 
 /** Dialog klaim kesehatan (HC-02, HC-03): kategori, tanggal, nominal, invoice wajib. */
-export function HealthClaimDialog({ categories, remaining }: { categories: { value: string; label: string }[]; remaining: number }) {
+export function HealthClaimDialog({
+  categories,
+  remaining,
+  revise,
+}: {
+  categories: { value: string; label: string }[];
+  remaining: number;
+  /** Revisi klaim yang ditolak (2026-10-12): nomor tetap, diajukan ulang. */
+  revise?: { id: string; number: string; categoryId: string; claimDate: string; amount: number; note: string | null };
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const defaults: Input = {
-    categoryId: "",
-    claimDate: toJakartaIsoDate(),
-    amount: null as unknown as number,
-    note: "",
-  };
+  const defaults: Input = revise
+    ? { categoryId: revise.categoryId, claimDate: revise.claimDate, amount: revise.amount, note: revise.note ?? "" }
+    : {
+        categoryId: "",
+        claimDate: toJakartaIsoDate(),
+        amount: null as unknown as number,
+        note: "",
+      };
   const form = useForm<Input, unknown, Output>({ resolver: zodResolver(healthClaimSchema), defaultValues: defaults });
   const { serverError, pending, submit } = useActionSubmit(form);
   const errors = form.formState.errors;
 
   const onSubmit = form.handleSubmit((values) =>
     submit(
-      () => submitHealthClaimAction(values),
+      () => submitHealthClaimAction(values, revise?.id ?? null),
       () => {
         setOpen(false);
         router.refresh();
@@ -61,14 +72,20 @@ export function HealthClaimDialog({ categories, remaining }: { categories: { val
         if (next) form.reset(defaults);
       }}
     >
-      <DialogTrigger render={<Button size="lg" />}>
-        <HeartPulse aria-hidden /> Ajukan Klaim
-      </DialogTrigger>
+      {revise ? (
+        <DialogTrigger render={<Button size="sm" variant="outline" />}>
+          <Pencil aria-hidden /> Revisi
+        </DialogTrigger>
+      ) : (
+        <DialogTrigger render={<Button size="lg" />}>
+          <HeartPulse aria-hidden /> Ajukan Klaim
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-lg">
         <FormProvider {...form}>
           <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
             <DialogHeader>
-              <DialogTitle>Ajukan Klaim Kesehatan</DialogTitle>
+              <DialogTitle>{revise ? `Revisi Klaim ${revise.number}` : "Ajukan Klaim Kesehatan"}</DialogTitle>
               <DialogDescription>Sisa plafon tahun ini {formatRupiah(remaining)}. Klaim di atas plafon bulanan dibayar bertahap.</DialogDescription>
             </DialogHeader>
             <FormAlert message={serverError} />
@@ -88,7 +105,7 @@ export function HealthClaimDialog({ categories, remaining }: { categories: { val
               <DialogClose render={<Button type="button" variant="outline" />}>Batal</DialogClose>
               <Button type="submit" disabled={pending}>
                 {pending && <Loader2 className="animate-spin" aria-hidden />}
-                Ajukan
+                {revise ? "Ajukan Ulang" : "Ajukan"}
               </Button>
             </DialogFooter>
           </form>

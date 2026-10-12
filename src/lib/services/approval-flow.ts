@@ -6,6 +6,8 @@ import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { flowLabel } from "./user-admin";
 import { APPROVER_ROLES, canApprove } from "@/lib/roles";
+import { divisionLabels } from "./division";
+import { assertDivisions } from "./division";
 
 type Tx = Prisma.TransactionClient;
 
@@ -25,10 +27,11 @@ export type FlowView = {
 };
 
 export async function listFlows(db: PrismaClient): Promise<FlowView[]> {
+  const labels = await divisionLabels(db);
   const flows = await db.approvalFlow.findMany({ where: { deletedAt: null }, include: flowInclude, orderBy: [{ scope: "asc" }, { module: "asc" }, { division: "asc" }] });
   return flows.map((flow) => ({
     id: flow.id,
-    label: flowLabel(flow),
+    label: flowLabel(flow, labels),
     module: flow.module,
     division: flow.division,
     scope: flow.scope,
@@ -89,6 +92,7 @@ export async function saveFlow(
   input: Pick<ApprovalFlowInput, "steps"> & Partial<Pick<ApprovalFlowInput, "module" | "division" | "autoApproveWhenSkipped">>,
 ) {
   return db.$transaction(async (tx) => {
+    await assertDivisions(tx, [input.division]);
     await assertValidSteps(tx, input.steps);
     if (!flowId) {
       if (!input.module) throw new ServiceError("Modul wajib dipilih", "module");

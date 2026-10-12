@@ -14,7 +14,7 @@ import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
 import { formatDateTime } from "@/lib/format";
 import type { ApprovalRow } from "@/lib/services/approval-queries";
 import { ApproveButton } from "./approve-button";
-import { CorrectionButton, CorrectionList, RevokeButton } from "./correction-ui";
+import { CorrectionButton, CorrectionList, RejectButton, RevokeButton } from "./correction-ui";
 
 const col = dataTableColumnHelper<ApprovalRow>();
 
@@ -26,6 +26,7 @@ function RowActions({ row }: { row: ApprovalRow }) {
     <div className="flex flex-wrap items-center justify-end gap-1">
       {row.canRevoke && <RevokeButton requestId={row.id} label={label} final={row.status === "APPROVED"} />}
       {row.canApprove && row.correctable && <CorrectionButton requestId={row.id} label={label} />}
+      {row.canApprove && <RejectButton requestId={row.id} label={label} />}
       {row.canApprove && <ApproveButton requestId={row.id} label={label} requestedAmount={row.requestedAmount} />}
     </div>
   );
@@ -52,7 +53,7 @@ const numberColumn = col.accessor("entityNumber", {
   header: "Nomor",
   cell: ({ row }) => (
     <div className="flex max-w-72 flex-col gap-1">
-      {row.original.module === "CERTIFICATE" || row.original.module === "ATTENDANCE_APPEAL" ? (
+      {row.original.module === "CERTIFICATE" || row.original.module === "ATTENDANCE_APPEAL" || row.original.module === "PROFILE_CHANGE" ? (
         <span className="font-medium whitespace-nowrap">{row.original.entityNumber}</span>
       ) : (
         <Link href={APPROVAL_MODULE_META[row.original.module].path(row.original.entityId)} className="font-medium whitespace-nowrap hover:underline">

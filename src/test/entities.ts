@@ -60,7 +60,7 @@ export async function createApprovalEntity(module: ApprovalModule, requesterUser
       });
       const data = { number: `UJI-${randomUUID()}`, projectId: project.id, date: new Date(), description: "uji", amount: 100_000n, status: "PENDING" as const, createdById: requesterUserId };
       return module === "EXPENSE"
-        ? (await testDb.projectExpense.create({ data: { ...data, paymentMethod: "CASH" } })).id
+        ? (await testDb.projectExpense.create({ data: { ...data, paymentMethod: "PERSONAL" } })).id
         : (await testDb.projectRevenue.create({ data })).id;
     }
     case "CERTIFICATE": {
@@ -68,6 +68,12 @@ export async function createApprovalEntity(module: ApprovalModule, requesterUser
         data: { employeeId: user.employeeId!, type: "PROFESSIONAL", name: "Sertifikat Uji", startDate: new Date(), endDate: new Date(Date.now() + 365 * 86_400_000) },
       });
       return certificate.id;
+    }
+    case "PROFILE_CHANGE": {
+      const change = await testDb.profileChangeRequest.create({
+        data: { number: `UJI-${randomUUID()}`, employeeId: user.employeeId!, kind: "CERTIFICATE_DELETE", targetId: null, payload: {}, summary: ["uji"], requestedById: requesterUserId },
+      });
+      return change.id;
     }
     case "ATTENDANCE_APPEAL": {
       const appeal = await testDb.attendanceAppeal.create({

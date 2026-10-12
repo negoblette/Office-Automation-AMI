@@ -5,9 +5,10 @@ import { PrintToolbar } from "@/components/print/print-button";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { formatDate, formatRupiah, toJakartaIsoDate } from "@/lib/format";
-import { DIVISION_LABEL, PAYMENT_METHOD_LABEL } from "@/lib/labels";
+import { PAYMENT_METHOD_LABEL } from "@/lib/labels";
 import { getReimbursePrintData } from "@/lib/services/reimbursement-queries";
 import { dailySubtotals, reimbursementTotals } from "@/lib/validators/reimbursement";
+import { divisionLabels } from "@/lib/services/division";
 
 export const metadata: Metadata = { title: "Rekap Reimburse" };
 
@@ -40,7 +41,7 @@ export default async function CetakReimbursePage({ searchParams }: { searchParam
         <h1 className="text-2xl font-bold">Rekap Reimburse — {monthLabel}</h1>
         <p className="mt-1 text-sm">
           {employee.fullName}
-          {employee.employeeNo && ` (${employee.employeeNo})`} · {employee.position} · {DIVISION_LABEL[employee.division]}
+          {employee.employeeNo && ` (${employee.employeeNo})`} · {employee.position} · {(await divisionLabels(prisma))[employee.division] ?? employee.division}
         </p>
       </header>
 
@@ -90,12 +91,12 @@ export default async function CetakReimbursePage({ searchParams }: { searchParam
           </tbody>
           <tfoot className="text-sm">
             <tr>
-              <td colSpan={9} className="pt-3 pr-2 text-right">Total Cash (dibayarkan ke karyawan)</td>
-              <td className="pt-3 text-right font-semibold tabular-nums">{formatRupiah(totals.cash)}</td>
+              <td colSpan={9} className="pt-3 pr-2 text-right">Total Personal (dibayarkan ke karyawan)</td>
+              <td className="pt-3 text-right font-semibold tabular-nums">{formatRupiah(totals.personal)}</td>
             </tr>
             <tr>
-              <td colSpan={9} className="pr-2 text-right">Total Kartu Kredit</td>
-              <td className="text-right font-semibold tabular-nums">{formatRupiah(totals.cc)}</td>
+              <td colSpan={9} className="pr-2 text-right">Total Corporate</td>
+              <td className="text-right font-semibold tabular-nums">{formatRupiah(totals.corporate)}</td>
             </tr>
             <tr className="text-base">
               <td colSpan={9} className="pt-1 pr-2 text-right font-bold">Total</td>

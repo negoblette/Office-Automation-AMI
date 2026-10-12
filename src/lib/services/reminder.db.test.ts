@@ -1,6 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { renderEmail } from "@/lib/mail/render";
-import { assetReminders, certificateReminders } from "@/lib/services/reminder";
+import { assetReminders, certificateReminders, documentReminders } from "@/lib/services/reminder";
+import { expiryAlerts } from "@/lib/services/dashboard-queries";
+import { randomUUID } from "node:crypto";
 import { testDb } from "@/test/db";
 import { resetAndSeed } from "@/test/seed";
 
@@ -22,6 +24,42 @@ const cert = (name: string, endDate: string | null, employeeId = andiEmployeeId)
   testDb.certificate.create({
     data: { employeeId, type: "PROFESSIONAL", name, startDate: d("2024-01-01"), endDate: endDate ? d(endDate) : null },
   });
+
+const doc = async (validUntil: string | null, employeeId = andiEmployeeId) =>
+  testDb.document.create({
+    data: {
+      ownerType: "EMPLOYEE",
+      employeeId,
+      docType: "SIM",
+      fileKey: `${randomUUID()}.pdf`,
+      fileName: "paspor.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 10,
+      validUntil: validUntil ? d(validUntil) : null,
+      uploadedById: (await testDb.user.findFirstOrThrow({ where: { employeeId } })).id,
+    },
+  });
+
+describe("masa berlaku dokumen (2026-10-12)", () => {
+  it("dokumen berakhir ≤ 30 hari → email H-30 ke karyawan + Admin; dashboard menampilkan yang akan & sudah habis", async () => {
+    await doc("2026-10-20"); // 26 hari lagi
+    await doc("2026-09-01"); // sudah lewat
+    await doc(null); // tanpa masa berlaku
+    await doc("2027-01-01"); // masih lama
+
+    const emails = await documentReminders(testDb, TODAY);
+    expect(emails.map((e) => e.to).sort()).toEqual(["andi@artha-mitra.local", "ika@artha-mitra.local", "leonard@artha-mitra.local", "rudy@artha-mitra.local"].sort());
+    expect(await documentReminders(testDb, TODAY)).toEqual([]); // sekali saja
+
+    const own = await expiryAlerts(testDb, TODAY, andiEmployeeId);
+    expect(own.map((i) => [i.name, i.daysLeft, i.href])).toEqual([
+      ["SIM A/C", -23, "/profil/dokumen"],
+      ["SIM A/C", 26, "/profil/dokumen"],
+    ]);
+    const all = await expiryAlerts(testDb, TODAY);
+    expect(all.map((i) => i.detail)).toEqual(["Andi Pratama", "Andi Pratama"]);
+  });
+});
 
 describe("certificateReminders (CERT-03)", () => {
   it("sertifikat berakhir ≤ 30 hari → email ke karyawan + semua Admin, sekali saja", async () => {

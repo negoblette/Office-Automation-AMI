@@ -47,7 +47,7 @@ const restColumns = [
       <div className="text-right whitespace-nowrap tabular-nums">
         <p className="font-semibold">{formatRupiah(row.original.total)}</p>
         <p className="text-xs text-muted-foreground">
-          Cash {formatRupiah(row.original.totalCash)} · CC {formatRupiah(row.original.totalCc)}
+          Personal {formatRupiah(row.original.totalPersonal)} · Corporate {formatRupiah(row.original.totalCorporate)}
         </p>
       </div>
     ),
@@ -71,7 +71,7 @@ const restColumns = [
   }),
 ];
 
-type StatusFilter = "ALL" | "DRAFT" | "PENDING" | "APPROVED";
+type StatusFilter = "ALL" | "DRAFT" | "PENDING" | "APPROVED" | "REJECTED";
 
 export function ReimbursementTable({ rows, showRequester }: { rows: ReimbursementListRow[]; showRequester: boolean }) {
   const [status, setStatus] = useState<StatusFilter>("ALL");
@@ -93,6 +93,7 @@ export function ReimbursementTable({ rows, showRequester }: { rows: Reimbursemen
           { value: "DRAFT", label: "Draft", count: count("DRAFT") },
           { value: "PENDING", label: "Menunggu", count: count("PENDING") },
           { value: "APPROVED", label: "Disetujui", count: count("APPROVED") },
+          { value: "REJECTED", label: "Ditolak", count: count("REJECTED"), danger: count("REJECTED") > 0 },
         ]}
       />
       <DataTable

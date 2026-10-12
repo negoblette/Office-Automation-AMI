@@ -95,8 +95,8 @@ export function ReimbursementForm({
             {perDay.length > 1 &&
               perDay.map((day) => <Total key={day.date} label={`Subtotal ${formatDate(`${day.date}T00:00:00Z`, "short")}`} value={day.amount} />)}
             {perDay.length > 1 && <div className="border-t border-border" />}
-            <Total label="Subtotal Cash" value={totals.cash} />
-            <Total label="Subtotal Kartu Kredit" value={totals.cc} />
+            <Total label="Subtotal Personal" value={totals.personal} />
+            <Total label="Subtotal Corporate" value={totals.corporate} />
             <Total label="Total" value={totals.total} strong />
           </dl>
         </section>
@@ -205,36 +205,40 @@ function VisitCard({
             />
           </FormField>
         </div>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-          <span>Company / project belum ada?</span>
-          <CustomerDialog
-            trigger={
-              <Button type="button" variant="link" size="sm" className="h-auto px-0">
-                <Plus aria-hidden /> Customer baru
-              </Button>
-            }
-            onCreated={(id) => {
-              form.setValue(`visits.${index}.customerId`, id, { shouldValidate: true });
-              form.setValue(`visits.${index}.project`, "");
-            }}
-          />
-          <span aria-hidden>·</span>
-          <ProjectDialog
-            customers={options.customers}
-            customerId={customerId || undefined}
-            suggestedCode={options.suggestedProjectCode}
-            canSetActive={false}
-            trigger={
-              <Button type="button" variant="link" size="sm" className="h-auto px-0">
-                <Plus aria-hidden /> Project baru
-              </Button>
-            }
-            onCreated={(project) => {
-              form.setValue(`visits.${index}.customerId`, project.customerId, { shouldValidate: true });
-              form.setValue(`visits.${index}.project`, project.id);
-            }}
-          />
-        </div>
+        {options.canAddMaster ? (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+            <span>Company / project belum ada?</span>
+            <CustomerDialog
+              trigger={
+                <Button type="button" variant="link" size="sm" className="h-auto px-0">
+                  <Plus aria-hidden /> Customer baru
+                </Button>
+              }
+              onCreated={(id) => {
+                form.setValue(`visits.${index}.customerId`, id, { shouldValidate: true });
+                form.setValue(`visits.${index}.project`, "");
+              }}
+            />
+            <span aria-hidden>·</span>
+            <ProjectDialog
+              customers={options.customers}
+              customerId={customerId || undefined}
+              suggestedCode={options.suggestedProjectCode}
+              canSetActive={false}
+              trigger={
+                <Button type="button" variant="link" size="sm" className="h-auto px-0">
+                  <Plus aria-hidden /> Project baru
+                </Button>
+              }
+              onCreated={(project) => {
+                form.setValue(`visits.${index}.customerId`, project.customerId, { shouldValidate: true });
+                form.setValue(`visits.${index}.project`, project.id);
+              }}
+            />
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Company / project belum ada? Hubungi tim Sales atau Admin untuk menambahkannya.</p>
+        )}
         {errors?.lines?.root?.message && <p className="text-sm text-danger">{errors.lines.root.message}</p>}
       </div>
 
@@ -274,6 +278,9 @@ function LineRow({
   const base = `visits.${visitIndex}.lines.${index}` as const;
   const name = (field: string) => `${base}.${field}`;
   const errors = form.formState.errors.visits?.[visitIndex]?.lines?.[index];
+  // Names – Position wajib kecuali tipe Transport (2026-10-12).
+  const typeId = useWatch({ control: form.control, name: `${base}.typeId` });
+  const participantsRequired = options.types.find((t) => t.value === typeId)?.code !== "TRANSPORT";
 
   return (
     <div className="p-5">
@@ -299,7 +306,14 @@ function LineRow({
         </FormField>
         <TextInputField name={name("location")} label="Lokasi" required />
 
-        <TextareaField name={name("participants")} label="Names – Position" required className="sm:col-span-2" placeholder={"Budi – Manager IT\nSari – Staff Procurement"} />
+        <TextareaField
+          name={name("participants")}
+          label="Names – Position"
+          required={participantsRequired}
+          hint={participantsRequired ? undefined : "Opsional untuk tipe Transport"}
+          className="sm:col-span-2"
+          placeholder={"Budi – Manager IT\nSari – Staff Procurement"}
+        />
         <TextInputField name={name("activity")} label="Aktivitas" required className="sm:col-span-2" />
 
         <FormField label="Ada kwitansi fisik?" htmlFor={name("hasReceipt")} className="sm:col-span-2 lg:col-span-4">

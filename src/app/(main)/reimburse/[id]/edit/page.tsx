@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { getReimbursementDetail, getReimbursementFormOptions } from "@/lib/services/reimbursement-queries";
 import { itemsToVisits } from "@/lib/validators/reimbursement";
 import { ReimbursementForm } from "../../reimbursement-form";
+import { canAddCustomerProject } from "@/lib/services/project";
 
 export const metadata: Metadata = { title: "Edit Draft Reimburse" };
 
@@ -14,18 +15,18 @@ export default async function EditReimbursePage({ params }: { params: Promise<{ 
   const { id } = await params;
   const detail = await getReimbursementDetail(prisma, id);
   if (!detail) notFound();
-  // Hanya pemohon yang boleh mengubah, dan hanya selama masih DRAFT.
-  if (detail.employeeId !== user.employeeId || detail.status !== "DRAFT") redirect(`/reimburse/${id}`);
+  // Hanya pemohon yang boleh mengubah: selama DRAFT, atau setelah ditolak (revisi, 2026-10-12).
+  if (detail.employeeId !== user.employeeId || (detail.status !== "DRAFT" && detail.status !== "REJECTED")) redirect(`/reimburse/${id}`);
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Edit Draft Reimburse"
+        title={detail.status === "REJECTED" ? "Revisi Reimburse" : "Edit Draft Reimburse"}
         breadcrumbs={[{ label: "Pengajuan & Keuangan" }, { label: "Reimburse", href: "/reimburse" }, { label: "Draft", href: `/reimburse/${id}` }, { label: "Edit" }]}
       />
       <ReimbursementForm
         reimbursementId={id}
-        options={await getReimbursementFormOptions(prisma, detail.division)}
+        options={await getReimbursementFormOptions(prisma, detail.division, await canAddCustomerProject(prisma, user))}
         defaultValues={{
           note: detail.note ?? "",
           visits: itemsToVisits(detail.items).map((visit) => ({

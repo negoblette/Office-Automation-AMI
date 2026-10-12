@@ -16,11 +16,11 @@ function revalidateHealth() {
 }
 
 /** Ajukan klaim kesehatan (HC-03..08). Email approval di-enqueue setelah commit. */
-export async function submitHealthClaimAction(values: unknown): Promise<ActionResult<{ number: string }>> {
+export async function submitHealthClaimAction(values: unknown, reviseId?: string | null): Promise<ActionResult<{ number: string }>> {
   const user = await requireUser();
   try {
     const input = healthClaimSchema.parse(values);
-    const result = await submitHealthClaim(prisma, user, input);
+    const result = await submitHealthClaim(prisma, user, input, z.string().min(1).nullish().parse(reviseId) ?? undefined);
     await enqueueApprovalNotifications(prisma, result.notifications);
     revalidateHealth();
     return { ok: true, data: { number: result.number } };

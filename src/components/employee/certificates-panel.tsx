@@ -4,10 +4,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Award, Pencil, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Controller, FormProvider, useForm } from "react-hook-form";
+import { Controller, FormProvider, useForm, useWatch } from "react-hook-form";
 import type { z } from "zod";
 import { addCertificateAction, deleteCertificateAction, updateCertificateAction } from "@/app/(main)/sertifikat-actions";
-import { DateInputField, SelectInputField, TextInputField } from "@/components/form/fields";
+import { CheckboxField, DateInputField, SelectInputField, TextInputField } from "@/components/form/fields";
 import { FileUpload } from "@/components/form/file-upload";
 import { FormAlert } from "@/components/form/form-actions";
 import { FormField } from "@/components/form/form-field";
@@ -27,9 +27,9 @@ import {
 } from "@/components/ui/dialog";
 import { CERTIFICATE_STATUS_BADGE } from "@/lib/certificate-status";
 import { formatDate } from "@/lib/format";
-import { CERTIFICATE_TYPE_LABEL, toOptions } from "@/lib/labels";
+import { CERTIFICATE_TYPE_LABEL, EDUCATION_LEVEL_LABEL, toOptions } from "@/lib/labels";
 import type { CertificateView } from "@/lib/services/employee-queries";
-import { certificateSchema } from "@/lib/validators/certificate";
+import { CERTIFICATE_LEVELS, certificateSchema } from "@/lib/validators/certificate";
 
 const date = (iso: string) => formatDate(`${iso}T00:00:00Z`, "short");
 
@@ -52,7 +52,7 @@ export function CertificatesPanel({
         <div className="space-y-1">
           <h2 className="text-base font-semibold">Sertifikat & Ijazah</h2>
           <p className="text-sm text-muted-foreground">
-            Sertifikat baru diverifikasi Ko Yosep lalu Bu Ika. Status &ldquo;Akan kadaluarsa&rdquo; muncul 30 hari sebelum masa berlaku habis.
+            Sertifikat baru diverifikasi Ci Ika. Status &ldquo;Akan kadaluarsa&rdquo; muncul 30 hari sebelum masa berlaku habis.
           </p>
         </div>
         {canEdit && <CertificateDialog employeeId={employeeId} />}
@@ -97,21 +97,30 @@ function CertificateRow({ employeeId, certificate, canEdit }: { employeeId: stri
             </StatusBadge>
           ) : certificate.verification === "PENDING" ? (
             <StatusBadge variant="warning" dot={false}>
-              Menunggu verifikasi {certificate.verificationLevel === 2 ? "Bu Ika" : "Ko Yosep"}
+              Menunggu verifikasi Ci Ika
             </StatusBadge>
           ) : (
-            <StatusBadge variant="neutral" dot={false}>
-              Verifikasi dibatalkan
+            <StatusBadge variant="danger" dot={false}>
+              Ditolak — revisi lalu simpan untuk ajukan ulang
             </StatusBadge>
           )}
         </div>
+        {certificate.rejection && (
+          <p className="text-sm font-medium text-danger">
+            Alasan ({certificate.rejection.by}): {certificate.rejection.reason}
+          </p>
+        )}
         <p className="text-sm text-muted-foreground">
           {CERTIFICATE_TYPE_LABEL[certificate.type]}
+          {certificate.type === "IJAZAH" && certificate.degree && ` · ${EDUCATION_LEVEL_LABEL[certificate.degree]}`}
           {certificate.issuer && ` · ${certificate.issuer}`}
-          {certificate.number && ` · No. ${certificate.number}`}
+          {certificate.level && ` · Level ${certificate.level}`}
+          {certificate.number && !certificate.level && !certificate.degree && ` · No. ${certificate.number}`}
         </p>
         <p className="text-sm text-muted-foreground">
-          Diambil {date(certificate.startDate)} · {certificate.endDate ? `berlaku s/d ${date(certificate.endDate)}` : "tanpa masa berlaku"}
+          {certificate.type === "IJAZAH"
+            ? `Mulai ${date(certificate.startDate)}${certificate.graduationDate ? ` · lulus ${date(certificate.graduationDate)}` : ""}`
+            : `Diambil ${date(certificate.startDate)} · ${certificate.endDate ? `berlaku s/d ${date(certificate.endDate)}` : "permanen (tanpa masa berlaku)"}`}
         </p>
         {error && (
           <p role="alert" className="text-xs font-medium text-danger">
@@ -164,13 +173,19 @@ function CertificateDialog({ employeeId, certificate }: { employeeId: string; ce
     type: certificate?.type ?? "PROFESSIONAL",
     name: certificate?.name ?? "",
     issuer: certificate?.issuer ?? "",
-    number: certificate?.number ?? "",
+    level: certificate?.level ? (String(certificate.level) as (typeof CERTIFICATE_LEVELS)[number]) : "",
+    degree: certificate?.degree ?? "",
     startDate: certificate?.startDate ?? "",
     endDate: certificate?.endDate ?? "",
+    // Sertifikat lama tanpa masa berlaku → tercentang Permanent.
+    noExpiry: certificate ? certificate.type === "PROFESSIONAL" && !certificate.endDate : false,
+    graduationDate: certificate?.graduationDate ?? "",
     fileKey: certificate?.fileKey ?? "",
   };
   const form = useForm<FormInput, unknown, FormOutput>({ resolver: zodResolver(certificateSchema), defaultValues: defaults });
   const { serverError, pending, submit } = useActionSubmit(form);
+  const type = useWatch({ control: form.control, name: "type" });
+  const noExpiry = useWatch({ control: form.control, name: "noExpiry" });
 
   const onSubmit = form.handleSubmit((values) =>
     submit(
@@ -219,11 +234,32 @@ function CertificateDialog({ employeeId, certificate }: { employeeId: string; ce
             <FormAlert message={serverError} />
             <div className="grid gap-4 sm:grid-cols-2">
               <SelectInputField name="type" label="Jenis" required options={toOptions(CERTIFICATE_TYPE_LABEL)} />
-              <TextInputField name="name" label="Nama" required placeholder="mis. Cisco CCNA" />
-              <TextInputField name="issuer" label="Penerbit" />
-              <TextInputField name="number" label="Nomor" />
-              <DateInputField name="startDate" label="Tanggal diambil / lulus" required />
-              <DateInputField name="endDate" label="Masa berlaku sampai" hint="Opsional — kosongkan bila tidak ada masa berlaku" />
+              {type === "IJAZAH" ? (
+                <>
+                  <TextInputField name="name" label="Gelar" required placeholder="mis. Sarjana Komputer (S.Kom)" />
+                  <TextInputField name="issuer" label="Lembaga" required placeholder="mis. Universitas Indonesia" />
+                  <SelectInputField name="degree" label="Jenjang" required options={toOptions(EDUCATION_LEVEL_LABEL)} />
+                  <DateInputField name="startDate" label="Tanggal mulai" required />
+                  <DateInputField name="graduationDate" label="Tanggal lulus" required />
+                </>
+              ) : (
+                <>
+                  <TextInputField name="name" label="Nama" required placeholder="mis. Cisco CCNA" />
+                  <TextInputField name="issuer" label="Penerbit" />
+                  <SelectInputField name="level" label="Level" required options={CERTIFICATE_LEVELS.map((l) => ({ value: l, label: `Level ${l}` }))} />
+                  <DateInputField name="startDate" label="Tanggal diambil" required />
+                  <div className="flex flex-col gap-2">
+                    {!noExpiry && <DateInputField name="endDate" label="Masa berlaku sampai" required />}
+                    <CheckboxField
+                      name="noExpiry"
+                      label="Tidak ada masa berlaku / Permanent"
+                      onCheckedChange={(checked) => {
+                        if (checked) form.setValue("endDate", "");
+                      }}
+                    />
+                  </div>
+                </>
+              )}
             </div>
             <FormField label="File" htmlFor="certificate-file" error={form.formState.errors.fileKey?.message}>
               <Controller

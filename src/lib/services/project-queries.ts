@@ -2,7 +2,8 @@
 import type { Role } from "@/generated/prisma/enums";
 import type { PaymentMethod, PrismaClient, ProjectType, RequestStatus } from "@/generated/prisma/client";
 import { toJakartaIsoDate } from "@/lib/format";
-import { projectTotals } from "./project";
+import { projectTotals, yearRange } from "./project";
+import { rejectionsOf } from "./approval";
 
 type Viewer = { role: Role; employeeId: string | null };
 export type ProjectTotals = Awaited<ReturnType<typeof projectTotals>>;
@@ -19,8 +20,19 @@ export type ProjectRow = {
   totals: ProjectTotals;
 };
 
-/** Admin: semua project + total; Staf: project aktif tanpa angka keuangan. */
-export async function listProjects(db: PrismaClient, viewer: Viewer): Promise<ProjectRow[]> {
+/** Tahun yang bisa dipilih (history, 2026-10-12): tahun berjalan s/d tahun biaya project paling awal. */
+export async function projectYears(db: PrismaClient, currentYear: number) {
+  const [item, expense] = await Promise.all([
+    db.reimbursementItem.aggregate({ _min: { date: true }, where: { projectId: { not: null } } }),
+    db.projectExpense.aggregate({ _min: { date: true } }),
+  ]);
+  const earliest = [item._min.date, expense._min.date].filter((d): d is Date => Boolean(d)).map((d) => Number(toJakartaIsoDate(d).slice(0, 4)));
+  const first = Math.min(currentYear, ...earliest);
+  return Array.from({ length: currentYear - first + 1 }, (_, i) => currentYear - i);
+}
+
+/** Admin: semua project; lainnya: project aktif. Total biaya per tahun kalender `year`. */
+export async function listProjects(db: PrismaClient, viewer: Viewer, year?: number): Promise<ProjectRow[]> {
   const isAdmin = viewer.role === "ADMIN";
   const projects = await db.project.findMany({
     where: isAdmin ? {} : { isActive: true },
@@ -37,7 +49,7 @@ export async function listProjects(db: PrismaClient, viewer: Viewer): Promise<Pr
       customerId: p.customerId,
       customerName: p.customer.name,
       // Total biaya project terlihat semua karyawan (2026-10-06); rincian expense Admin tetap khusus Admin.
-      totals: await projectTotals(db, p.id),
+      totals: await projectTotals(db, p.id, year),
     })),
   );
 }
@@ -100,10 +112,12 @@ export type ProjectCostRow = {
   amount: number;
   status: RequestStatus;
   currentLevel: number | null;
+  /** Alasan penolakan (status REJECTED). */
+  rejection: { reason: string; by: string } | null;
 };
 
 /** Detail project. Staf: info project + total biaya project + baris reimburse miliknya saja. */
-export async function getProjectDetail(db: PrismaClient, projectId: string, viewer: Viewer) {
+export async function getProjectDetail(db: PrismaClient, projectId: string, viewer: Viewer, year?: number) {
   const project = await db.project.findUnique({ where: { id: projectId }, include: { customer: { select: { name: true } } } });
   if (!project) return null;
   const isAdmin = viewer.role === "ADMIN";
@@ -111,6 +125,7 @@ export async function getProjectDetail(db: PrismaClient, projectId: string, view
   const reimburseItems = await db.reimbursementItem.findMany({
     where: {
       projectId,
+      date: year ? yearRange(year) : undefined,
       reimbursement: { status: { not: "DRAFT" }, ...(isAdmin ? {} : { employeeId: viewer.employeeId ?? "__none__" }) },
     },
     orderBy: { date: "desc" },
@@ -137,8 +152,8 @@ export async function getProjectDetail(db: PrismaClient, projectId: string, view
   let revenues: ProjectEntryRow[] = [];
   if (isAdmin) {
     const [expenseRows, revenueRows] = await Promise.all([
-      db.projectExpense.findMany({ where: { projectId }, orderBy: { date: "desc" } }),
-      db.projectRevenue.findMany({ where: { projectId }, orderBy: { date: "desc" } }),
+      db.projectExpense.findMany({ where: { projectId, date: year ? yearRange(year) : undefined }, orderBy: { date: "desc" } }),
+      db.projectRevenue.findMany({ where: { projectId, date: year ? yearRange(year) : undefined }, orderBy: { date: "desc" } }),
     ]);
     const approvals = await db.approvalRequest.findMany({
       where: { module: { in: ["EXPENSE", "REVENUE"] }, entityId: { in: [...expenseRows, ...revenueRows].map((e) => e.id) } },
@@ -174,6 +189,8 @@ export async function getProjectDetail(db: PrismaClient, projectId: string, view
     revenues = revenueRows.map(toRow);
   }
 
+  const rejectedReimburse = await rejectionsOf(db, "REIMBURSE", [...new Set(reimburseItems.filter((i) => i.reimbursement.status === "REJECTED").map((i) => i.reimbursement.id))]);
+  const rejectedExpense = await rejectionsOf(db, "EXPENSE", expenses.filter((e) => e.status === "REJECTED").map((e) => e.id));
   const costs: ProjectCostRow[] = [
     ...reimburseItems.map((item) => ({
       id: item.id,
@@ -187,8 +204,9 @@ export async function getProjectDetail(db: PrismaClient, projectId: string, view
       amount: Number(item.amount),
       status: item.reimbursement.status,
       currentLevel: reimburseLevelOf.get(item.reimbursement.id) ?? null,
+      rejection: rejectedReimburse.get(item.reimbursement.id) ?? null,
     })),
-    ...expenses.map((e) => ({ ...e, source: "EXPENSE" as const, href: null, person: expenseCreator.get(e.id) ?? null })),
+    ...expenses.map((e) => ({ ...e, source: "EXPENSE" as const, href: null, person: expenseCreator.get(e.id) ?? null, rejection: rejectedExpense.get(e.id) ?? null })),
   ].sort((a, b) => b.date.localeCompare(a.date) || b.number.localeCompare(a.number));
 
   return {
@@ -198,7 +216,7 @@ export async function getProjectDetail(db: PrismaClient, projectId: string, view
     type: project.type,
     isActive: project.isActive,
     customerName: project.customer.name,
-    totals: await projectTotals(db, projectId),
+    totals: await projectTotals(db, projectId, year),
     expenses,
     revenues,
     reimburse,

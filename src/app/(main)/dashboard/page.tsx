@@ -24,6 +24,7 @@ import { IntroScope, PaperTray } from "./dashboard-motion";
 import {
   DashboardCard,
   ExpiringCard,
+  ExpiryAlert,
   FolderPictogram,
   MyRequestsList,
   PeoplePictogram,
@@ -63,6 +64,8 @@ async function AdminDashboard({ user, calendar }: { user: CurrentUser; calendar:
         description={`Ringkasan data kantor, antrian persetujuan Anda, serta sertifikat${data.assets ? " & unit" : ""} yang akan berakhir.`}
         breadcrumbs={[{ label: "Utama" }, { label: "Dashboard" }]}
       />
+
+      <ExpiryAlert items={data.alerts} forAdmin />
 
       <AttendanceHero today={today} className={styles.rise} style={riseStyle(3)} />
 
@@ -166,6 +169,8 @@ async function StaffDashboard({ user, calendar }: { user: CurrentUser; calendar:
           </>
         }
       />
+
+      <ExpiryAlert items={data.alerts} forAdmin={false} />
 
       <AttendanceHero today={today} className={styles.rise} style={riseStyle(3)} />
 

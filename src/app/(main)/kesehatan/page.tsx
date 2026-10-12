@@ -28,7 +28,7 @@ export default async function KesehatanPage() {
       />
       <KesehatanTabs active="klaim" isAdmin={isAdmin} />
       {summary && <HealthSummaryCard summary={summary} />}
-      <HealthClaimTable rows={rows} showRequester={isAdmin} />
+      <HealthClaimTable rows={rows} showRequester={isAdmin} revise={summary?.annual != null ? { categories, remaining: summary.remaining } : undefined} />
     </div>
   );
 }

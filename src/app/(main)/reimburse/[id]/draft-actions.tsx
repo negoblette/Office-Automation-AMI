@@ -9,7 +9,8 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { deleteReimbursementAction, submitReimbursementAction } from "../actions";
 
 /** Aksi pemohon untuk draft: Edit, Hapus, Ajukan. */
-export function DraftActions({ reimbursementId }: { reimbursementId: string }) {
+/** Draft: Edit / Hapus / Ajukan. Ditolak (2026-10-12): Revisi / Ajukan Ulang. */
+export function DraftActions({ reimbursementId, rejected = false }: { reimbursementId: string; rejected?: boolean }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -18,23 +19,25 @@ export function DraftActions({ reimbursementId }: { reimbursementId: string }) {
     <div className="flex flex-col items-end gap-2">
       <div className="flex flex-wrap gap-2">
         <Link href={`/reimburse/${reimbursementId}/edit`} className={buttonVariants({ variant: "outline", size: "lg" })}>
-          <Pencil aria-hidden /> Edit
+          <Pencil aria-hidden /> {rejected ? "Revisi" : "Edit"}
         </Link>
-        <Button
-          variant="destructive"
-          size="lg"
-          disabled={pending}
-          onClick={() => {
-            if (!window.confirm("Hapus draft reimburse ini?")) return;
-            startTransition(async () => {
-              const result = await deleteReimbursementAction(reimbursementId);
-              if (result.ok) router.push("/reimburse");
-              else setError(result.error);
-            });
-          }}
-        >
-          <Trash2 aria-hidden /> Hapus
-        </Button>
+        {!rejected && (
+          <Button
+            variant="destructive"
+            size="lg"
+            disabled={pending}
+            onClick={() => {
+              if (!window.confirm("Hapus draft reimburse ini?")) return;
+              startTransition(async () => {
+                const result = await deleteReimbursementAction(reimbursementId);
+                if (result.ok) router.push("/reimburse");
+                else setError(result.error);
+              });
+            }}
+          >
+            <Trash2 aria-hidden /> Hapus
+          </Button>
+        )}
         <Button
           size="lg"
           disabled={pending}
@@ -47,7 +50,7 @@ export function DraftActions({ reimbursementId }: { reimbursementId: string }) {
             });
           }}
         >
-          {pending ? <Loader2 className="animate-spin" aria-hidden /> : <Send aria-hidden />} Ajukan
+          {pending ? <Loader2 className="animate-spin" aria-hidden /> : <Send aria-hidden />} {rejected ? "Ajukan Ulang" : "Ajukan"}
         </Button>
       </div>
       <FormAlert message={error} />

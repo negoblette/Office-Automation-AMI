@@ -18,5 +18,7 @@ export const addDocumentSchema = z.object({
   familyMemberId: z.string().min(1).nullish(),
   fileKey: z.string().min(1),
   fileName: textSchema("Nama file", { max: 200 }),
+  /** Masa berlaku dokumen (opsional, 2026-10-12). */
+  validUntil: optionalField(isoDateSchema),
 });
 export type AddDocumentInput = z.infer<typeof addDocumentSchema>;

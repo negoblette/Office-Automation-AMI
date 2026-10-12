@@ -1,24 +1,5 @@
 // Label Bahasa Indonesia untuk enum database. Aman dipakai di Client Component.
-import type {
-  AssetCategory,
-  CandidateStatus,
-  CertificateType,
-  Division,
-  DocumentType,
-  FamilyRelation,
-  Gender,
-  MaritalStatus,
-  PaymentMethod,
-  ProjectType,
-  Role,
-} from "@/generated/prisma/enums";
-
-export const DIVISION_LABEL: Record<Division, string> = {
-  SALES: "Sales",
-  ENGINEER: "Engineer",
-  UMUM: "Umum",
-  DIRECTOR: "Direktur",
-};
+import type { AssetCategory, CandidateStatus, CertificateType, DocumentType, EducationLevel, FamilyRelation, Gender, MaritalStatus, PaymentMethod, ProjectType, Role } from "@/generated/prisma/enums";
 
 export const ROLE_LABEL: Record<Role, string> = {
   ADMIN: "Admin",
@@ -59,14 +40,25 @@ export const DOCUMENT_TYPE_LABEL: Record<DocumentType, string> = {
   OTHER: "Lainnya",
 };
 
+export const EDUCATION_LEVEL_LABEL: Record<EducationLevel, string> = {
+  SMA_SMK: "SMA/SMK",
+  D1: "D1",
+  D2: "D2",
+  D3: "D3",
+  D4: "D4",
+  S1: "S1",
+  S2: "S2",
+  S3: "S3",
+};
+
 export const CERTIFICATE_TYPE_LABEL: Record<CertificateType, string> = {
   PROFESSIONAL: "Sertifikat Profesional",
   IJAZAH: "Ijazah",
 };
 
 export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
-  CASH: "Cash",
-  CC: "Kartu Kredit",
+  PERSONAL: "Personal",
+  CORPORATE: "Corporate",
 };
 
 export const ASSET_CATEGORY_LABEL: Record<AssetCategory, string> = {

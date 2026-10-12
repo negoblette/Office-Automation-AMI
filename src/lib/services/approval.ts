@@ -4,7 +4,7 @@
 // - approve(): dipanggil dari halaman Approval; memajukan step atau menyelesaikan pengajuan.
 // Keduanya mengembalikan `notifications` yang di-enqueue pemanggil SETELAH commit (Tahap 5.4).
 import type { ApprovalModule, Prisma, PrismaClient } from "@/generated/prisma/client";
-import { FINAL_EFFECTS, type FinalEffectOptions, REVERT_EFFECTS } from "./approval-effects";
+import { FINAL_EFFECTS, type FinalEffectOptions, REJECT_EFFECTS, REVERT_EFFECTS } from "./approval-effects";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { canApprove } from "@/lib/roles";
@@ -19,7 +19,7 @@ export class ForbiddenError extends ServiceError {
   }
 }
 
-export type ApprovalTemplate = "approval-requested" | "approval-progress" | "approval-final";
+export type ApprovalTemplate = "approval-requested" | "approval-progress" | "approval-final" | "approval-rejected";
 
 /** Email yang harus dikirim setelah transaksi commit. */
 export type ApprovalNotification = {
@@ -116,12 +116,21 @@ export async function buildApproval(tx: Tx, input: BuildApprovalInput): Promise<
     };
   };
 
-  // 1. Flow REGULAR sesuai modul + divisi pemohon; jika tidak ada, flow modul untuk semua divisi.
+  // 1. Flow REGULAR sesuai modul + divisi pemohon; jika tidak ada, flow divisi acuannya (2026-10-12:
+  //    divisi baru seperti HR & Finance ikut Umum); jika tidak ada juga, flow modul untuk semua divisi.
+  const follows = (await tx.division.findUnique({ where: { code: division }, select: { followsCode: true } }))?.followsCode ?? null;
   const flows = await tx.approvalFlow.findMany({
-    where: { scope: "REGULAR", module: input.module, isActive: true, deletedAt: null, OR: [{ division }, { division: null }] },
+    where: {
+      scope: "REGULAR",
+      module: input.module,
+      isActive: true,
+      deletedAt: null,
+      OR: [{ division }, ...(follows ? [{ division: follows }] : []), { division: null }],
+    },
     include: flowInclude,
   });
-  const flow = flows.find((f) => f.division === division) ?? flows.find((f) => f.division === null);
+  const flow =
+    flows.find((f) => f.division === division) ?? (follows ? flows.find((f) => f.division === follows) : undefined) ?? flows.find((f) => f.division === null);
   if (!flow) throw new ServiceError("Alur approval untuk pengajuan ini belum diatur. Hubungi Admin.");
 
   // 2. Flow tanpa level = tanpa approval (mis. cuti divisi Direktur, v1.14 BR-CUT-11).
@@ -169,7 +178,7 @@ export async function buildApproval(tx: Tx, input: BuildApprovalInput): Promise<
 // ---------------------------------------------------------------------
 
 export type ApproveResult = {
-  status: "PENDING" | "APPROVED";
+  status: "PENDING" | "APPROVED" | "REJECTED";
   notifications: ApprovalNotification[];
 };
 
@@ -340,8 +349,78 @@ export async function revokeApproval(db: PrismaClient, input: { requestId: strin
   });
 }
 
-// TODO(OI-05): alur Reject / Revisi ditunda. Status REJECTED sudah ada di enum RequestStatus &
-// StepStatus, tetapi belum ada fungsi reject maupun UI-nya.
+// ---------------------------------------------------------------------
+// reject & ajukan ulang (2026-10-12, OI-05)
+// ---------------------------------------------------------------------
+
+/**
+ * Tolak pengajuan: approver step PENDING menolak dengan alasan wajib. Step → REJECTED (alasan di
+ * `note`), level berikutnya batal, pengajuan & entitas modul → REJECTED. Email ke pemohon.
+ */
+export async function rejectRequest(db: PrismaClient, input: { requestId: string; actorId: string; reason: string }): Promise<ApproveResult> {
+  const reason = input.reason.trim();
+  if (reason.length < 3) throw new ServiceError("Alasan penolakan minimal 3 karakter", "reason");
+  return db.$transaction(async (tx) => {
+    const request = await tx.approvalRequest.findUnique({ where: { id: input.requestId }, include: { steps: { orderBy: { level: "asc" } } } });
+    if (!request) throw new ServiceError("Pengajuan tidak ditemukan");
+    if (request.status !== "PENDING") throw new ServiceError("Pengajuan ini sudah diproses");
+    const current = request.steps.find((step) => step.status === "PENDING");
+    if (!current) throw new ServiceError("Pengajuan ini sudah diproses");
+    const actor = await tx.user.findUnique({ where: { id: input.actorId }, select: { role: true, isActive: true } });
+    if (!actor?.isActive || !canApprove(actor.role) || !current.approverIds.includes(input.actorId)) {
+      throw new ForbiddenError("Anda tidak berhak menolak pengajuan ini");
+    }
+
+    const now = new Date();
+    const updated = await tx.approvalRequestStep.updateMany({
+      where: { id: current.id, status: "PENDING" },
+      data: { status: "REJECTED", actedById: input.actorId, actedAt: now, note: reason },
+    });
+    if (updated.count === 0) throw new ServiceError("Pengajuan ini sudah diproses approver lain");
+    await tx.approvalRequest.update({ where: { id: request.id }, data: { status: "REJECTED", currentLevel: null, completedAt: now } });
+    await REJECT_EFFECTS[request.module]?.(tx, request.entityId);
+    await logAudit(tx, {
+      actorId: input.actorId,
+      action: "REJECT",
+      entity: "ApprovalRequest",
+      entityId: request.id,
+      after: { module: request.module, entityNumber: request.entityNumber, level: current.level, reason },
+    });
+    return { status: "REJECTED", notifications: [{ template: "approval-rejected", recipientIds: [request.requesterId], requestId: request.id }] };
+  });
+}
+
+/**
+ * Ajukan ulang setelah direvisi: approval lama (harus REJECTED) dihapus, lalu dibangun ulang dari level 1.
+ * Riwayat penolakan tetap ada di AuditLog (REJECT). Dipanggil di dalam transaksi revisi modul.
+ */
+export async function restartApproval(tx: Tx, input: BuildApprovalInput): Promise<BuildApprovalResult> {
+  const old = await tx.approvalRequest.findUnique({ where: { module_entityId: { module: input.module, entityId: input.entityId } } });
+  if (old) {
+    if (old.status !== "REJECTED") throw new ServiceError("Hanya pengajuan yang ditolak yang bisa diajukan ulang");
+    await tx.approvalRequest.delete({ where: { id: old.id } });
+  }
+  return buildApproval(tx, input);
+}
+
+export type RejectionInfo = { reason: string; by: string; at: string; level: number };
+
+/** Alasan penolakan per entitas (untuk tampilan pemohon). */
+export async function rejectionsOf(db: PrismaClient, module: ApprovalModule, entityIds: string[]): Promise<Map<string, RejectionInfo>> {
+  if (!entityIds.length) return new Map();
+  const requests = await db.approvalRequest.findMany({
+    where: { module, entityId: { in: entityIds }, status: "REJECTED" },
+    include: { steps: { where: { status: "REJECTED" }, include: { actedBy: { select: { email: true, employee: { select: { fullName: true } } } } } } },
+  });
+  return new Map(
+    requests.flatMap((r) => {
+      const step = r.steps[0];
+      if (!step) return [];
+      return [[r.entityId, { reason: step.note ?? "", by: step.actedBy?.employee?.fullName ?? step.actedBy?.email ?? "—", at: (step.actedAt ?? r.completedAt ?? r.createdAt).toISOString(), level: step.level }] as const];
+    }),
+  );
+}
+
 
 function unique(ids: string[]) {
   return [...new Set(ids)];

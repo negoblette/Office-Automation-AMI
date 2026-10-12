@@ -257,8 +257,8 @@ export async function correctRequest(db: PrismaClient, actorId: string, requestI
     // Total reimburse dihitung ulang dari baris (Tech Spec §6.4).
     if (request.module === "REIMBURSE") {
       const items = await tx.reimbursementItem.findMany({ where: { reimbursementId: request.entityId } });
-      const { cash, cc, total } = reimbursementTotals(items.map((i) => ({ paymentMethod: i.paymentMethod, amount: Number(i.amount) })));
-      await tx.reimbursement.update({ where: { id: request.entityId }, data: { totalCash: BigInt(cash), totalCc: BigInt(cc), total: BigInt(total) } });
+      const { personal, corporate, total } = reimbursementTotals(items.map((i) => ({ paymentMethod: i.paymentMethod, amount: Number(i.amount) })));
+      await tx.reimbursement.update({ where: { id: request.entityId }, data: { totalPersonal: BigInt(personal), totalCorporate: BigInt(corporate), total: BigInt(total) } });
     }
     await tx.approvalCorrection.createMany({ data: records });
     await logAudit(tx, {

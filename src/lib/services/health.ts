@@ -5,7 +5,7 @@ import { formatRupiah, fromIsoDate } from "@/lib/format";
 import { remainingPlafond } from "@/lib/health";
 import type { HealthClaimInput, HealthPlafondInput } from "@/lib/validators/health";
 import { type Actor, } from "./access";
-import { type ApprovalNotification, buildApproval } from "./approval";
+import { type ApprovalNotification, restartApproval } from "./approval";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { lockPlafond } from "./health-payout";
@@ -35,10 +35,12 @@ export type SubmitHealthClaimResult = {
   notifications: ApprovalNotification[];
 };
 
+/** `reviseId` (2026-10-12, OI-05) = revisi klaim milik sendiri yang ditolak: nomor tetap, approval mulai lagi. */
 export async function submitHealthClaim(
   db: PrismaClient,
   actor: Actor,
   input: HealthClaimInput,
+  reviseId?: string,
 ): Promise<SubmitHealthClaimResult> {
   if (!actor.employeeId) throw new ServiceError("Akun Anda belum terhubung ke data karyawan");
   const employeeId = actor.employeeId;
@@ -46,6 +48,11 @@ export async function submitHealthClaim(
   return db.$transaction(async (tx) => {
     const employee = await tx.employee.findUnique({ where: { id: employeeId }, select: { status: true } });
     if (employee?.status !== "ACTIVE") throw new ServiceError("Hanya karyawan aktif yang bisa mengajukan klaim");
+    const revised = reviseId ? await tx.healthClaim.findUnique({ where: { id: reviseId } }) : null;
+    if (reviseId) {
+      if (!revised || revised.employeeId !== employeeId) throw new ServiceError("Klaim tidak ditemukan");
+      if (revised.status !== "REJECTED") throw new ServiceError("Hanya klaim yang ditolak yang bisa direvisi");
+    }
 
     const category = await tx.healthCategory.findUnique({ where: { id: input.categoryId } });
     if (!category?.isActive) throw new ServiceError("Kategori klaim tidak tersedia", "categoryId");
@@ -58,21 +65,20 @@ export async function submitHealthClaim(
       throw new ServiceError(`Sisa plafon ${year} ${formatRupiah(Math.max(0, remaining))}, klaim ${formatRupiah(input.amount)}`, "amount");
     }
 
-    const number = await nextDocumentNumber(tx, "HC");
-    const claim = await tx.healthClaim.create({
-      data: {
-        number,
-        employeeId,
-        categoryId: input.categoryId,
-        claimDate: fromIsoDate(input.claimDate),
-        amount: BigInt(input.amount),
-        note: input.note,
-        status: "PENDING",
-        submittedAt: new Date(),
-      },
-    });
-    const approval = await buildApproval(tx, { module: "HEALTH", entityId: claim.id, entityNumber: number, requesterId: actor.id });
-    await logAudit(tx, { actorId: actor.id, action: "CREATE", entity: "HealthClaim", entityId: claim.id, after: claim });
+    const number = revised ? revised.number : await nextDocumentNumber(tx, "HC");
+    const data = {
+      categoryId: input.categoryId,
+      claimDate: fromIsoDate(input.claimDate),
+      amount: BigInt(input.amount),
+      note: input.note,
+      status: "PENDING" as const,
+      submittedAt: new Date(),
+    };
+    const claim = revised
+      ? await tx.healthClaim.update({ where: { id: revised.id }, data })
+      : await tx.healthClaim.create({ data: { ...data, number, employeeId } });
+    const approval = await restartApproval(tx, { module: "HEALTH", entityId: claim.id, entityNumber: number, requesterId: actor.id });
+    await logAudit(tx, { actorId: actor.id, action: revised ? "UPDATE" : "CREATE", entity: "HealthClaim", entityId: claim.id, before: revised, after: claim });
     return { claimId: claim.id, number, status: approval.status, notifications: approval.notifications };
   });
 }

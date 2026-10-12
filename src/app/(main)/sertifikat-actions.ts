@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db";
 import { enqueueApprovalNotifications } from "@/lib/mail/approval-emails";
 import { addCertificate, deleteCertificate, updateCertificate } from "@/lib/services/certificate";
 import { ServiceError } from "@/lib/services/errors";
+import { needsProfileApproval, requestProfileChange } from "@/lib/services/profile-change";
 import { inspectStoredFile } from "@/lib/storage";
 import { type CertificateInput, certificateSchema } from "@/lib/validators/certificate";
 
@@ -43,9 +44,11 @@ export async function addCertificateAction(employeeId: string, values: unknown):
 export async function updateCertificateAction(certificateId: string, values: unknown): Promise<ActionResult> {
   const user = await requireUser();
   try {
-    // File lama yang diganti tetap disimpan (NFR v1.14).
-    await updateCertificate(prisma, user, certificateId, await parseInput(values));
+    // File lama yang diganti tetap disimpan (NFR v1.14). Revisi sertifikat yang ditolak → diajukan ulang.
+    const result = await updateCertificate(prisma, user, certificateId, await parseInput(values));
+    await enqueueApprovalNotifications(prisma, result.notifications);
     revalidateCertificates();
+    revalidatePath("/approval");
     return { ok: true, data: undefined };
   } catch (error) {
     return toActionError(error);
@@ -55,7 +58,15 @@ export async function updateCertificateAction(certificateId: string, values: unk
 export async function deleteCertificateAction(certificateId: string): Promise<ActionResult> {
   const user = await requireUser();
   try {
-    await deleteCertificate(prisma, user, certificateId);
+    // Sertifikat terverifikasi milik sendiri: hapus lewat persetujuan Ci Ika (2026-10-12).
+    const certificate = await prisma.certificate.findUnique({ where: { id: certificateId }, select: { employeeId: true, status: true } });
+    if (certificate?.status === "APPROVED" && needsProfileApproval(user, certificate.employeeId)) {
+      const result = await requestProfileChange(prisma, user, { kind: "CERTIFICATE_DELETE", employeeId: certificate.employeeId, targetId: certificateId, payload: {} });
+      await enqueueApprovalNotifications(prisma, result.notifications);
+      revalidatePath("/approval");
+    } else {
+      await deleteCertificate(prisma, user, certificateId);
+    }
     revalidateCertificates();
     return { ok: true, data: undefined };
   } catch (error) {

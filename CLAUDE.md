@@ -133,7 +133,9 @@ Satu schema Zod dipakai di client dan server. Normalisasi sebelum simpan.
 **Role:** `ADMIN` (kendali penuh: semua data + Setting) = Bu Ika, Ko Rudy, Ko Leonard; `APPROVER`
 (data sendiri + halaman Approval untuk pengajuan yang ditugaskan) = Ko Darwin, Ko Yosep; `STAFF`
 (hanya data sendiri). Approver di flow = user aktif ber-role ADMIN/APPROVER (`canApprove`, `src/lib/roles.ts`).
-Divisi (SALES / ENGINEER / UMUM / DIRECTOR) disimpan di `Employee.division` dan menentukan approval flow.
+Divisi = master `Division` (kode: UMUM, ENGINEER, SALES, DIRECTOR, HR, FINANCE; Admin bisa menambah di Setting → Divisi,
+2026-10-12). Kode disimpan di `Employee.division` dan menentukan approval flow; divisi tanpa flow sendiri memakai flow
+divisi acuannya (`followsCode`, HR & Finance → Umum). Label divisi: server `divisionLabels(db)`, client `useDivisions()`.
 Hak approve ditentukan oleh **Approval Flow**, bukan oleh role saja.
 
 **Approval (dipakai Reimburse, Cuti, Kesehatan, Expense/Revenue):**
@@ -188,12 +190,21 @@ terlihat pemohon. Field didefinisikan generik per modul di `services/approval-co
 **Batalkan approval** (`revokeApproval`): persetujuan terakhir (oleh orang, level berikutnya belum memutuskan)
 dibatalkan oleh approver yang menyetujui atau Admin (bukan pemohon), alasan wajib → step kembali PENDING; jika
 sudah final, `REVERT_EFFECTS` (approval-effects.ts) membalik efek modul. Tercatat `ApprovalCorrection.field = REVOKE`.
+**Tolak & revisi** (2026-10-12, OI-05): `rejectRequest` (alasan wajib) → pengajuan & entitas REJECTED (`REJECT_EFFECTS`),
+email `approval-rejected` ke pemohon. Pemohon merevisi lalu mengajukan ulang lewat service modul (`reviseId` / status
+REJECTED) yang memanggil `restartApproval` (approval lama dihapus, mulai lagi dari L1, nomor dokumen tetap).
 
 **Invoice/kwitansi:** upload dihapus (Fase 14). File lama hanya disimpan 2 tahun: job `invoice.purge`
 (harian 02:00 WIB) menghapus file & referensinya, data nominal tetap — pengecualian dari aturan soft delete.
 
 **Sertifikat:** setiap sertifikat baru diverifikasi lewat approval engine (modul CERTIFICATE, `CRT/…`, flow
-Ko Yosep → Bu Ika); terverifikasi → hanya Admin yang bisa mengubah. Masa berlaku opsional untuk semua jenis (kosong = tanpa masa berlaku, tidak ikut reminder H-30).
+Ci Ika sejak 2026-10-12); terverifikasi → hanya Admin yang bisa mengubah. Profesional: Level 1–3, masa berlaku wajib kecuali dicentang "Permanent" (`endDate` null). Ijazah: Gelar, Lembaga,
+Jenjang (`EducationLevel`), tanggal mulai & `graduationDate`, tanpa masa berlaku (2026-10-12). Upload file **hanya PDF**.
+
+**Perubahan data milik sendiri** (2026-10-12): data diri, keluarga, dokumen, dan hapus sertifikat terverifikasi oleh
+karyawan atas datanya sendiri (siapa pun role-nya) → `requestProfileChange` (tabel `ProfileChangeRequest`, modul
+`PROFILE_CHANGE`, `PRF/…`, Ci Ika; milik Ci Ika → Fallback); diterapkan saat disetujui (`applyApprovedProfileChange`
+memanggil fungsi `*InTx` yang sama). Validasi saat mengajukan = dry-run transaksi. Admin ke karyawan lain → langsung.
 
 **Profil (Fase 14):** NIP (`employeeNo`) hanya diisi Admin; kontak darurat diisi karyawan; aset sederhana per
 karyawan (`EmployeeAsset`, dicatat Admin); biodata cetak di `/biodata/[employeeId]` (print browser → PDF).
@@ -205,12 +216,13 @@ sengaja dibiarkan (data lama / approval yang masih berjalan) — jangan tambah f
 **Reimburse (Fase 14):** Form = beberapa **kunjungan** (tanggal + company + project), masing-masing berisi
 beberapa **baris** (tipe, payment, total, lokasi, nama – jabatan, aktivitas) — `reimbursementFormSchema`
 meratakannya jadi `items` (`reimbursementSchema`, yang diparse action); form edit memakai `itemsToVisits`.
-Company **wajib dari master** (tidak dibuat otomatis dari form), tapi **semua karyawan boleh menambah customer &
-project baru** (dialog di form reimburse & halaman Project; service `createOnly` — ubah/hapus/nonaktifkan tetap Admin;
+Company **wajib dari master** (tidak dibuat otomatis dari form); **tambah customer & project hanya divisi Sales +
+Admin** (2026-10-12, `canAddCustomerProject`) (dialog di form reimburse & halaman Project; service `createOnly` — ubah/hapus/nonaktifkan tetap Admin;
 project baru dari staf selalu aktif, ID disarankan `nextProjectCode`); project harus milik company itu (dicek
 server) atau **New Acquisition** = flag `ReimbursementItem.newAcquisition` tanpa project (prospek). Project
 tampil "ID - Nama" (`Project.code`, `projectLabel`); subtotal per kunjungan & per tanggal; rekap cetak per
 orang per bulan di `/cetak/reimburse` (route group `(print)`, print browser → PDF).
+Biaya project dihitung **per tahun kalender** (cutoff 31 Des; `?tahun=` untuk history).
 
 **Isi data mandiri:** Admin hanya membuat akun minimal (nama, email, divisi,
 jabatan, tanggal masuk, role); staf melengkapi sendiri data diri, keluarga, dokumen,
@@ -218,7 +230,8 @@ sertifikat. Seluruh "Akun & Pekerjaan" — nama lengkap, jabatan, level, NIP, di
 tanggal masuk/keluar — hanya boleh diisi/diubah Admin (tidak ada di `employeeSelfSchema`; dicek di server).
 `nik` & `employeeNo` nullable. Seed tidak mengisi data diri.
 
-**Reminder H-30:** job worker `reminder.certificate` & `reminder.asset` (07:00 WIB). Dicatat di
+**Reminder H-30:** job worker `reminder.certificate`, `reminder.document` (dokumen dengan `validUntil`, 2026-10-12) &
+`reminder.asset` (07:00 WIB). Dashboard menampilkan banner `ExpiryAlert` (karyawan: miliknya; Admin: semua). Dicatat di
 `ReminderLog` (sekali per item per tanggal berakhir). Sertifikat → karyawan + Admin; unit → Admin.
 
 **Pengaman approver:** Admin yang menjadi satu-satunya approver aktif di level flow aktif / pengajuan

@@ -9,6 +9,7 @@ export type EmailTemplates = {
   "approval-requested": ApprovalEmailProps;
   "approval-progress": ApprovalEmailProps;
   "approval-final": ApprovalEmailProps;
+  "approval-rejected": ApprovalEmailProps;
   "reminder-expiry": ReminderEmailProps;
 };
 

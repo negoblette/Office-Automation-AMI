@@ -2,7 +2,8 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import argon2 from "argon2";
-import { type Division, PrismaClient, type Role } from "@/generated/prisma/client";
+import { PrismaClient, type Role } from "@/generated/prisma/client";
+import { seedDivisions } from "../../prisma/seed-lib";
 
 export const testDb = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.TEST_DATABASE_URL }),
@@ -15,6 +16,8 @@ export async function resetDb() {
   if (tables.length === 0) return;
   const list = tables.map(({ tablename }) => `"public"."${tablename}"`).join(", ");
   await testDb.$executeRawUnsafe(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`);
+  // Divisi = master bawaan (2026-10-12), dibutuhkan validasi karyawan/alur/tipe reimburse.
+  await seedDivisions(testDb);
 }
 
 let cachedHash: string | undefined;
@@ -23,7 +26,7 @@ let cachedHash: string | undefined;
 export async function createTestEmployee(options: {
   fullName: string;
   email: string;
-  division?: Division;
+  division?: string;
   role?: Role;
   startDate?: string;
 }) {

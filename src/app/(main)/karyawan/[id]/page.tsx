@@ -14,7 +14,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { requireAdmin } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { formatDate, formatDateTime, formatNpwp, formatPhone, formatTenure } from "@/lib/format";
-import { DIVISION_LABEL, GENDER_LABEL, MARITAL_STATUS_LABEL, ROLE_LABEL } from "@/lib/labels";
+import { GENDER_LABEL, MARITAL_STATUS_LABEL, ROLE_LABEL } from "@/lib/labels";
 import {
   type EmployeeDetail,
   getEmployeeCertificates,
@@ -26,6 +26,7 @@ import { RehireButton, ResignButton } from "../employee-status-actions";
 import { FEATURES } from "@/lib/features";
 import { EmployeeAssetsPanel } from "@/components/employee/employee-assets-panel";
 import { listEmployeeAssetItems } from "@/lib/services/employee-asset";
+import { divisionLabels } from "@/lib/services/division";
 
 export const metadata: Metadata = { title: "Detail Karyawan" };
 
@@ -34,7 +35,7 @@ const TABS = [
   { key: "keluarga", label: "Keluarga" },
   { key: "dokumen", label: "Dokumen" },
   { key: "sertifikat", label: "Sertifikat" },
-  { key: "aset", label: "Aset" },
+  { key: "aset", label: "Inventory Kantor" },
   { key: "inventory", label: "Inventory" },
   { key: "riwayat", label: "Riwayat Kerja" },
 ] as const;
@@ -70,7 +71,7 @@ export default async function DetailKaryawanPage({
         ]}
         description={
           <span className="flex flex-wrap items-center gap-2">
-            {employee.position} · {DIVISION_LABEL[employee.division]}
+            {employee.position} · {(await divisionLabels(prisma))[employee.division] ?? employee.division}
             <StatusBadge variant={isActive ? "success" : "neutral"}>{isActive ? "Aktif" : "Resign"}</StatusBadge>
           </span>
         }

@@ -9,7 +9,7 @@ import type { StoredFile } from "@/lib/storage";
 import { MAX_UPLOAD_MB, MIME_TYPES } from "@/lib/storage/validate";
 import { cn } from "@/lib/utils";
 
-const ACCEPTED_TYPES = Object.values(MIME_TYPES);
+const ACCEPTED_TYPES = [MIME_TYPES.pdf]; // 2026-10-12: hanya PDF
 
 type FileUploadProps = {
   id?: string;
@@ -39,7 +39,7 @@ export function FileUpload({ id, value, onChange, disabled, compact, className, 
   function upload(file: File) {
     setError(null);
     if (!ACCEPTED_TYPES.includes(file.type)) {
-      setError("File harus berupa PDF, JPG, atau PNG");
+      setError("File harus berupa PDF");
       return;
     }
     if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
@@ -97,13 +97,13 @@ export function FileUpload({ id, value, onChange, disabled, compact, className, 
           <CloudUpload className={compact ? "size-4.5" : "size-7"} aria-hidden />
         )}
         <span>{isPending ? "Mengunggah…" : compact ? "Unggah file" : "Klik atau seret file ke sini"}</span>
-        {!compact && <span className="text-xs font-medium text-ink-3">PDF, JPG, atau PNG · maks {MAX_UPLOAD_MB} MB</span>}
+        {!compact && <span className="text-xs font-medium text-ink-3">Hanya PDF · maks {MAX_UPLOAD_MB} MB</span>}
       </label>
       <input
         ref={inputRef}
         id={inputId}
         type="file"
-        accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+        accept=".pdf,application/pdf"
         className="sr-only"
         disabled={disabled || isPending}
         onChange={(event) => {

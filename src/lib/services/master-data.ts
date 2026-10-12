@@ -4,6 +4,7 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import type { HealthCategoryInput, ReimburseTypeInput } from "@/lib/validators/project";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
+import { assertDivisions } from "./division";
 
 /** Kode tipe dari nama: "Parkir & Tol" → "PARKIR_TOL". */
 export function typeCodeFromName(name: string): string {
@@ -17,6 +18,7 @@ export function typeCodeFromName(name: string): string {
 
 export async function saveReimburseType(db: PrismaClient, actorId: string, typeId: string | null, input: ReimburseTypeInput) {
   return db.$transaction(async (tx) => {
+    await assertDivisions(tx, input.divisions);
     const duplicate = await tx.reimburseType.findFirst({ where: { name: { equals: input.name, mode: "insensitive" }, id: typeId ? { not: typeId } : undefined } });
     if (duplicate) throw new ServiceError("Nama tipe sudah ada", "name");
     const before = typeId ? await tx.reimburseType.findUnique({ where: { id: typeId } }) : null;

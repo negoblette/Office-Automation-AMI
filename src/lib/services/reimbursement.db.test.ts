@@ -39,7 +39,7 @@ const item = (overrides: Record<string, unknown> = {}) => ({
   location: "Jakarta",
   typeId: typeId.TRANSPORT,
   hasReceipt: false,
-  paymentMethod: "CASH",
+  paymentMethod: "PERSONAL",
   amount: "450.000",
   receiptFileKey: "",
   receiptFileName: "",
@@ -57,11 +57,11 @@ describe("draft", () => {
       testDb,
       actors.andi,
       null,
-      input([item(), item({ paymentMethod: "CC", amount: 1_280_000 })]),
+      input([item(), item({ paymentMethod: "CORPORATE", amount: 1_280_000 })]),
     );
     const r = await testDb.reimbursement.findUniqueOrThrow({ where: { id: reimbursementId }, include: { items: true } });
     expect(r.number.startsWith("DRAFT-")).toBe(true);
-    expect(r).toMatchObject({ status: "DRAFT", totalCash: 450_000n, totalCc: 1_280_000n, total: 1_730_000n, division: "ENGINEER" });
+    expect(r).toMatchObject({ status: "DRAFT", totalPersonal: 450_000n, totalCorporate: 1_280_000n, total: 1_730_000n, division: "ENGINEER" });
     expect(new Set(r.items.map((i) => i.customerId))).toEqual(new Set([customerId]));
   });
 
@@ -83,6 +83,13 @@ describe("draft", () => {
     await testDb.reimburseType.update({ where: { id: typeId.MEALS }, data: { divisions: ["SALES"] } });
     await expect(saveReimbursementDraft(testDb, actors.andi, null, input([item({ typeId: typeId.MEALS })]))).rejects.toThrow(
       "Baris 1: tipe reimburse tidak tersedia untuk divisi Anda",
+    );
+  });
+
+  it("2026-10-12: Names – Position wajib untuk semua tipe kecuali Transport", async () => {
+    await expect(saveReimbursementDraft(testDb, actors.andi, null, input([item({ participants: "" })]))).resolves.toBeTruthy(); // Transport
+    await expect(saveReimbursementDraft(testDb, actors.andi, null, input([item({ typeId: typeId.MEALS, participants: "" })]))).rejects.toThrow(
+      "Baris 1: Names – Position wajib diisi untuk tipe Meals",
     );
   });
 
@@ -169,7 +176,7 @@ describe("form kunjungan → baris (Fase 14)", () => {
     location: "Jakarta",
     typeId: "t1",
     hasReceipt: false,
-    paymentMethod: "CASH",
+    paymentMethod: "PERSONAL",
     amount,
   });
 

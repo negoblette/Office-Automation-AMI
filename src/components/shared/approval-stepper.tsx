@@ -1,4 +1,4 @@
-import { Check, Clock, Minus } from "lucide-react";
+import { Check, Clock, Minus, X } from "lucide-react";
 import type { RequestStatus, StepStatus } from "@/generated/prisma/enums";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,8 @@ export type ApprovalStepView = {
   status: StepStatus;
   actedBy?: string | null;
   actedAt?: Date | string | null;
+  /** Alasan (step REJECTED). */
+  note?: string | null;
 };
 
 type ApprovalStepperProps = {
@@ -47,7 +49,7 @@ export function ApprovalStepper({ steps, requestStatus, compact = false, classNa
   return (
     <ol className={cn("flex flex-wrap items-start", compact ? "gap-x-2 gap-y-1" : "gap-x-3 gap-y-3", className)}>
       {steps.map((step) => {
-        const Icon = step.status === "APPROVED" ? Check : step.status === "SKIPPED" ? Minus : Clock;
+        const Icon = step.status === "APPROVED" ? Check : step.status === "SKIPPED" ? Minus : step.status === "REJECTED" ? X : Clock;
         return (
           <li key={step.level} className="flex items-start gap-2">
             <span
@@ -69,8 +71,10 @@ export function ApprovalStepper({ steps, requestStatus, compact = false, classNa
                   {STEP_STATUS_LABEL[step.status]}
                   {step.status === "APPROVED" && step.actedBy && ` oleh ${step.actedBy}`}
                   {step.status === "APPROVED" && step.actedAt && ` · ${formatDateTime(step.actedAt)}`}
+                  {step.status === "REJECTED" && step.actedBy && ` oleh ${step.actedBy}`}
                 </p>
               )}
+              {step.status === "REJECTED" && step.note && <p className={cn("font-medium text-danger", compact ? "text-xs" : "text-sm")}>Alasan: {step.note}</p>}
             </div>
             <span className={cn("text-muted-foreground", compact ? "text-xs" : "mt-1 text-sm")} aria-hidden>
               →

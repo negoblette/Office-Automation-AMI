@@ -4,9 +4,9 @@ import Link from "next/link";
 import { PersonCell } from "@/components/shared/person-cell";
 import { DataTable, dataTableColumnHelper } from "@/components/table/data-table";
 import { formatDate } from "@/lib/format";
-import { DIVISION_LABEL } from "@/lib/labels";
 import type { EmployeeListRow } from "@/lib/services/employee-queries";
 import { RehireButton } from "../employee-status-actions";
+import { DivisionName } from "@/components/shared/division-name";
 
 const col = dataTableColumnHelper<EmployeeListRow>();
 const date = (iso: string | null) => (iso ? formatDate(`${iso}T00:00:00Z`, "short") : "—");
@@ -22,13 +22,15 @@ const columns = col.columns([
       </Link>
     ),
   }),
-  col.accessor((row) => `${DIVISION_LABEL[row.division]} ${row.position}`, {
+  col.accessor((row) => `${row.division} ${row.position}`, {
     id: "division",
     header: "Divisi & Jabatan",
     cell: ({ row }) => (
       <div>
         <p className="font-medium">{row.original.position}</p>
-        <p className="text-sm text-muted-foreground">{DIVISION_LABEL[row.original.division]}</p>
+        <p className="text-sm text-muted-foreground">
+          <DivisionName code={row.original.division} />
+        </p>
       </div>
     ),
   }),

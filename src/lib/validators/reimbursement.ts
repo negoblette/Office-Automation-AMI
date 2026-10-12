@@ -16,7 +16,8 @@ export const reimbursementItemSchema = z.object({
   /** Prospek New Acquisition tanpa project (tidak boleh bersamaan dengan projectId). */
   newAcquisition: z.boolean().default(false),
   activity: textSchema("Aktivitas", { min: 2, max: 300 }),
-  participants: textSchema("Nama – jabatan", { min: 2, max: 500 }),
+  /** Wajib untuk semua tipe kecuali Transport (2026-10-12) — dicek di service karena butuh kode tipe. */
+  participants: z.string().trim().max(500, { error: "Nama – jabatan maksimal 500 karakter" }).default(""),
   location: textSchema("Lokasi", { min: 2, max: 150 }),
   typeId: z.string({ error: "Tipe wajib dipilih" }).min(1, { error: "Tipe wajib dipilih" }),
   hasReceipt: z.boolean(),
@@ -89,16 +90,16 @@ export function itemsToVisits<T extends { date: string; customerId: string | nul
   return visits;
 }
 
-/** Subtotal Cash / CC / Total (RMB-06). Dipakai client (tampilan) & server (nilai yang disimpan). */
+/** Subtotal Personal / Corporate / Total (RMB-06, 2026-10-12). Dipakai client (tampilan) & server (nilai yang disimpan). */
 export function reimbursementTotals(items: { paymentMethod: PaymentMethod | string; amount: number | null | undefined }[]) {
-  let cash = 0;
-  let cc = 0;
+  let personal = 0;
+  let corporate = 0;
   for (const item of items) {
     const amount = Number.isFinite(item.amount) ? Number(item.amount) : 0;
-    if (item.paymentMethod === "CC") cc += amount;
-    else cash += amount;
+    if (item.paymentMethod === "CORPORATE") corporate += amount;
+    else personal += amount;
   }
-  return { cash, cc, total: cash + cc };
+  return { personal, corporate, total: personal + corporate };
 }
 
 /** Subtotal per tanggal transaksi (Fase 14), urut tanggal. Baris tanpa tanggal/nominal diabaikan. */

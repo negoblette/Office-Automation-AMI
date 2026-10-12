@@ -9,9 +9,9 @@ import { formatDuration } from "@/lib/attendance";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { toJakartaIsoDate } from "@/lib/format";
-import { DIVISION_LABEL } from "@/lib/labels";
 import { getTodayAttendance, listMonthDays, monthSummary } from "@/lib/services/attendance-queries";
 import { AttendanceDaysTable, ClockCard, DayStatusBadge, MonthNav } from "./attendance-ui";
+import { divisionLabels } from "@/lib/services/division";
 
 export const metadata: Metadata = { title: "Absensi" };
 
@@ -78,7 +78,7 @@ async function Mine({ employeeId, yearMonth, thisMonth }: { employeeId: string |
 }
 
 async function Recap({ yearMonth, thisMonth, todayIso }: { yearMonth: string; thisMonth: string; todayIso: string }) {
-  const rows = await monthSummary(prisma, yearMonth, todayIso);
+  const [rows, divisionLabel] = await Promise.all([monthSummary(prisma, yearMonth, todayIso), divisionLabels(prisma)]);
   const isCurrent = yearMonth === thisMonth;
   const clockedToday = rows.filter((r) => r.today?.clockIn).length;
   const lateToday = rows.filter((r) => (r.today?.lateMinutes ?? 0) > 0).length;
@@ -117,7 +117,7 @@ async function Recap({ yearMonth, thisMonth, todayIso }: { yearMonth: string; th
               <tr key={row.employeeId} className="border-b border-border last:border-0">
                 <td className="px-4 py-2.5">
                   <Link href={`/absensi/${row.employeeId}?bulan=${yearMonth}`} className="block hover:underline">
-                    <PersonCell name={row.name} subtitle={`${row.position} · ${DIVISION_LABEL[row.division as keyof typeof DIVISION_LABEL]}`} />
+                    <PersonCell name={row.name} subtitle={`${row.position} · ${divisionLabel[row.division] ?? row.division}`} />
                   </Link>
                 </td>
                 {isCurrent && (

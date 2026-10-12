@@ -4,7 +4,7 @@ import { formatDate, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { countWorkingDays, firstUsableDate, leaveYear, remainingDays } from "@/lib/leave";
 import type { HolidayInput, LeavePolicySettingInput, LeaveRequestInput } from "@/lib/validators/leave";
 import type { Actor } from "./access";
-import { type ApprovalNotification, buildApproval } from "./approval";
+import { type ApprovalNotification, restartApproval } from "./approval";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { currentEmploymentStart, ensureLeaveBalance, MAX_CARRY_OVER_KEY } from "./leave-balance";
@@ -23,11 +23,20 @@ export type SubmitLeaveResult = {
   notifications: ApprovalNotification[];
 };
 
-export async function submitLeaveRequest(db: PrismaClient, actor: Actor, input: LeaveRequestInput): Promise<SubmitLeaveResult> {
+/**
+ * Ajukan cuti. `reviseId` (2026-10-12, OI-05) = revisi cuti milik sendiri yang ditolak: tanggal/alasan
+ * diganti, nomor tetap, approval dimulai lagi dari level 1.
+ */
+export async function submitLeaveRequest(db: PrismaClient, actor: Actor, input: LeaveRequestInput, reviseId?: string): Promise<SubmitLeaveResult> {
   if (!actor.employeeId) throw new ServiceError("Akun Anda belum terhubung ke data karyawan");
   const employeeId = actor.employeeId;
 
   return db.$transaction(async (tx) => {
+    const revised = reviseId ? await tx.leaveRequest.findUnique({ where: { id: reviseId } }) : null;
+    if (reviseId) {
+      if (!revised || revised.employeeId !== employeeId) throw new ServiceError("Pengajuan cuti tidak ditemukan");
+      if (revised.status !== "REJECTED") throw new ServiceError("Hanya pengajuan yang ditolak yang bisa direvisi");
+    }
     const employee = await tx.employee.findUnique({ where: { id: employeeId }, select: { status: true } });
     if (employee?.status !== "ACTIVE") throw new ServiceError("Hanya karyawan aktif yang bisa mengajukan cuti");
 
@@ -73,21 +82,20 @@ export async function submitLeaveRequest(db: PrismaClient, actor: Actor, input: 
       throw new ServiceError(`Sisa saldo cuti ${Math.max(0, remaining)} hari, pengajuan ${workingDays} hari kerja (LV-08)`, "endDate");
     }
 
-    const number = await nextDocumentNumber(tx, "LV");
-    const request = await tx.leaveRequest.create({
-      data: {
-        number,
-        employeeId,
-        startDate: fromIsoDate(input.startDate),
-        endDate: fromIsoDate(input.endDate),
-        workingDays,
-        reason: input.reason,
-        status: "PENDING",
-        submittedAt: new Date(),
-      },
-    });
-    const approval = await buildApproval(tx, { module: "LEAVE", entityId: request.id, entityNumber: number, requesterId: actor.id });
-    await logAudit(tx, { actorId: actor.id, action: "CREATE", entity: "LeaveRequest", entityId: request.id, after: request });
+    const number = revised ? revised.number : await nextDocumentNumber(tx, "LV");
+    const data = {
+      startDate: fromIsoDate(input.startDate),
+      endDate: fromIsoDate(input.endDate),
+      workingDays,
+      reason: input.reason,
+      status: "PENDING" as const,
+      submittedAt: new Date(),
+    };
+    const request = revised
+      ? await tx.leaveRequest.update({ where: { id: revised.id }, data })
+      : await tx.leaveRequest.create({ data: { ...data, number, employeeId } });
+    const approval = await restartApproval(tx, { module: "LEAVE", entityId: request.id, entityNumber: number, requesterId: actor.id });
+    await logAudit(tx, { actorId: actor.id, action: revised ? "UPDATE" : "CREATE", entity: "LeaveRequest", entityId: request.id, before: revised, after: request });
 
     return { leaveRequestId: request.id, number, workingDays, status: approval.status, notifications: approval.notifications };
   });

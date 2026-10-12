@@ -31,7 +31,7 @@ async function setup() {
   const typeId = (await testDb.reimburseType.findUniqueOrThrow({ where: { code: "TRANSPORT" } })).id;
   const row = (over: Record<string, unknown> = {}) => ({
     date: "2026-09-12", customerId: bca.id, projectId: "", activity: "Onsite", participants: "Andi – Engineer", location: "Jakarta",
-    typeId, hasReceipt: false, paymentMethod: "CASH", amount: 100_000, ...over,
+    typeId, hasReceipt: false, paymentMethod: "PERSONAL", amount: 100_000, ...over,
   });
   return { mandiri, bca, project, row };
 }

@@ -9,8 +9,10 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { DataTable, dataTableColumnHelper } from "@/components/table/data-table";
 import { buttonVariants } from "@/components/ui/button";
 import { formatTenure } from "@/lib/format";
-import { DIVISION_LABEL, ROLE_LABEL, toOptions } from "@/lib/labels";
+import { ROLE_LABEL } from "@/lib/labels";
 import type { EmployeeListRow } from "@/lib/services/employee-queries";
+import { DivisionName } from "@/components/shared/division-name";
+import { useDivisions } from "@/components/shared/divisions-context";
 
 const col = dataTableColumnHelper<EmployeeListRow>();
 
@@ -28,13 +30,15 @@ const columns = col.columns([
       </Link>
     ),
   }),
-  col.accessor((row) => `${DIVISION_LABEL[row.division]} ${row.position}`, {
+  col.accessor((row) => `${row.division} ${row.position}`, {
     id: "division",
     header: "Divisi & Jabatan",
     cell: ({ row }) => (
       <div className="min-w-32">
         <p className="font-medium text-foreground">{row.original.position}</p>
-        <p className="text-sm text-muted-foreground">{DIVISION_LABEL[row.original.division]}</p>
+        <p className="text-sm text-muted-foreground">
+          <DivisionName code={row.original.division} />
+        </p>
       </div>
     ),
   }),
@@ -96,9 +100,9 @@ const columns = col.columns([
   }),
 ]);
 
-const divisionOptions = [{ value: "ALL", label: "Semua Divisi" }, ...toOptions(DIVISION_LABEL)];
 
 export function EmployeeTable({ rows }: { rows: EmployeeListRow[] }) {
+  const divisionOptions = [{ value: "ALL", label: "Semua Divisi" }, ...useDivisions().options];
   const [division, setDivision] = useState("ALL");
   const data = useMemo(() => (division === "ALL" ? rows : rows.filter((row) => row.division === division)), [rows, division]);
 

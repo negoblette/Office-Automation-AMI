@@ -6,13 +6,14 @@ import { certificateStatus, daysUntil } from "@/lib/certificate-status";
 import { documentCompleteness } from "@/lib/employee-documents";
 import { profileCompleteness } from "@/lib/employee-profile";
 import { toJakartaIsoDate } from "@/lib/format";
+import { rejectionsOf } from "./approval";
 
 export type EmployeeListRow = {
   id: string;
   fullName: string;
   email: string;
   employeeNo: string | null;
-  division: "SALES" | "ENGINEER" | "UMUM" | "DIRECTOR";
+  division: string;
   position: string;
   role: Role | null;
   /** Tanggal masuk periode terakhir (YYYY-MM-DD). */
@@ -136,10 +137,20 @@ export async function getEmployeeDetail(db: PrismaClient, employeeId: string) {
 
 export type EmployeeDetail = NonNullable<Awaited<ReturnType<typeof getEmployeeDetail>>>;
 
-const documentSelect = { id: true, docType: true, fileKey: true, fileName: true, createdAt: true } as const;
+const documentSelect = { id: true, docType: true, fileKey: true, fileName: true, createdAt: true, validUntil: true } as const;
 
-function toDocumentView(doc: { id: string; docType: DocumentType; fileKey: string; fileName: string; createdAt: Date }) {
-  return { id: doc.id, docType: doc.docType, fileKey: doc.fileKey, fileName: doc.fileName, uploadedAt: doc.createdAt.toISOString() };
+function toDocumentView(doc: { id: string; docType: DocumentType; fileKey: string; fileName: string; createdAt: Date; validUntil: Date | null }) {
+  const validUntil = doc.validUntil ? toJakartaIsoDate(doc.validUntil) : null;
+  return {
+    id: doc.id,
+    docType: doc.docType,
+    fileKey: doc.fileKey,
+    fileName: doc.fileName,
+    uploadedAt: doc.createdAt.toISOString(),
+    validUntil,
+    /** Sisa hari masa berlaku (negatif = sudah lewat); null = tanpa masa berlaku. */
+    daysLeft: validUntil ? daysUntil(validUntil, toJakartaIsoDate()) : null,
+  };
 }
 
 /** Dokumen & keluarga karyawan (tab Dokumen/Keluarga dan Profil Saya). */
@@ -202,6 +213,7 @@ export async function getEmployeeCertificates(db: PrismaClient, employeeId: stri
     select: { entityId: true, currentLevel: true },
   });
   const levelOf = new Map(requests.map((r) => [r.entityId, r.currentLevel]));
+  const rejections = await rejectionsOf(db, "CERTIFICATE", certificates.filter((c) => c.status === "REJECTED").map((c) => c.id));
   return certificates.map((certificate) => {
     const endDate = certificate.endDate ? toJakartaIsoDate(certificate.endDate) : null;
     return {
@@ -210,13 +222,18 @@ export async function getEmployeeCertificates(db: PrismaClient, employeeId: stri
       name: certificate.name,
       issuer: certificate.issuer,
       number: certificate.number,
+      level: certificate.level,
+      degree: certificate.degree,
       startDate: toJakartaIsoDate(certificate.startDate),
       endDate,
+      graduationDate: certificate.graduationDate ? toJakartaIsoDate(certificate.graduationDate) : null,
       fileKey: certificate.fileKey,
       status: certificateStatus(endDate, today),
-      /** Verifikasi Ko Yosep → Bu Ika (Fase 14). */
+      /** Verifikasi sertifikat (Ci Ika, 2026-10-12). */
       verification: certificate.status,
       verificationLevel: levelOf.get(certificate.id) ?? null,
+      /** Alasan penolakan verifikasi (revisi lalu simpan = diajukan ulang). */
+      rejection: rejections.get(certificate.id) ?? null,
       daysLeft: endDate ? daysUntil(endDate, today) : null,
     };
   });

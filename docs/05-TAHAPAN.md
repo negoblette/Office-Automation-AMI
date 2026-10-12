@@ -436,3 +436,59 @@ dan melapor → user review & commit sendiri → baru lanjut ke tahap berikutnya
 - [x] Appeal butuh approval **Bu Ika**; appeal milik Bu Ika → Ko Rudy / Ko Leonard (salah satu). Setelah disetujui, status hari itu berganti "Sakit" / "Kunjungan keluar" (bukan Tidak hadir)
 - [x] Tidak hadir tanpa alasan: 7 hari sejak tanggal tidak hadir untuk appeal; lewat tanpa appeal yang disetujui → job harian memotong **1 hari saldo cuti** per hari (saldo boleh **minus**, mengurangi jatah berikutnya); tercatat di audit & riwayat absensi
 - **Cek 14.7:** [x] migrasi `attendance_appeal` (modul approval ATTENDANCE_APPEAL, nomor `APL/…`) · [x] job `attendance.deduct` harian 01:00 WIB (hanya tanggal ≥ `AppSetting attendance.deductionStartDate` = hari pertama job berjalan; appeal menunggu tidak dipotong; sekali per tanggal) · [x] riwayat absensi: tombol Appeal, status Sakit / Kunjungan keluar / Appeal menunggu, "Saldo cuti dipotong"; rekap Admin + kolom Sakit, Kunjungan, Cuti dipotong · [x] 5 DB test · [x] 386 test lulus · [ ] klik Appeal & Setujui lewat UI
+
+## Fase 15 — Permintaan 2026-10-12 ✅ (sisa: uji klik UI)
+
+Keputusan user (2026-10-12): konfirmasi ulang password untuk fitur Admin; approval Ci Ika untuk perubahan
+dokumen, sertifikat/ijazah, data diri & keluarga; divisi HR & Finance ikut alur Umum; tambah project & customer
+hanya Sales + Admin; cutoff project per tahun kalender; tanggal berlaku dokumen opsional (yang diisi saja yang
+diingatkan); Cash → Personal, CC → Corporate; jenjang ijazah SMA/SMK, D1–D4, S1–S3.
+
+### 15.1 Perapian cepat ✅
+- [x] (1) Menu/tab "Aset Saya" → **Inventory Kantor**
+- [x] (17) Kartu "Distribusi Divisi" di halaman Karyawan dihapus
+- [x] (12) Names – Position wajib untuk semua tipe reimburse **kecuali Transport**
+- [x] (14) Email ke approver saat pengajuan cuti — alur sudah ada (butuh `npm run worker` jalan); isi email kini memuat tanggal, jumlah hari kerja, alasan (reimburse: total; klaim: kategori & nominal)
+- **Cek 15.1:** [x] 2 test baru · [x] 396 test lulus · [x] smoke `/karyawan`, `/profil/aset`, `/reimburse/baru` · [ ] klik lewat UI
+
+### 15.2 Payment Personal / Corporate ✅
+- [x] (11) `PaymentMethod` CASH/CC → PERSONAL/CORPORATE (migrasi data: Cash → Personal, Kartu Kredit → Corporate) — reimburse, expense project, koreksi, cetak
+- [x] (16) Ringkasan reimburse: Subtotal Personal / Subtotal Corporate / Total (form, detail, daftar, cetak)
+- **Cek 15.2:** [x] migrasi `payment_personal_corporate` (rename enum & kolom `totalPersonal`/`totalCorporate`, data tetap) · [x] 396 test lulus · [x] smoke reimburse & cetak
+
+### 15.3 Sertifikat & ijazah ✅
+- [x] (2) Masa berlaku **wajib** diisi, kecuali dicentang **"Tidak ada masa berlaku / Permanent"**
+- [x] (3) Sertifikat profesional: kolom Nomor → dropdown **Level** (Level 1 / 2 / 3)
+- [x] (4) Ijazah: Nama → **Gelar** (bebas), Penerbit → **Lembaga** (bebas), Nomor → **Jenjang** (SMA/SMK, D1–D4, S1–S3), tanggal → **Tanggal mulai** & **Tanggal lulus** (ijazah tidak ikut pengingat masa berlaku)
+- [x] (5) Semua upload dokumen hanya **PDF** (dokumen, sertifikat, kandidat, dll.) — dicek dari isi file di server; file JPG/PNG lama tetap bisa diunduh
+- **Cek 15.3:** [x] migrasi `certificate_level_degree` (enum `EducationLevel`, kolom `level`, `degree`, `graduationDate`; ijazah lama: tanggal lulus = tanggal lama, tanpa masa berlaku) · [x] test schema & upload diperbarui · [x] 397 test lulus · [x] smoke sertifikat, dokumen, approval, biodata
+
+### 15.4 Divisi dinamis ✅
+- [x] (7) Divisi jadi master data: Umum, Engineer, Sales, Direktur, **HR**, **Finance**, bisa ditambah Admin di Setting
+- [x] Divisi baru default ikut alur approval **Umum** (bisa diubah di Setting Approval); tipe reimburse & laporan mengikuti
+- [x] Migrasi dari enum `Division` tanpa kehilangan data
+- **Cek 15.4:** [x] migrasi `division_master` (tabel `Division`, kolom divisi → kode teks, HR & Finance ikut Umum, tipe reimburse Umum dibuka untuk HR & Finance) · [x] Setting → **Divisi** (tambah, ubah nama/acuan, nonaktifkan bila tanpa karyawan aktif) · [x] engine: alur divisi → alur divisi acuan → alur semua divisi · [x] 4 DB test baru · [x] 401 test lulus · [x] smoke halaman yang menampilkan divisi
+
+### 15.5 Project & customer ✅
+- [x] (8) Tambah project & customer hanya **divisi Sales + Admin** (server & UI; form reimburse menyesuaikan)
+- [x] (13) Cutoff **per tahun kalender**: total biaya, persentase & daftar biaya per tahun; pilihan tahun untuk melihat **history**
+- **Cek 15.5:** [x] `canAddCustomerProject` (Admin / divisi Sales) dicek di action; tombol tambah & tautan di form reimburse disembunyikan untuk divisi lain ("Hubungi tim Sales atau Admin") · [x] `projectTotals(…, year)`, `projectYears`, filter `?tahun=` di daftar & detail project · [x] 2 DB test baru · [x] 403 test lulus · [x] smoke Andi (Engineer) & Sinta (Sales)
+
+### 15.6 Tolak & revisi (OI-05) ✅
+- [x] (10) Approver bisa **Tolak** dengan alasan; pemohon melihat alasan, **edit/revisi** lalu **ajukan ulang** (approval mulai lagi dari level 1); berlaku untuk semua modul pengajuan; email ke pemohon
+- **Cek 15.6:** [x] `rejectRequest` (alasan wajib, step & pengajuan → REJECTED, `REJECT_EFFECTS`, audit `REJECT`, email `approval-rejected` ke pemohon) · [x] `restartApproval` (hapus approval lama yang ditolak, bangun ulang dari L1; nomor dokumen tetap) · [x] revisi: reimburse (Revisi / Ajukan Ulang di detail, filter "Ditolak"), cuti & klaim (tombol Revisi di tabel), expense (Revisi di detail project), sertifikat (simpan = ajukan ulang), appeal (appeal lagi dalam batas 7 hari) · [x] alasan tolak tampil di riwayat approval & tabel pemohon · [x] 3 DB test baru · [x] 406 test lulus · [ ] klik Tolak & Revisi lewat UI
+
+### 15.7 Approval perubahan data karyawan oleh Ci Ika ✅
+- [x] (6) Perubahan **data diri, data keluarga, dokumen, sertifikat & ijazah** oleh karyawan tidak langsung tersimpan: jadi permintaan perubahan → disetujui **Ci Ika** baru diterapkan (milik Ci Ika → Fallback). Sertifikat: alur jadi Ci Ika saja
+- [x] Karyawan melihat status "Menunggu persetujuan" + isi perubahan; Ci Ika melihat sebelum → sesudah di Approval
+- **Cek 15.7:** [x] migrasi `profile_change_request` (tabel `ProfileChangeRequest`, enum `ProfileChangeKind`, modul approval `PROFILE_CHANGE`, nomor `PRF/…`) · [x] data milik sendiri (siapa pun role-nya) → permintaan; Admin ke karyawan lain → langsung · [x] validasi saat mengajukan = validasi saat diterapkan (dry-run transaksi) · [x] file dokumen yang menunggu bisa dibuka approver · [x] hapus sertifikat terverifikasi milik sendiri lewat persetujuan · [x] panel "Perubahan data" di semua tab Profil Saya (menunggu / ditolak + alasan / disetujui) · [x] DB dev: alur CERTIFICATE → Ci Ika, alur PROFILE_CHANGE → Ci Ika (tercatat di audit) · [x] 4 DB test baru · [x] 410 test lulus · [ ] klik ajukan & setujui perubahan lewat UI
+
+### 15.8 Pengingat masa berlaku dokumen ✅
+- [x] (9) Upload dokumen punya kolom **Berlaku sampai** (opsional); yang diisi ikut pengingat H-30 (email) bersama sertifikat
+- [x] Kartu notifikasi yang mudah terlihat di **dashboard** (karyawan: dokumen/sertifikat miliknya; Ci Ika / Admin: semua karyawan) + tautan langsung ke halaman perbaikan
+- **Cek 15.8:** [x] migrasi `document_valid_until` (`Document.validUntil`, `ReminderKind.DOCUMENT`) · [x] isian "Berlaku sampai (opsional)" di setiap slot dokumen + badge sisa masa berlaku · [x] job worker `reminder.document` 07:00 WIB (H-30, sekali per dokumen per tanggal) · [x] banner merah `ExpiryAlert` di bawah judul dashboard (≤ 30 hari lagi & sudah lewat ≤ 90 hari) · [x] 1 DB test baru · [x] 411 test lulus · [ ] cek tampilan banner di browser
+
+### 15.9 Admin bisa mengubah datanya sendiri di Profil Saya ✅ (koreksi 2026-10-12)
+- [x] (15) Maksud user: walau login sebagai Admin, fitur Admin di **Profil Saya** tetap terkunci. Perbaikan: Admin mendapat tautan **"Ubah Akun & Pekerjaan"** (ke `/karyawan/[id]/edit`) dan bisa **menambah / mengubah / menghapus Inventory Kantor** miliknya
+- [x] "Mode Admin" (konfirmasi ulang password) yang sempat dibuat **dihapus** sesuai permintaan user
+- **Cek 15.9:** [x] 411 test lulus · [x] smoke Ika: `/profil` ada tautan ubah, `/profil/aset` ada tombol Tambah Inventory, halaman Admin tanpa kunci

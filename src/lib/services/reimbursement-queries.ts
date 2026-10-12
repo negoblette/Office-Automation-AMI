@@ -1,7 +1,7 @@
 // Query halaman Reimburse. Nominal BigInt dikonversi ke number (serializeMoney) — aman ke client.
 import type { Role } from "@/generated/prisma/enums";
 import type { ApprovalStepView } from "@/components/shared/approval-stepper";
-import type { Division, Prisma, PrismaClient, RequestStatus } from "@/generated/prisma/client";
+import type { Prisma, PrismaClient, RequestStatus } from "@/generated/prisma/client";
 import { serializeMoney, toJakartaIsoDate } from "@/lib/format";
 import { listCorrections } from "./approval-correction";
 import { projectLabel } from "@/lib/labels";
@@ -21,8 +21,8 @@ export type ReimbursementListRow = {
   currentLevel: number | null;
   createdAt: string;
   submittedAt: string | null;
-  totalCash: number;
-  totalCc: number;
+  totalPersonal: number;
+  totalCorporate: number;
   total: number;
   itemCount: number;
   summary: string;
@@ -55,7 +55,7 @@ export async function listReimbursements(
     currentLevel: levels.get(row.id) ?? null,
     createdAt: row.createdAt.toISOString(),
     submittedAt: row.submittedAt?.toISOString() ?? null,
-    ...serializeMoney({ totalCash: row.totalCash, totalCc: row.totalCc, total: row.total }),
+    ...serializeMoney({ totalPersonal: row.totalPersonal, totalCorporate: row.totalCorporate, total: row.total }),
     itemCount: row.items.length,
     summary: row.items[0]?.activity ?? "—",
   }));
@@ -104,6 +104,7 @@ export async function getReimbursementDetail(db: PrismaClient, reimbursementId: 
       status: step.status,
       actedBy: step.actedById ? (nameOf.get(step.actedById) ?? null) : null,
       actedAt: step.actedAt?.toISOString() ?? null,
+      note: step.status === "REJECTED" ? step.note : null,
     })) ?? [];
   const corrections = request ? ((await listCorrections(db, [request.id])).get(request.id) ?? []) : [];
 
@@ -120,7 +121,7 @@ export async function getReimbursementDetail(db: PrismaClient, reimbursementId: 
     createdAt: r.createdAt.toISOString(),
     submittedAt: r.submittedAt?.toISOString() ?? null,
     approvedAt: r.approvedAt?.toISOString() ?? null,
-    ...serializeMoney({ totalCash: r.totalCash, totalCc: r.totalCc, total: r.total }),
+    ...serializeMoney({ totalPersonal: r.totalPersonal, totalCorporate: r.totalCorporate, total: r.total }),
     steps,
     corrections,
     items: r.items.map((item) => ({
@@ -148,7 +149,7 @@ export async function getReimbursementDetail(db: PrismaClient, reimbursementId: 
 export type ReimbursementDetail = NonNullable<Awaited<ReturnType<typeof getReimbursementDetail>>>;
 
 /** Pilihan dropdown form: tipe sesuai divisi pemohon (RMB-04), customer, project aktif. */
-export async function getReimbursementFormOptions(db: PrismaClient, division: Division) {
+export async function getReimbursementFormOptions(db: PrismaClient, division: string, canAddMaster = false) {
   const [types, customers, projects, suggestedProjectCode] = await Promise.all([
     db.reimburseType.findMany({ where: { isActive: true, divisions: { has: division } }, orderBy: { name: "asc" } }),
     db.customer.findMany({ where: { deletedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
@@ -160,12 +161,14 @@ export async function getReimbursementFormOptions(db: PrismaClient, division: Di
     nextProjectCode(db),
   ]);
   return {
-    types: types.map((type) => ({ value: type.id, label: type.name })),
+    types: types.map((type) => ({ value: type.id, label: type.name, code: type.code })),
     customers: customers.map((customer) => ({ value: customer.id, label: customer.name })),
     // Form: Company dipilih dulu, lalu dropdown hanya project milik company itu (Fase 14).
     projects: projects.map((project) => ({ value: project.id, label: projectLabel(project), customerId: project.customerId })),
     /** Untuk dialog "+ Project baru" di form (Fase 14: staf boleh menambah customer & project). */
     suggestedProjectCode,
+    /** Divisi Sales + Admin boleh menambah customer & project dari form (2026-10-12). */
+    canAddMaster,
   };
 }
 
@@ -182,7 +185,7 @@ export type ReimbursePrintRow = {
   participants: string;
   location: string;
   typeName: string;
-  paymentMethod: "CASH" | "CC";
+  paymentMethod: "PERSONAL" | "CORPORATE";
   amount: number;
 };
 

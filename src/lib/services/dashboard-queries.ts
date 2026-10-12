@@ -4,12 +4,13 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import { daysUntil, EXPIRY_WARNING_DAYS } from "@/lib/certificate-status";
 import { FEATURES } from "@/lib/features";
 import { fromIsoDate, toJakartaIsoDate } from "@/lib/format";
-import { CERTIFICATE_TYPE_LABEL } from "@/lib/labels";
+import { CERTIFICATE_TYPE_LABEL, DOCUMENT_TYPE_LABEL } from "@/lib/labels";
 import { addDays } from "@/lib/leave";
 import { listMyApprovalQueue, listMyRequests } from "./approval-queries";
 import { getEmployeeCertificates, getEmployeeDocuments, listEmployees } from "./employee-queries";
 import { getHealthSummary } from "./health-queries";
 import { getCurrentBalances } from "./leave-queries";
+import { DIRECTOR_DIVISION } from "./division";
 
 export type ExpiringItem = {
   key: string;
@@ -20,6 +21,52 @@ export type ExpiringItem = {
   daysLeft: number;
   href: string;
 };
+
+/**
+ * Peringatan masa berlaku (2026-10-12): dokumen & sertifikat yang berakhir ≤ 30 hari lagi atau sudah lewat
+ * (sampai 90 hari ke belakang). `employeeId` = milik satu karyawan (dashboard karyawan); tanpa = semua (Admin).
+ */
+export async function expiryAlerts(db: PrismaClient, todayIso: string, employeeId?: string): Promise<ExpiringItem[]> {
+  const range = { gte: fromIsoDate(addDays(todayIso, -90)), lte: fromIsoDate(addDays(todayIso, EXPIRY_WARNING_DAYS)) };
+  const own = Boolean(employeeId);
+  const [documents, certificates] = await Promise.all([
+    db.document.findMany({
+      where: { validUntil: range, deletedAt: null, employee: { status: "ACTIVE", ...(employeeId ? { id: employeeId } : {}) } },
+      include: { employee: { select: { id: true, fullName: true } }, familyMember: { select: { fullName: true } } },
+    }),
+    db.certificate.findMany({
+      where: { endDate: range, deletedAt: null, employee: { status: "ACTIVE", ...(employeeId ? { id: employeeId } : {}) } },
+      include: { employee: { select: { id: true, fullName: true } } },
+    }),
+  ]);
+  const items: ExpiringItem[] = [
+    ...documents.map((d) => {
+      const due = toJakartaIsoDate(d.validUntil as Date);
+      return {
+        key: `doc-${d.id}`,
+        label: "Dokumen",
+        name: `${DOCUMENT_TYPE_LABEL[d.docType]}${d.familyMember ? ` — ${d.familyMember.fullName}` : ""}`,
+        detail: own ? d.fileName : (d.employee?.fullName ?? ""),
+        dueDate: due,
+        daysLeft: daysUntil(due, todayIso),
+        href: own ? "/profil/dokumen" : `/karyawan/${d.employee?.id}?tab=dokumen`,
+      };
+    }),
+    ...certificates.map((c) => {
+      const due = toJakartaIsoDate(c.endDate as Date);
+      return {
+        key: `cert-${c.id}`,
+        label: CERTIFICATE_TYPE_LABEL[c.type],
+        name: c.name,
+        detail: own ? (c.issuer ?? "") : c.employee.fullName,
+        dueDate: due,
+        daysLeft: daysUntil(due, todayIso),
+        href: own ? "/profil/sertifikat" : `/karyawan/${c.employee.id}?tab=sertifikat`,
+      };
+    }),
+  ];
+  return items.sort((x, y) => x.dueDate.localeCompare(y.dueDate));
+}
 
 export type WeekEvent =
   | { kind: "leave"; key: string; employeeName: string; startDate: string; endDate: string; workingDays: number; isDirector: boolean }
@@ -92,7 +139,7 @@ async function weekEvents(db: PrismaClient, todayIso: string, staffEmployeeId?: 
       startDate: toJakartaIsoDate(l.startDate),
       endDate: toJakartaIsoDate(l.endDate),
       workingDays: l.workingDays,
-      isDirector: l.employee.division === "DIRECTOR",
+      isDirector: l.employee.division === DIRECTOR_DIVISION,
     })),
     ...holidays.map((h) => ({ kind: "holiday" as const, key: h.id, name: h.name, date: toJakartaIsoDate(h.date) })),
   ];
@@ -118,6 +165,7 @@ export async function getAdminDashboard(db: PrismaClient, userId: string, todayI
     expiringItems(db, todayIso),
     weekEvents(db, todayIso),
   ]);
+  const alerts = await expiryAlerts(db, todayIso);
   return {
     employees: {
       active: employees.length,
@@ -131,6 +179,8 @@ export async function getAdminDashboard(db: PrismaClient, userId: string, todayI
     /** null = modul Inventory ditunda. */
     assets: FEATURES.inventory ? { total: assetTotal, assigned: assetAssigned } : null,
     expiring,
+    /** Dokumen & sertifikat semua karyawan yang akan / sudah habis masa berlakunya (2026-10-12). */
+    alerts,
     week,
   };
 }
@@ -138,13 +188,15 @@ export type AdminDashboard = Awaited<ReturnType<typeof getAdminDashboard>>;
 
 export async function getStaffDashboard(db: PrismaClient, user: { id: string; employeeId: string | null }, todayIso = toJakartaIsoDate()) {
   const requests = await listMyRequests(db, user.id);
-  if (!user.employeeId) return { requests, balance: null, health: null, certificates: [], documentMissing: [], week: await weekEvents(db, todayIso, null) };
-  const [balances, health, certificates, documents, week] = await Promise.all([
+  if (!user.employeeId)
+    return { requests, balance: null, health: null, certificates: [], documentMissing: [], alerts: [], week: await weekEvents(db, todayIso, null) };
+  const [balances, health, certificates, documents, week, alerts] = await Promise.all([
     getCurrentBalances(db, [user.employeeId]),
     getHealthSummary(db, user.employeeId),
     getEmployeeCertificates(db, user.employeeId),
     getEmployeeDocuments(db, user.employeeId),
     weekEvents(db, todayIso, user.employeeId),
+    expiryAlerts(db, todayIso, user.employeeId),
   ]);
   return {
     requests,
@@ -153,6 +205,8 @@ export async function getStaffDashboard(db: PrismaClient, user: { id: string; em
     /** Reminder: sertifikat yang akan / sudah kadaluarsa. */
     certificates: certificates.filter((c) => c.status === "EXPIRING" || c.status === "EXPIRED"),
     documentMissing: documents?.completeness.missing ?? [],
+    /** Dokumen & sertifikat miliknya yang akan / sudah habis masa berlakunya (2026-10-12). */
+    alerts,
     week,
   };
 }

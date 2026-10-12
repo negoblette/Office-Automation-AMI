@@ -26,7 +26,9 @@ export async function getManageableEmployee(tx: Prisma.TransactionClient, actor:
 }
 
 /** Key file harus belum dipakai data lain — mencegah "mengklaim" file milik orang lain. */
-export async function assertFileKeyAvailable(tx: Prisma.TransactionClient, fileKey: string) {
+export async function assertFileKeyAvailable(tx: Prisma.TransactionClient, fileKey: string, employeeId?: string | null) {
   const owner = await prismaFileAccessRepository(tx).findFileOwner(fileKey);
+  // File dari permintaan perubahan milik karyawan yang sama (dokumen yang baru disetujui, 2026-10-12) boleh dipakai.
+  if (owner?.pendingChange && employeeId && owner.employeeId === employeeId) return;
   if (owner) throw new ServiceError("File sudah dipakai, silakan upload ulang");
 }

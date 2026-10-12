@@ -25,11 +25,11 @@ function AssetDialog({ employeeId, asset }: { employeeId: string; asset?: Employ
           </Button>
         ) : (
           <Button size="sm">
-            <Plus aria-hidden /> Aset
+            <Plus aria-hidden /> Tambah Inventory
           </Button>
         )
       }
-      title={asset ? `Ubah ${asset.name}` : "Tambah Aset Karyawan"}
+      title={asset ? `Ubah ${asset.name}` : "Tambah Inventory Kantor"}
       schema={employeeAssetSchema}
       defaults={{
         name: asset?.name ?? "",
@@ -85,13 +85,13 @@ export function EmployeeAssetsPanel({ employeeId, assets, canEdit }: { employeeI
     <section className="rounded-2xl bg-card p-5 shadow-card sm:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-base font-semibold">Aset Karyawan</h2>
+          <h2 className="text-base font-semibold">Inventory Kantor</h2>
           <p className="text-sm text-muted-foreground">Barang kantor yang sedang atau pernah dipegang.{!canEdit && " Dicatat oleh Admin."}</p>
         </div>
         {canEdit && <AssetDialog employeeId={employeeId} />}
       </div>
       {assets.length === 0 ? (
-        <EmptyState icon={Laptop} title="Belum ada aset tercatat" className="shadow-none" />
+        <EmptyState icon={Laptop} title="Belum ada inventory tercatat" className="shadow-none" />
       ) : (
         <ul className="divide-y divide-border">
           {assets.map((asset) => (

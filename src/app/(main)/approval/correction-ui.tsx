@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, PencilLine, Undo2 } from "lucide-react";
+import { Ban, Loader2, PencilLine, Undo2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { z } from "zod";
@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toJakartaIsoDate } from "@/lib/format";
 import type { CorrectionField, CorrectionTarget, CorrectionValue, CorrectionView } from "@/lib/services/approval-correction";
 import { cn } from "@/lib/utils";
-import { correctRequestAction, getCorrectionTargetsAction, revokeApprovalAction } from "./actions";
+import { correctRequestAction, getCorrectionTargetsAction, rejectAction, revokeApprovalAction } from "./actions";
 
 type Draft = Record<string, Record<string, CorrectionValue>>;
 const EMPTY = "__empty__";
@@ -246,5 +246,26 @@ export function CorrectionList({ corrections, className }: { corrections: Correc
         </li>
       ))}
     </ul>
+  );
+}
+
+/** "Tolak" (2026-10-12, OI-05): alasan wajib; pemohon mendapat email untuk merevisi & mengajukan ulang. */
+export function RejectButton({ requestId, label }: { requestId: string; label: string }) {
+  return (
+    <FormDialog
+      trigger={
+        <Button size="sm" variant="outline" className="text-danger">
+          <Ban aria-hidden /> Tolak
+        </Button>
+      }
+      title={`Tolak ${label}`}
+      description="Pengajuan dikembalikan ke pemohon untuk direvisi. Setelah diajukan ulang, approval dimulai lagi dari level 1."
+      schema={revokeFormSchema}
+      defaults={{ reason: "" }}
+      submitLabel="Tolak Pengajuan"
+      action={(values) => rejectAction({ requestId, reason: values.reason })}
+    >
+      <TextareaField name="reason" label="Alasan penolakan" required />
+    </FormDialog>
   );
 }

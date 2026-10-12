@@ -2,8 +2,8 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { Actor } from "@/lib/services/access";
 import { approveRequest } from "@/lib/services/approval";
 import { saveHealthCategory, saveReimburseType, typeCodeFromName } from "@/lib/services/master-data";
-import { deleteCustomer, projectTotals, saveCustomer, saveProject, submitProjectExpense, submitProjectRevenue } from "@/lib/services/project";
-import { getProjectDetail, nextProjectCode } from "@/lib/services/project-queries";
+import { canAddCustomerProject, deleteCustomer, projectTotals, saveCustomer, saveProject, submitProjectExpense, submitProjectRevenue } from "@/lib/services/project";
+import { getProjectDetail, nextProjectCode, projectYears } from "@/lib/services/project-queries";
 import { saveReimbursementDraft, submitReimbursement } from "@/lib/services/reimbursement";
 import { projectExpenseSchema, projectRevenueSchema, projectSchema, reimburseTypeSchema } from "@/lib/validators/project";
 import { reimbursementSchema } from "@/lib/validators/reimbursement";
@@ -66,10 +66,33 @@ describe("staf menambah customer & project (Fase 14)", () => {
   });
 });
 
+describe("2026-10-12: tambah customer & project hanya Sales + Admin; cutoff per tahun", () => {
+  it("Sales & Admin boleh menambah; divisi lain tidak", async () => {
+    expect(await canAddCustomerProject(testDb, actors.sinta)).toBe(true); // Sales
+    expect(await canAddCustomerProject(testDb, actors.darwin)).toBe(true); // Sales (Approver)
+    expect(await canAddCustomerProject(testDb, actors.ika)).toBe(true); // Admin (Umum)
+    expect(await canAddCustomerProject(testDb, actors.andi)).toBe(false); // Engineer
+    expect(await canAddCustomerProject(testDb, actors.yosep)).toBe(false); // Engineer (Approver)
+  });
+
+  it("total biaya & detail dihitung per tahun kalender; tahun history tersedia", async () => {
+    const project = await newProject();
+    const expense = (date: string, amount: number) =>
+      submitProjectExpense(testDb, actors.ika, project.id, projectExpenseSchema.parse({ date, description: "Biaya", paymentMethod: "CORPORATE", amount }));
+    for (const e of [await expense("2025-12-31", 100_000), await expense("2026-01-01", 250_000)]) await approveAll(e.id, "EXPENSE");
+    expect((await projectTotals(testDb, project.id, 2025)).expense).toBe(100_000);
+    expect((await projectTotals(testDb, project.id, 2026)).expense).toBe(250_000);
+    expect((await projectTotals(testDb, project.id)).expense).toBe(350_000);
+    const detail = (await getProjectDetail(testDb, project.id, { role: "ADMIN", employeeId: actors.ika.employeeId }, 2025))!;
+    expect(detail.costs.map((c) => c.date)).toEqual(["2025-12-31"]);
+    expect(await projectYears(testDb, 2026)).toEqual([2026, 2025]);
+  });
+});
+
 describe("expense & revenue (PRJ-02..04)", () => {
   it("hanya Admin; nomor EXP/REV; lewat approval (Bu Ika → Ko Leonard); status APPROVED setelah final", async () => {
     const project = await newProject();
-    const expenseInput = projectExpenseSchema.parse({ date: "2026-09-10", description: "Tiket pesawat onsite", paymentMethod: "CC", amount: "3.000.000" });
+    const expenseInput = projectExpenseSchema.parse({ date: "2026-09-10", description: "Tiket pesawat onsite", paymentMethod: "CORPORATE", amount: "3.000.000" });
     await expect(submitProjectExpense(testDb, actors.andi, project.id, expenseInput)).rejects.toThrow("Hanya Admin");
     // Ko Yosep kini Approver (bukan Admin) → tidak bisa input expense.
     await expect(submitProjectExpense(testDb, actors.yosep, project.id, expenseInput)).rejects.toThrow("Hanya Admin");
@@ -91,7 +114,7 @@ describe("expense & revenue (PRJ-02..04)", () => {
     const typeId = (await testDb.reimburseType.findUniqueOrThrow({ where: { code: "TRANSPORT" } })).id;
     const row = (amount: number, projectId = "") => ({
       date: "2026-09-12", customerId: project.customerId, projectId, activity: "Onsite", participants: "Andi – Engineer", location: "Jakarta",
-      typeId, hasReceipt: false, paymentMethod: "CASH", amount, receiptFileKey: "", receiptFileName: "",
+      typeId, hasReceipt: false, paymentMethod: "PERSONAL", amount, receiptFileKey: "", receiptFileName: "",
     });
     // 1 pengajuan: 2 baris ke project + 1 baris tanpa project.
     const draft = await saveReimbursementDraft(testDb, actors.andi, null, reimbursementSchema.parse({ note: "", items: [row(200_000, project.id), row(300_000, project.id), row(999_000)] }));
@@ -101,7 +124,7 @@ describe("expense & revenue (PRJ-02..04)", () => {
     await approveAll(draft.reimbursementId, "REIMBURSE");
     expect(await projectTotals(testDb, project.id)).toMatchObject({ reimburse: 500_000, expense: 500_000 });
     // Detail project: reimburse & expense Admin dalam satu daftar biaya (2026-10-06).
-    const expense = await submitProjectExpense(testDb, actors.ika, project.id, projectExpenseSchema.parse({ date: "2026-09-15", description: "Tiket pesawat", paymentMethod: "CC", amount: 1_000_000 }));
+    const expense = await submitProjectExpense(testDb, actors.ika, project.id, projectExpenseSchema.parse({ date: "2026-09-15", description: "Tiket pesawat", paymentMethod: "CORPORATE", amount: 1_000_000 }));
     const detail = (await getProjectDetail(testDb, project.id, { role: "ADMIN", employeeId: actors.ika.employeeId }))!;
     expect(detail.costs.map((c) => [c.source, c.amount, c.status])).toEqual([
       ["EXPENSE", 1_000_000, expense.status],
@@ -120,7 +143,7 @@ describe("expense & revenue (PRJ-02..04)", () => {
     const project = await newProject();
     await saveProject(testDb, u.yosep, project.id, projectSchema.parse({ customerId: project.customerId, code: project.code, name: project.name, type: "RUNNING", isActive: false }));
     await expect(
-      submitProjectExpense(testDb, actors.ika, project.id, projectExpenseSchema.parse({ date: "2026-09-10", description: "Parkir", paymentMethod: "CASH", amount: 50_000 })),
+      submitProjectExpense(testDb, actors.ika, project.id, projectExpenseSchema.parse({ date: "2026-09-10", description: "Parkir", paymentMethod: "PERSONAL", amount: 50_000 })),
     ).rejects.toThrow("Project sudah tidak aktif");
   });
 });

@@ -6,7 +6,7 @@ import { type ActionResult, toActionError } from "@/lib/actions";
 import { requireApprover } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { enqueueApprovalNotifications } from "@/lib/mail/approval-emails";
-import { approveRequest, revokeApproval } from "@/lib/services/approval";
+import { type ApproveResult, approveRequest, rejectRequest, revokeApproval } from "@/lib/services/approval";
 import { type CorrectionTarget, correctRequest, getCorrectionTargets } from "@/lib/services/approval-correction";
 
 const approveSchema = z.object({
@@ -17,7 +17,7 @@ const approveSchema = z.object({
 });
 
 /** Setujui step PENDING. Hak approve dicek engine (approver step, bukan sekadar Admin). */
-export async function approveAction(values: unknown): Promise<ActionResult<{ status: "PENDING" | "APPROVED" }>> {
+export async function approveAction(values: unknown): Promise<ActionResult<{ status: ApproveResult["status"] }>> {
   const admin = await requireApprover();
   try {
     const { requestId, note, approvedAmount } = approveSchema.parse(values);
@@ -71,6 +71,25 @@ export async function revokeApprovalAction(values: unknown): Promise<ActionResul
   try {
     const { requestId, reason } = revokeSchema.parse(values);
     const result = await revokeApproval(prisma, { requestId, actorId: user.id, reason });
+    await enqueueApprovalNotifications(prisma, result.notifications);
+    revalidatePath("/", "layout");
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+const rejectSchema = z.object({
+  requestId: z.string().min(1),
+  reason: z.string().trim().min(3, { error: "Alasan minimal 3 karakter" }).max(500, { error: "Alasan maksimal 500 karakter" }),
+});
+
+/** Tolak pengajuan (2026-10-12, OI-05): alasan wajib, email ke pemohon untuk direvisi. */
+export async function rejectAction(values: unknown): Promise<ActionResult> {
+  const user = await requireApprover();
+  try {
+    const { requestId, reason } = rejectSchema.parse(values);
+    const result = await rejectRequest(prisma, { requestId, actorId: user.id, reason });
     await enqueueApprovalNotifications(prisma, result.notifications);
     revalidatePath("/", "layout");
     return { ok: true, data: undefined };

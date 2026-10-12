@@ -3,8 +3,10 @@ import type { ApprovalModule, Prisma, PrismaClient, RequestStatus } from "@/gene
 import type { ApprovalStepView } from "@/components/shared/approval-stepper";
 import { CORRECTABLE_MODULES, type CorrectionView, listCorrections } from "./approval-correction";
 import { formatDate } from "@/lib/format";
+import { EDUCATION_LEVEL_LABEL } from "@/lib/labels";
 import { canRevoke } from "./approval";
 import { appealSummary } from "./attendance-appeal";
+import { profileChangeSummary } from "./profile-change";
 
 /** Jumlah pengajuan yang sedang menunggu persetujuan user ini (step PENDING). */
 export function countPendingApprovals(db: PrismaClient, userId: string): Promise<number> {
@@ -73,6 +75,11 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
     ? await db.attendanceAppeal.findMany({ where: { id: { in: appealIds } }, include: { employee: { select: { fullName: true } } } })
     : [];
   const appealOf = new Map(appeals.map((a) => [a.id, a]));
+  const changeIds = requests.filter((r) => r.module === "PROFILE_CHANGE").map((r) => r.entityId);
+  const changes = changeIds.length
+    ? await db.profileChangeRequest.findMany({ where: { id: { in: changeIds } }, include: { employee: { select: { fullName: true } } } })
+    : [];
+  const changeOf = new Map(changes.map((c) => [c.id, c]));
 
   return requests.map((request) => ({
     id: request.id,
@@ -91,6 +98,7 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
       status: step.status,
       actedBy: step.actedById ? (nameOf.get(step.actedById) ?? null) : null,
       actedAt: step.actedAt?.toISOString() ?? null,
+      note: step.status === "REJECTED" ? step.note : null,
     })),
     canApprove: request.steps.some((step) => step.status === "PENDING" && step.approverIds.includes(viewerId)),
     canRevoke: viewer ? canRevoke(viewer, request) : false,
@@ -98,6 +106,10 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
     correctable: (CORRECTABLE_MODULES as readonly ApprovalModule[]).includes(request.module),
     corrections: correctionsOf.get(request.id) ?? [],
     ...(() => {
+      const change = changeOf.get(request.entityId);
+      if (request.module === "PROFILE_CHANGE" && change) {
+        return { summary: profileChangeSummary(change), file: change.fileKey ? { key: change.fileKey, name: change.fileName ?? "Dokumen" } : null };
+      }
       const appeal = appealOf.get(request.entityId);
       if (request.module === "ATTENDANCE_APPEAL" && appeal) return { summary: appealSummary(appeal), file: null };
       const c = certOf.get(request.entityId);
@@ -105,9 +117,15 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
       const parts = [
         `${c.name} (${c.employee.fullName})`,
         c.issuer && `Penerbit ${c.issuer}`,
-        c.number && `No. ${c.number}`,
-        `Diambil ${formatDate(c.startDate, "short")}`,
-        c.endDate ? `Berlaku s/d ${formatDate(c.endDate, "short")}` : "Tanpa masa berlaku",
+        c.level && `Level ${c.level}`,
+        c.degree && `Jenjang ${EDUCATION_LEVEL_LABEL[c.degree]}`,
+        c.number && !c.level && !c.degree && `No. ${c.number}`,
+        c.type === "IJAZAH" ? `Mulai ${formatDate(c.startDate, "short")}` : `Diambil ${formatDate(c.startDate, "short")}`,
+        c.type === "IJAZAH"
+          ? c.graduationDate && `Lulus ${formatDate(c.graduationDate, "short")}`
+          : c.endDate
+            ? `Berlaku s/d ${formatDate(c.endDate, "short")}`
+            : "Permanen",
       ];
       return { summary: parts.filter(Boolean).join(" · "), file: c.fileKey ? { key: c.fileKey, name: c.name } : null };
     })(),

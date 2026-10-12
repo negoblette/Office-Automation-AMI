@@ -5,11 +5,9 @@ import { PageHeader } from "@/components/shared/page-header";
 import { ProgressBar } from "@/components/shared/progress-bar";
 import { StatCard } from "@/components/shared/stat-card";
 import { buttonVariants } from "@/components/ui/button";
-import type { Division } from "@/generated/prisma/enums";
 import { requireAdmin } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { toJakartaIsoDate } from "@/lib/format";
-import { DIVISION_LABEL } from "@/lib/labels";
 import { listEmployees } from "@/lib/services/employee-queries";
 import { EmployeeTable } from "./employee-table";
 import { KaryawanTabs } from "./karyawan-tabs";
@@ -26,10 +24,6 @@ export default async function KaryawanPage() {
   const thisMonth = toJakartaIsoDate().slice(0, 7);
   const joinedThisMonth = rows.filter((row) => row.startDate?.startsWith(thisMonth)).length;
   const complete = rows.filter((row) => row.profilePercent === 100).length;
-  const divisions = (Object.keys(DIVISION_LABEL) as Division[]).map((division) => ({
-    division,
-    count: rows.filter((row) => row.division === division).length,
-  }));
 
   return (
     <div className="flex flex-col gap-6">
@@ -77,26 +71,7 @@ export default async function KaryawanPage() {
 
       <KaryawanTabs active="aktif" activeCount={rows.length} archiveCount={archiveCount} />
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_280px]">
-        <EmployeeTable rows={rows} />
-
-        <aside className="h-fit rounded-2xl bg-card p-5 shadow-card">
-          <h2 className="mb-4 text-base font-semibold">Distribusi Divisi</h2>
-          <ul className="space-y-4">
-            {divisions.map(({ division, count }) => (
-              <li key={division} className="space-y-1.5">
-                <div className="flex items-baseline justify-between text-sm">
-                  <span className="font-medium">{DIVISION_LABEL[division]}</span>
-                  <span className="text-muted-foreground tabular-nums">
-                    {count} ({rows.length ? Math.round((count / rows.length) * 100) : 0}%)
-                  </span>
-                </div>
-                <ProgressBar value={rows.length ? (count / rows.length) * 100 : 0} />
-              </li>
-            ))}
-          </ul>
-        </aside>
-      </div>
+      <EmployeeTable rows={rows} />
     </div>
   );
 }

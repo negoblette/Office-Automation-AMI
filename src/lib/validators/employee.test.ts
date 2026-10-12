@@ -78,7 +78,7 @@ describe("employeeCreateSchema (akun minimal oleh Admin)", () => {
 
   it.each([
     ["password", "pendek", "Password minimal 8 karakter"],
-    ["division", "MARKETING", "Divisi wajib dipilih"],
+    ["division", "", "Divisi wajib dipilih"], // kode divisi dicek di server (master, 2026-10-12)
     ["role", "SUPERADMIN", "Role wajib dipilih"],
     ["startDate", "2026-02-30", "Tanggal tidak valid"],
   ])("%s tidak valid", (field, value, message) => {

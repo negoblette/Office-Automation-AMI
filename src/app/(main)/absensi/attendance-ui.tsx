@@ -206,7 +206,11 @@ function AppealDialog({ day }: { day: AttendanceDay }) {
       title={`Appeal ${formatDate(`${day.date}T00:00:00Z`, "weekday")}`}
       description={`Tidak masuk karena sakit atau ada kunjungan keluar? Ajukan paling lambat ${formatDate(`${day.appealDeadline}T00:00:00Z`)}. Tanpa appeal yang disetujui, saldo cuti dipotong 1 hari.`}
       schema={appealSchema}
-      defaults={{ date: day.date, reason: "" as never, note: "" }}
+      defaults={
+        day.appeal?.status === "REJECTED"
+          ? { date: day.date, reason: day.appeal.reason, note: day.appeal.note }
+          : { date: day.date, reason: "" as never, note: "" }
+      }
       submitLabel="Ajukan Appeal"
       action={submitAppealAction}
     >
@@ -284,6 +288,11 @@ export function AttendanceDaysTable({ days, correctFor, appealable = false }: { 
                     {day.appeal && (
                       <span className="text-xs text-ink-3">
                         Appeal {day.appeal.number} · {APPEAL_REASON_LABEL[day.appeal.reason]}: {day.appeal.note}
+                      </span>
+                    )}
+                    {day.appeal?.status === "REJECTED" && (
+                      <span className="text-xs font-semibold text-red-ink">
+                        Appeal ditolak{day.appeal.rejection ? ` (${day.appeal.rejection})` : ""}{day.canAppeal ? " — bisa direvisi & diajukan lagi" : ""}
                       </span>
                     )}
                     {day.leaveDeducted && <span className="text-xs font-semibold text-red-ink">Saldo cuti dipotong 1 hari</span>}

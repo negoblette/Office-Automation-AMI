@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Division, PaymentMethod, ProjectType } from "@/generated/prisma/enums";
+import { PaymentMethod, ProjectType } from "@/generated/prisma/enums";
 import { amountSchema, isoDateSchema, textSchema } from "./common";
 
 /** Master Customer (PRJ-01). */
@@ -18,7 +18,7 @@ export const projectSchema = z.object({
 });
 export type ProjectInput = z.infer<typeof projectSchema>;
 
-/** Expense project (PRJ-02): kategori CC/Cash. */
+/** Expense project (PRJ-02): kategori Personal/Corporate. */
 export const projectExpenseSchema = z.object({
   date: isoDateSchema,
   description: textSchema("Keterangan", { min: 3, max: 300 }),
@@ -38,7 +38,7 @@ export type ProjectRevenueInput = z.infer<typeof projectRevenueSchema>;
 /** Master tipe reimburse (SET-05): nama, divisi yang boleh memakai, aktif. */
 export const reimburseTypeSchema = z.object({
   name: textSchema("Nama tipe", { min: 2, max: 80 }),
-  divisions: z.array(z.enum(Division)).min(1, { error: "Pilih minimal satu divisi" }),
+  divisions: z.array(z.string().min(1)).min(1, { error: "Pilih minimal satu divisi" }),
   isActive: z.boolean(),
 });
 export type ReimburseTypeInput = z.infer<typeof reimburseTypeSchema>;

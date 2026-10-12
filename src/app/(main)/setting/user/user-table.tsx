@@ -11,10 +11,11 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { DataTable, dataTableColumnHelper } from "@/components/table/data-table";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/format";
-import { DIVISION_LABEL, ROLE_LABEL, toOptions } from "@/lib/labels";
+import { ROLE_LABEL, toOptions } from "@/lib/labels";
 import type { UserRow } from "@/lib/services/user-admin";
 import { resetPasswordSchema, userRoleSchema } from "@/lib/validators/setting";
 import { resetPasswordAction, setUserActiveAction, setUserRoleAction } from "./actions";
+import { DivisionName } from "@/components/shared/division-name";
 
 function RoleDialog({ user }: { user: UserRow }) {
   return (
@@ -113,7 +114,7 @@ function buildColumns(currentUserId: string) {
         );
       },
     }),
-    col.accessor((row) => (row.division ? DIVISION_LABEL[row.division] : "—"), { id: "division", header: "Divisi" }),
+    col.accessor((row) => row.division ?? "", { id: "division", header: "Divisi", cell: ({ row }) => <DivisionName code={row.original.division} /> }),
     col.accessor((row) => ROLE_LABEL[row.role], {
       id: "role",
       header: "Role",

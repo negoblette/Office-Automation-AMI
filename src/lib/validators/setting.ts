@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ApprovalModule, Division, Role } from "@/generated/prisma/enums";
+import { ApprovalModule, Role } from "@/generated/prisma/enums";
 import { optionalField, passwordSchema } from "./common";
 
 /** Setting → User & Role. */
@@ -19,7 +19,7 @@ const stepsSchema = z
 export const approvalFlowSchema = z
   .object({
     module: z.enum(ApprovalModule, { error: "Modul wajib dipilih" }),
-    division: optionalField(z.enum(Division)),
+    division: optionalField(z.string()),
     noApproval: z.boolean().default(false),
     autoApproveWhenSkipped: z.boolean().default(false),
     steps: stepsSchema,
@@ -32,3 +32,11 @@ export type ApprovalFlowInput = z.output<typeof approvalFlowSchema>;
 
 /** Flow FALLBACK hanya punya step (tanpa modul & divisi), minimal satu level. */
 export const fallbackFlowSchema = z.object({ steps: stepsSchema.min(1, { error: "Minimal satu level approval" }) });
+
+/** Divisi (Setting → Divisi, 2026-10-12). `followsCode` = acuan alur approval & tipe reimburse. */
+export const divisionSchema = z.object({
+  name: z.string().trim().min(2, { error: "Nama divisi minimal 2 karakter" }).max(60, { error: "Nama divisi maksimal 60 karakter" }),
+  followsCode: optionalField(z.string()),
+  isActive: z.boolean().default(true),
+});
+export type DivisionInput = z.output<typeof divisionSchema>;

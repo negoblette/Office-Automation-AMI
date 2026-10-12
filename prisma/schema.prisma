@@ -28,12 +28,6 @@ enum Role {
   APPROVER // seperti STAFF + menyetujui pengajuan yang ditugaskan (Fase 14, 2026-10-02)
 }
 
-enum Division {
-  SALES
-  ENGINEER
-  UMUM // HR / Finance / GA (mis. Ci Ika, Bu Devi)
-  DIRECTOR // Direktur: Ko Rudy, Ko Leonard
-}
 
 enum EmployeeStatus {
   ACTIVE
@@ -84,15 +78,28 @@ enum CertificateType {
   IJAZAH
 }
 
+/// Jenjang pendidikan ijazah (2026-10-12).
+enum EducationLevel {
+  SMA_SMK
+  D1
+  D2
+  D3
+  D4
+  S1
+  S2
+  S3
+}
+
 enum AssetCategory {
   DEMO_UNIT
   BACKUP_UNIT
   INVENTORY
 }
 
+// 2026-10-12: Cash → PERSONAL (uang pribadi karyawan), Kartu Kredit → CORPORATE (dana/kartu perusahaan).
 enum PaymentMethod {
-  CASH
-  CC
+  PERSONAL
+  CORPORATE
 }
 
 enum ProjectType {
@@ -122,6 +129,18 @@ enum ApprovalModule {
   REVENUE
   CERTIFICATE // verifikasi sertifikat (Fase 14, 2026-10-05)
   ATTENDANCE_APPEAL // appeal tidak hadir: sakit / kunjungan keluar (Fase 14)
+  PROFILE_CHANGE // perubahan data diri / keluarga / dokumen oleh karyawan sendiri → Ci Ika (2026-10-12)
+}
+
+/// Jenis perubahan data karyawan yang menunggu persetujuan (2026-10-12).
+enum ProfileChangeKind {
+  SELF_DATA
+  FAMILY_ADD
+  FAMILY_UPDATE
+  FAMILY_DELETE
+  DOCUMENT_ADD
+  DOCUMENT_DELETE
+  CERTIFICATE_DELETE
 }
 
 enum AppealReason {
@@ -200,7 +219,7 @@ model Employee {
   emergencyName     String?
   emergencyRelation String?
   emergencyPhone    String? // format +62...
-  division          Division
+  division          String // kode Division (master, 2026-10-12)
   position          String // jabatan
   level             String? // level/grade
   status            EmployeeStatus @default(ACTIVE)
@@ -224,6 +243,7 @@ model Employee {
   fromCandidate     Candidate?
 
   @@index([status, division])
+  profileChanges ProfileChangeRequest[]
 }
 
 model EmploymentPeriod {
@@ -266,6 +286,8 @@ model Document {
   fileName       String // nama asli
   mimeType       String
   sizeBytes      Int
+  /// Masa berlaku dokumen (opsional, 2026-10-12): yang diisi ikut pengingat H-30 & notifikasi dashboard.
+  validUntil     DateTime?         @db.Date
   uploadedById   String
   uploadedBy     User              @relation("DocUploader", fields: [uploadedById], references: [id])
   createdAt      DateTime          @default(now())
@@ -282,11 +304,16 @@ model Certificate {
   type               CertificateType
   name               String
   issuer             String?
-  number             String?
-  startDate          DateTime        @db.Date
-  endDate            DateTime?       @db.Date // null = berlaku seumur hidup
+  number             String? // lama (diganti level / jenjang 2026-10-12)
+  /// Profesional: level 1–3.
+  level              Int?
+  /// Ijazah: jenjang (SMA/SMK, D1–D4, S1–S3).
+  degree             EducationLevel?
+  startDate          DateTime        @db.Date // profesional: tanggal diambil; ijazah: tanggal mulai
+  endDate            DateTime?       @db.Date // masa berlaku profesional; null = permanen / ijazah
+  graduationDate     DateTime?       @db.Date // ijazah: tanggal lulus
   fileKey            String?
-  /// Verifikasi Ko Yosep → Bu Ika (Fase 14). Nomor CRT/YYYY/MM/NNNN untuk approval.
+  /// Verifikasi Ci Ika (2026-10-12; sebelumnya Ko Yosep → Bu Ika). Nomor CRT/YYYY/MM/NNNN untuk approval.
   status             RequestStatus   @default(PENDING)
   verificationNumber String?         @unique
   createdAt          DateTime        @default(now())
@@ -399,7 +426,7 @@ model ReimburseType {
   id        String     @id @default(cuid())
   code      String     @unique // ENTERTAINMENT, MEALS, GIFT, ACCOMMODATION, TRANSPORT, ALLOWANCE
   name      String
-  divisions Division[] // divisi yang boleh memakai tipe ini (dropdown difilter dengan `has`)
+  divisions String[] // kode divisi yang boleh memakai tipe ini (dropdown difilter dengan `has`)
   isActive  Boolean    @default(true)
 
   items ReimbursementItem[]
@@ -410,10 +437,10 @@ model Reimbursement {
   number      String        @unique // RMB/YYYY/MM/NNNN
   employeeId  String
   employee    Employee      @relation(fields: [employeeId], references: [id])
-  division    Division // snapshot saat submit
+  division    String // kode divisi, snapshot saat submit
   status      RequestStatus @default(DRAFT)
-  totalCash   BigInt        @default(0)
-  totalCc     BigInt        @default(0)
+  totalPersonal  BigInt     @default(0)
+  totalCorporate BigInt     @default(0)
   total       BigInt        @default(0)
   note        String?
   submittedAt DateTime?
@@ -615,7 +642,7 @@ model Candidate {
 model ApprovalFlow {
   id                     String             @id @default(cuid())
   module                 ApprovalModule?
-  division               Division? // null = berlaku untuk semua divisi
+  division               String? // kode divisi; null = berlaku untuk semua divisi
   scope                  FlowScope          @default(REGULAR)
   isActive               Boolean            @default(true)
   steps                  ApprovalFlowStep[]
@@ -727,6 +754,7 @@ model EmailLog {
 // Tanggal berakhir diubah (mis. sertifikat diperpanjang) → dueDate baru → reminder baru.
 enum ReminderKind {
   CERTIFICATE
+  DOCUMENT
   ASSET_SUPPORT
   ASSET_WARRANTY
 }
@@ -820,4 +848,38 @@ model AttendanceAppeal {
   createdAt  DateTime      @default(now())
 
   @@unique([employeeId, date])
+}
+
+// Divisi pekerjaan (2026-10-12: master data, bisa ditambah Admin di Setting → Divisi). `code` dipakai
+// sebagai kunci di Employee.division, Reimbursement.division, ApprovalFlow.division, ReimburseType.divisions.
+model Division {
+  code        String   @id // mis. SALES, ENGINEER, UMUM, DIRECTOR, HR, FINANCE
+  name        String   @unique
+  /// Divisi tanpa alur approval sendiri memakai alur divisi ini (default UMUM).
+  followsCode String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
+// Perubahan data diri / keluarga / dokumen / hapus sertifikat terverifikasi oleh karyawan SENDIRI
+// (2026-10-12): disimpan dulu di sini, diterapkan setelah disetujui Ci Ika (modul PROFILE_CHANGE).
+// Admin yang mengubah data karyawan lain langsung tersimpan.
+model ProfileChangeRequest {
+  id            String            @id @default(cuid())
+  number        String            @unique // PRF/YYYY/MM/NNNN
+  employeeId    String
+  employee      Employee          @relation(fields: [employeeId], references: [id])
+  kind          ProfileChangeKind
+  targetId      String? // id FamilyMember / Document / Certificate yang diubah / dihapus
+  payload       Json // isi perubahan (input tervalidasi)
+  summary       String[] // ringkasan untuk approver & pemohon, mis. "Alamat: A → B"
+  fileKey       String? // DOCUMENT_ADD: file yang diunggah (bisa dibuka approver)
+  fileName      String?
+  status        RequestStatus     @default(PENDING)
+  requestedById String
+  createdAt     DateTime          @default(now())
+  appliedAt     DateTime?
+
+  @@index([employeeId, status])
 }

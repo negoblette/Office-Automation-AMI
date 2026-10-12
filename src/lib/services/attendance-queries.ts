@@ -4,6 +4,7 @@ import { appealDeadline, type DayStatus, dayStatus, type WorkHours } from "@/lib
 import { formatTime, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { addDays } from "@/lib/leave";
 import { getWorkHours } from "./attendance";
+import { rejectionsOf } from "./approval";
 
 export type AttendanceDay = {
   date: string;
@@ -18,7 +19,7 @@ export type AttendanceDay = {
   correctionNote: string | null;
   correctedBy: string | null;
   /** Appeal hari itu (Fase 14). */
-  appeal: { number: string; reason: "SICK" | "VISIT"; status: string; note: string } | null;
+  appeal: { number: string; reason: "SICK" | "VISIT"; status: string; note: string; rejection?: string | null } | null;
   /** Saldo cuti sudah dipotong karena tidak hadir tanpa appeal. */
   leaveDeducted: boolean;
   /** Masih boleh mengajukan appeal (tidak hadir, ≤ 7 hari). */
@@ -92,15 +93,22 @@ async function loadRange(db: PrismaClient, employeeIds: string[], start: string,
     db.holiday.findMany({ where: { date: range, deletedAt: null }, select: { date: true } }),
     db.employmentPeriod.findMany({ where: { employeeId: { in: employeeIds } }, select: { employeeId: true, startDate: true, endDate: true } }),
     db.attendanceAppeal.findMany({
-      where: { employeeId: { in: employeeIds }, date: range, status: { in: ["PENDING", "APPROVED"] } },
-      select: { employeeId: true, date: true, number: true, reason: true, status: true, note: true },
+      // REJECTED ikut dimuat (2026-10-12) supaya alasan tolak tampil; status hari tetap "Tidak hadir".
+      where: { employeeId: { in: employeeIds }, date: range, status: { in: ["PENDING", "APPROVED", "REJECTED"] } },
+      select: { id: true, employeeId: true, date: true, number: true, reason: true, status: true, note: true },
     }),
     db.leaveAdjustment.findMany({
       where: { employeeId: { in: employeeIds }, source: "ABSENCE", attendanceDate: range },
       select: { employeeId: true, attendanceDate: true },
     }),
   ]);
-  const appealOf = new Map(appeals.map((a) => [`${a.employeeId}|${toJakartaIsoDate(a.date)}`, { number: a.number, reason: a.reason, status: a.status, note: a.note }]));
+  const rejected = await rejectionsOf(db, "ATTENDANCE_APPEAL", appeals.filter((a) => a.status === "REJECTED").map((a) => a.id));
+  const appealOf = new Map(
+    appeals.map((a) => {
+      const r = rejected.get(a.id);
+      return [`${a.employeeId}|${toJakartaIsoDate(a.date)}`, { number: a.number, reason: a.reason, status: a.status, note: a.note, rejection: r ? `${r.by}: ${r.reason}` : null }];
+    }),
+  );
   const deductedSet = new Set(deductions.map((d) => `${d.employeeId}|${toJakartaIsoDate(d.attendanceDate!)}`));
   const holidaySet = new Set(holidays.map((h) => toJakartaIsoDate(h.date)));
   const recordOf = new Map(attendances.map((a) => [`${a.employeeId}|${toJakartaIsoDate(a.date)}`, a]));

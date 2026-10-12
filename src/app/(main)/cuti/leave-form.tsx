@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CalendarPlus, Loader2 } from "lucide-react";
+import { CalendarPlus, Loader2, Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { FormProvider, useForm, useWatch } from "react-hook-form";
@@ -37,16 +37,21 @@ export function LeaveRequestDialog({
   holidays,
   remaining,
   eligibleFrom,
+  revise,
 }: {
   holidays: string[];
   remaining: number;
   /** Tanggal paling awal cuti boleh dimulai (genap 1 tahun masa kerja). */
   eligibleFrom: string;
+  /** Revisi cuti yang ditolak (2026-10-12): isi awal + diajukan ulang dengan nomor yang sama. */
+  revise?: { id: string; number: string; startDate: string; endDate: string; reason: string };
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const today = toJakartaIsoDate();
-  const defaults: Input = { startDate: today, endDate: today, reason: "" };
+  const defaults: Input = revise
+    ? { startDate: revise.startDate, endDate: revise.endDate, reason: revise.reason }
+    : { startDate: today, endDate: today, reason: "" };
   const form = useForm<Input, unknown, Output>({ resolver: zodResolver(leaveRequestSchema), defaultValues: defaults });
   const { serverError, pending, submit } = useActionSubmit(form);
 
@@ -60,7 +65,7 @@ export function LeaveRequestDialog({
 
   const onSubmit = form.handleSubmit((values) =>
     submit(
-      () => submitLeaveAction(values),
+      () => submitLeaveAction(values, revise?.id ?? null),
       () => {
         setOpen(false);
         router.refresh();
@@ -76,14 +81,20 @@ export function LeaveRequestDialog({
         if (next) form.reset(defaults);
       }}
     >
-      <DialogTrigger render={<Button size="lg" />}>
-        <CalendarPlus aria-hidden /> Ajukan Cuti
-      </DialogTrigger>
+      {revise ? (
+        <DialogTrigger render={<Button size="sm" variant="outline" />}>
+          <Pencil aria-hidden /> Revisi
+        </DialogTrigger>
+      ) : (
+        <DialogTrigger render={<Button size="lg" />}>
+          <CalendarPlus aria-hidden /> Ajukan Cuti
+        </DialogTrigger>
+      )}
       <DialogContent>
         <FormProvider {...form}>
           <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
             <DialogHeader>
-              <DialogTitle>Ajukan Cuti</DialogTitle>
+              <DialogTitle>{revise ? `Revisi Cuti ${revise.number}` : "Ajukan Cuti"}</DialogTitle>
               <DialogDescription>Durasi dihitung dalam hari kerja (tanpa Sabtu, Minggu, dan hari libur).</DialogDescription>
             </DialogHeader>
             <FormAlert message={serverError} />
@@ -109,7 +120,7 @@ export function LeaveRequestDialog({
               <DialogClose render={<Button type="button" variant="outline" />}>Batal</DialogClose>
               <Button type="submit" disabled={pending}>
                 {pending && <Loader2 className="animate-spin" aria-hidden />}
-                Ajukan
+                {revise ? "Ajukan Ulang" : "Ajukan"}
               </Button>
             </DialogFooter>
           </form>
