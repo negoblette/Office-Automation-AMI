@@ -7,10 +7,11 @@ import { useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import type { z } from "zod";
 import { EmployeePersonalSections } from "@/components/employee/employee-fields";
-import { FormSection, ReadOnlyField } from "@/components/form/fields";
+import { FormSection, ReadOnlyList } from "@/components/form/fields";
 import { FormAlert } from "@/components/form/form-actions";
 import { useActionSubmit } from "@/components/form/use-action-submit";
 import { Button } from "@/components/ui/button";
+import { riseStyle } from "@/lib/motion";
 import { employeeSelfSchema } from "@/lib/validators/employee";
 import { updateProfileAction } from "./actions";
 
@@ -47,20 +48,28 @@ export function ProfileForm({ defaultValues, readOnly }: { defaultValues: Input;
 
   return (
     <FormProvider {...form}>
-      <form onSubmit={onSubmit} noValidate className="flex max-w-4xl flex-col gap-6" onChange={() => setSaved(false)}>
+      <form onSubmit={onSubmit} noValidate className="rise flex flex-col" style={riseStyle(4)} onChange={() => setSaved(false)}>
         <FormAlert message={serverError} />
-        <FormSection title="Akun & Pekerjaan" description="Bagian ini hanya bisa diisi & diubah Admin. Hubungi Admin bila ada yang salah.">
-          <ReadOnlyField label="Email login" value={readOnly.email} />
-          <ReadOnlyField label="Role" value={readOnly.role} />
-          <ReadOnlyField label="Divisi" value={readOnly.division} />
-          <ReadOnlyField label="Tanggal masuk" value={readOnly.startDate} />
-          <ReadOnlyField label="Nama lengkap" value={readOnly.fullName} />
-          <ReadOnlyField label="Jabatan" value={readOnly.position} />
-          <ReadOnlyField label="NIP" value={readOnly.employeeNo ?? "Belum ada — diisi Admin"} />
-          <ReadOnlyField label="Level / grade" value={readOnly.level ?? "—"} />
+        <FormSection
+          layout="aside"
+          title="Akun & Pekerjaan"
+          description="Bagian ini hanya bisa diisi & diubah Admin. Hubungi Admin bila ada yang salah."
+        >
+          <ReadOnlyList
+            items={[
+              { label: "Email login", value: readOnly.email },
+              { label: "Role", value: readOnly.role },
+              { label: "Divisi", value: readOnly.division },
+              { label: "Tanggal masuk", value: readOnly.startDate },
+              { label: "Nama lengkap", value: readOnly.fullName },
+              { label: "Jabatan", value: readOnly.position },
+              { label: "NIP", value: readOnly.employeeNo ?? "Belum ada — diisi Admin", muted: !readOnly.employeeNo },
+              { label: "Level / grade", value: readOnly.level ?? "—", muted: !readOnly.level },
+            ]}
+          />
         </FormSection>
-        <EmployeePersonalSections />
-        <div className="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-end">
+        <EmployeePersonalSections layout="aside" />
+        <div className="flex flex-col-reverse items-stretch gap-3 pt-1 sm:flex-row sm:items-center sm:justify-end">
           {saved && (
             <p role="status" className="flex items-center gap-1.5 text-sm font-medium text-success">
               <CheckCircle2 className="size-4" aria-hidden /> Data tersimpan

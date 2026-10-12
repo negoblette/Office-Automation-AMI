@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentBalances, listHolidays, listLeaveRequests } from "@/lib/services/leave-queries";
 import { LeaveRequestDialog } from "./leave-form";
 import { LeaveTable } from "./leave-table";
-import { CutiTabs, LeaveBalanceCard } from "./leave-ui";
+import { CutiTabs, LeaveBalanceSpotlight } from "./leave-ui";
 
 export const metadata: Metadata = { title: "Cuti" };
 
@@ -41,7 +41,7 @@ export default async function CutiPage({ searchParams }: { searchParams: Promise
         }
       />
       <CutiTabs active="pengajuan" />
-      {balance ? <LeaveBalanceCard balance={balance} /> : <EmptyState title="Saldo cuti tidak tersedia" description="Akun Anda belum terhubung ke data karyawan." />}
+      {balance ? <LeaveBalanceSpotlight balance={balance} /> :<EmptyState title="Saldo cuti tidak tersedia" description="Akun Anda belum terhubung ke data karyawan." />}
       <form method="get" className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
           Filter bulan

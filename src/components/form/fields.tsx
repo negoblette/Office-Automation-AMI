@@ -111,6 +111,30 @@ export function SelectInputField({
 }
 
 /**
+ * Tata letak FormSection.
+ * - `stack`: judul di atas field (form Admin, form pengajuan).
+ * - `aside`: judul di kolom kiri 230px, field di kanan (Profil Saya); di bawah 1024px bertumpuk lagi.
+ */
+const SECTION_LAYOUTS = {
+  stack: {
+    root: "flex flex-col gap-5 [section+&]:pt-[26px] [section+&]:shadow-[inset_0_1px_0_var(--line)]",
+    head: "space-y-0.5",
+    title: "text-[21px]",
+    description: "text-sm",
+    body: "grid gap-5 sm:grid-cols-2",
+  },
+  aside: {
+    root: "grid gap-3.5 py-7 first:pt-1.5 lg:grid-cols-[230px_minmax(0,1fr)] lg:gap-x-10 [section+&]:shadow-[inset_0_1px_0_var(--line)]",
+    head: "space-y-1",
+    title: "text-[19px]",
+    description: "text-[13.5px]",
+    body: "grid gap-x-5 gap-y-[18px] sm:grid-cols-2",
+  },
+};
+
+export type FormSectionLayout = keyof typeof SECTION_LAYOUTS;
+
+/**
  * Pengelompok field form dengan judul, mis. "Data Diri". Versi tenang: tanpa kartu, langsung di
  * lembar; bagian berikutnya dipisah garis tipis.
  */
@@ -119,31 +143,44 @@ export function FormSection({
   description,
   children,
   className,
+  layout = "stack",
 }: {
   title: string;
   description?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
+  layout?: FormSectionLayout;
 }) {
+  const classes = SECTION_LAYOUTS[layout];
   return (
-    <section className={cn("flex flex-col gap-5 [section+&]:pt-[26px] [section+&]:shadow-[inset_0_1px_0_var(--line)]", className)}>
-      <div className="space-y-0.5">
-        <h2 className="text-[21px] leading-tight font-extrabold tracking-[-0.025em] text-ink">{title}</h2>
-        {description && <p className="text-sm text-ink-3">{description}</p>}
+    <section className={cn(classes.root, className)}>
+      <div className={classes.head}>
+        {/* Ukuran huruf di depan: `cn` membuang `leading-*` yang ditulis sebelum kelas ukuran huruf. */}
+        <h2 className={cn(classes.title, "leading-tight font-extrabold tracking-[-0.025em] text-ink")}>{title}</h2>
+        {description && <p className={cn("text-ink-3", classes.description)}>{description}</p>}
       </div>
-      <div className="grid gap-5 sm:grid-cols-2">{children}</div>
+      <div className={classes.body}>{children}</div>
     </section>
   );
 }
 
-/** Nilai read-only di dalam FormSection (mis. divisi di Profil Saya). */
-export function ReadOnlyField({ label, value, hint }: { label: string; value: React.ReactNode; hint?: string }) {
+/**
+ * Daftar nilai read-only (diisi Admin) di dalam FormSection, mis. "Akun & Pekerjaan" di Profil Saya.
+ * Dua kolom dengan garis tipis antarbaris; `muted` = nilai pengganti ("Belum ada", "—").
+ */
+export function ReadOnlyList({ items }: { items: { label: string; value: React.ReactNode; muted?: boolean }[] }) {
   return (
-    <div className="flex flex-col gap-2">
-      <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">{label}</span>
-      <p className="flex h-10 items-center rounded-lg bg-muted px-3 text-sm text-foreground">{value}</p>
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-    </div>
+    <dl className="grid gap-x-8 sm:col-span-2 sm:grid-cols-2">
+      {items.map((item) => (
+        <div
+          key={item.label}
+          className="flex min-w-0 flex-col gap-0.5 pt-[11px] pb-3 shadow-[inset_0_-1px_0_var(--line)] last:shadow-none sm:[&:nth-last-child(-n+2)]:shadow-none"
+        >
+          <dt className="text-[12.5px] font-semibold text-ink-3">{item.label}</dt>
+          <dd className={cn("text-[15px] font-semibold wrap-anywhere text-ink", item.muted && "font-medium text-mute")}>{item.value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

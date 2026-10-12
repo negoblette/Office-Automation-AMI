@@ -8,6 +8,7 @@ import { DateInputField, SelectInputField, TextareaField, TextInputField } from 
 import { FormDialog } from "@/components/form/form-dialog";
 import { StatusBadge, type StatusVariant } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { APPEAL_REASON_LABEL, DAY_STATUS_LABEL, type DayStatus, formatDuration } from "@/lib/attendance";
 import { formatDate } from "@/lib/format";
 import type { AttendanceDay, TodayAttendance } from "@/lib/services/attendance-queries";
@@ -215,71 +216,94 @@ function AppealDialog({ day }: { day: AttendanceDay }) {
   );
 }
 
+/** Tanda untuk sel yang belum ada isinya (jam / durasi). */
+
+function EmptyValue() {
+  return <span className="text-mute">-</span>
+}
+
+/** Gaya jam masuk / pulang: huruf mono supaya angka sejajar. */
+const timeClass = "font-mono text-[13.5px] font-semibold text-ink tabular-nums";
+
 /**
  * Tabel riwayat harian. `correctFor` = employeeId bila Admin boleh mengoreksi; `appealable` = riwayat
  * milik sendiri (tombol Appeal untuk hari tidak hadir ≤ 7 hari).
  */
+
 export function AttendanceDaysTable({ days, correctFor, appealable = false }: { days: AttendanceDay[]; correctFor?: string; appealable?: boolean }) {
-  if (days.length === 0) return <p className="rounded-2xl bg-card p-5 text-sm text-muted-foreground shadow-card">Belum ada data di bulan ini.</p>;
+  if (days.length === 0) {
+    return <p className="py-12 text-center text-sm text-ink-3">Belum ada data di bulan ini.</p>;
+  }
+
   return (
-    <div className="overflow-x-auto rounded-2xl bg-card shadow-card">
-      <table className="w-full min-w-[640px] text-sm">
-        <thead>
-          <tr className="border-b border-border text-left text-xs tracking-wider text-muted-foreground uppercase">
-            <th className="px-4 py-3 font-semibold">Tanggal</th>
-            <th className="px-4 py-3 font-semibold">Masuk</th>
-            <th className="px-4 py-3 font-semibold">Pulang</th>
-            <th className="px-4 py-3 font-semibold">Durasi</th>
-            <th className="px-4 py-3 font-semibold">Status</th>
-            {correctFor && <th className="px-4 py-3 font-semibold">Koreksi</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {days.map((day) => {
-            const muted = day.status === "WEEKEND" || day.status === "HOLIDAY";
-            return (
-              <tr key={day.date} className={cn("border-b border-border last:border-0", muted && "bg-muted/40 text-muted-foreground")}>
-                <td className="px-4 py-2.5 whitespace-nowrap">{formatDate(`${day.date}T00:00:00Z`, "weekday")}</td>
-                <td className="px-4 py-2.5 tabular-nums">
-                  {day.clockIn ?? "—"}
-                  {day.lateMinutes > 0 && <span className="ml-1 text-xs text-warning">+{day.lateMinutes}m</span>}
-                </td>
-                <td className="px-4 py-2.5 tabular-nums">
-                  {day.clockOut ?? "—"}
-                  {day.clockOutDate && <span className="ml-1 text-xs text-muted-foreground">({formatDate(`${day.clockOutDate}T00:00:00Z`, "short")})</span>}
-                  {day.earlyLeaveMinutes > 0 && <span className="ml-1 text-xs text-warning">−{day.earlyLeaveMinutes}m</span>}
-                </td>
-                <td className="px-4 py-2.5">{day.workedMinutes !== null ? formatDuration(day.workedMinutes) : "—"}</td>
-                <td className="px-4 py-2.5">
-                  <div className="flex flex-col items-start gap-1">
-                    <DayStatusBadge status={day.status} />
+    <Table className="min-w-[720px] table-fixed">
+      <TableHeader> 
+        <TableRow>
+          <TableHead className="w-[34%]">Tanggal</TableHead>
+          <TableHead className="w-[11%]">Masuk</TableHead>
+          <TableHead className="w-[11%]">Pulang</TableHead>
+          <TableHead className="w-[12%]">Durasi</TableHead>
+          <TableHead>Status</TableHead>
+          {correctFor && <TableHead className="w-24">Koreksi</TableHead>}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {days.map((day) => {
+          // Akhir pekan & hari libur ditampilkan pudar.
+          const muted = day.status === "WEEKEND" || day.status === "HOLIDAY";
+          return (
+            <TableRow key={day.date} className={cn(muted && "text-mute")}>
+              <TableCell className="h-14">
+                <span className={cn(!muted && "font-bold text-ink")}>{formatDate(`${day.date}T00:00:00Z`, "weekday")}</span>
+              </TableCell>
+
+              <TableCell className="h-14">
+                {day.clockIn ? <span className={timeClass}>{day.clockIn}</span> : <EmptyValue />}
+                {day.lateMinutes > 0 && <span className="ml-1.5 text-xs font-semibold text-amber-ink">+{day.lateMinutes}m</span>}
+              </TableCell>
+
+              <TableCell className="h-14">
+                {day.clockOut ? <span className={timeClass}>{day.clockOut}</span> : <EmptyValue />}
+                {day.clockOutDate && <span className="ml-1.5 text-xs text-ink-3">({formatDate(`${day.clockOutDate}T00:00:00Z`, "short")})</span>}
+                {day.earlyLeaveMinutes > 0 && <span className="ml-1.5 text-xs font-semibold text-amber-ink">−{day.earlyLeaveMinutes}m</span>}
+              </TableCell>
+
+              <TableCell className="h-14 text-[13.5px]">
+                {day.workedMinutes !== null ? formatDuration(day.workedMinutes) : <EmptyValue />}
+              </TableCell>
+
+              <TableCell className="h-14 whitespace-normal">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 flex-col items-start gap-1">
+                    {muted ? <span className="text-[13px]">{DAY_STATUS_LABEL[day.status]}</span> : <DayStatusBadge status={day.status} />}
                     {day.correctionNote && (
-                      <span className="text-xs text-muted-foreground" title={day.correctionNote}>
+                      <span className="text-xs text-ink-3" title={day.correctionNote}>
                         Dikoreksi {day.correctedBy}: {day.correctionNote}
                       </span>
                     )}
                     {day.appeal && (
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-xs text-ink-3">
                         Appeal {day.appeal.number} · {APPEAL_REASON_LABEL[day.appeal.reason]}: {day.appeal.note}
                       </span>
                     )}
-                    {day.leaveDeducted && <span className="text-xs font-medium text-danger">Saldo cuti dipotong 1 hari</span>}
+                    {day.leaveDeducted && <span className="text-xs font-semibold text-red-ink">Saldo cuti dipotong 1 hari</span>}
                     {day.canAppeal && !appealable && (
-                      <span className="text-xs text-muted-foreground">Batas appeal {formatDate(`${day.appealDeadline}T00:00:00Z`, "short")}</span>
+                      <span className="text-xs text-ink-3">Batas appeal {formatDate(`${day.appealDeadline}T00:00:00Z`, "short")}</span>
                     )}
-                    {appealable && day.canAppeal && <AppealDialog day={day} />}
                   </div>
-                </td>
-                {correctFor && (
-                  <td className="px-4 py-2.5">
-                    {!muted || day.clockIn ? <CorrectionDialog employeeId={correctFor} day={day} /> : null}
-                  </td>
-                )}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+                  {appealable && day.canAppeal && <AppealDialog day={day} />}
+                </div>
+              </TableCell>
+
+              {correctFor && (
+                <TableCell className="h-14">
+                  {!muted || day.clockIn ? <CorrectionDialog employeeId={correctFor} day={day} /> : null}
+                </TableCell>
+              )}
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
   );
 }

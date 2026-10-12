@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
 import { formatDate } from "@/lib/format";
 import { getAllCurrentBalances, getCurrentBalances, type LeaveAdjustmentView, listLeaveAdjustments } from "@/lib/services/leave-queries";
 import { AdjustLeaveDialog } from "./adjust-dialog";
-import { CutiTabs, LeaveBalanceCard } from "../leave-ui";
+import { CutiTabs, LeaveBalanceSpotlight } from "../leave-ui";
 
 export const metadata: Metadata = { title: "Saldo Cuti" };
 
@@ -38,7 +38,7 @@ async function OwnBalance({ employeeId }: { employeeId: string }) {
   const [[balance], adjustments] = await Promise.all([getCurrentBalances(prisma, [employeeId]), listLeaveAdjustments(prisma, employeeId)]);
   return (
     <>
-      <LeaveBalanceCard balance={balance} />
+      <LeaveBalanceSpotlight balance={balance} />
       <AdjustmentHistory rows={adjustments} showEmployee={false} />
     </>
   );

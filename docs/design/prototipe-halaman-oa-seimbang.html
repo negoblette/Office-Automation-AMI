@@ -1,0 +1,1162 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<!--
+  PROTOTIPE "VERSI SEIMBANG" untuk halaman kerja (selain Dashboard). Acuan TAMPILAN saja.
+  Posisinya di antara Dashboard (ramai, ekspresif) dan versi tenang (rapi tapi kosong):
+  - Setiap halaman punya SATU sorotan (spot): bingkai biru muda + panel putih, keluarga dari panel
+    absensi biru di Dashboard. Isinya angka besar + satu visual data yang memang bermakna.
+  - Sisanya tetap tenang: tabel tanpa kartu, label status tanpa titik, tombol pil, satu aksen biru.
+  Data di halaman ini DATA CONTOH (nama & angka dari seed project / prototipe sebelumnya), bukan data asli.
+  JavaScript hanya untuk berpindah tampilan, membuka submenu, dan tombol "Data contoh / Keadaan kosong".
+  Ikon: bentuk resmi lucide (paket lucide-react milik project), bukan gambar sendiri.
+-->
+<title>Prototipe Halaman OA Seimbang</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<style>
+[hidden]{display:none!important}
+
+/* ---------- token: sama dengan project (globals.css) ---------- */
+:root{
+  --ground:#EEF2F9; --ground-0:rgba(238,242,249,0); --dots:#C6D1E4;
+  --sheet:#FDFEFF; --panel:#F4F7FC; --line:#E1E7F1; --rule:#C3CEE2; --edge:#8793A8;
+  --skeleton:#DCE3F0; --skeleton-2:#E3E9F4;
+  --ink:#0F172A; --ink-2:#334155; --ink-3:#475569; --mute:#5B6B84; --veil:rgba(255,255,255,.78);
+  --blue:#2563EB; --blue-deep:#173FAE; --blue-soft:#EAF0FE; --blue-tint:#DCE7FF; --blue-faint:#EEF3FF;
+  --shell:#E4ECFD; --blue-ring:rgba(37,99,235,.14);
+  --hero-a:#2459E0; --hero-b:#1E4DCB; --hero-c:#173FAE; --on-hero:#FFFFFF; --on-hero-2:#DCE7FF; --on-hero-3:#A9C1FF;
+  --amber:#E08A00; --amber-ink:#8A5300; --amber-soft:#FFF1D6; --amber-deep:#7A4700;
+  --green:#15803D; --green-soft:#DDF5EE; --green-deep:#0B5E4A;
+  --red:#D2382C; --red-ink:#A62A1F; --red-soft:#FDECE9; --red-deep:#7D1D14; --red-ring:rgba(210,56,44,.16);
+  --tone-soft:#E6EAF2; --scrim:rgba(15,23,42,.42);
+  --glow:23,50,140; --shade:15,23,42;
+  --ui:'Plus Jakarta Sans','Segoe UI',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,'Cascadia Mono',Consolas,monospace;
+  --ease:cubic-bezier(.32,.72,0,1); --spring:cubic-bezier(.2,1.5,.4,1);
+}
+
+/* ---------- dasar ---------- */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background-color:var(--ground);background-image:radial-gradient(var(--dots) 1px,transparent 1.3px);background-size:22px 22px;color:var(--ink);font-family:var(--ui);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button,input,select,textarea{font:inherit;color:inherit}
+button{background:none;border:0;padding:0;margin:0;cursor:pointer}
+button:disabled{cursor:default}
+p,h1,h2,h3,dl,dd,ol,ul{margin:0}
+ol,ul{padding:0;list-style:none}
+table{border-collapse:separate;border-spacing:0}
+:where(a,button,[tabindex]):focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.ic.s14{width:14px;height:14px}
+.ic.s16{width:16px;height:16px}
+.ic.s20{width:20px;height:20px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.skip{position:absolute;left:16px;top:-64px;z-index:60;padding:10px 16px;border-radius:999px;background:var(--ink);color:#fff;font-weight:700;transition:top .3s var(--ease)}
+.skip:focus{top:12px}
+
+/* ---------- kerangka (sama dengan aplikasi) ---------- */
+.app{display:flex;align-items:stretch;min-height:100dvh}
+.side{position:sticky;top:0;align-self:flex-start;flex:none;width:252px;height:100dvh;overflow-y:auto;scrollbar-width:none;background:linear-gradient(180deg,var(--ground) 0%,var(--ground) 66%,var(--ground-0) 100%)}
+.side::-webkit-scrollbar{display:none}
+.side-in{display:flex;flex-direction:column;gap:2px;padding:22px 4px 40px 16px}
+.brand{display:flex;align-items:center;gap:12px;padding:2px 8px 12px;border-radius:14px}
+.logo{width:40px;height:40px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center;font-weight:800;flex:none;box-shadow:0 0 0 4px var(--blue-ring)}
+.brand b{display:block;font-size:15.5px;line-height:1.25;font-weight:800;letter-spacing:-.02em}
+.brand small{display:block;font-size:12px;line-height:1.25;color:var(--ink-3)}
+.grp{padding:14px 12px 6px;font-size:12px;font-weight:700;color:var(--mute)}
+.nav{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border-radius:14px;text-align:left;font-weight:500;color:var(--ink-2);transition:background-color .35s var(--ease),color .35s var(--ease),box-shadow .35s var(--ease)}
+.nav:hover{background:var(--veil);color:var(--ink)}
+.nav .grow{flex:1;min-width:0}
+.nav.on,.subi.on{background:#fff;color:var(--ink);font-weight:700;box-shadow:0 0 0 1px rgba(var(--shade),.05),0 14px 26px -18px rgba(var(--glow),.6)}
+.nav.on>.ic:first-child,.nav.cur>.ic:first-child{color:var(--blue)}
+.nav.cur{color:var(--ink);font-weight:700}
+.chev{width:16px;height:16px;color:var(--mute);transition:transform .45s var(--ease)}
+.fold.open>.nav .chev{transform:rotate(180deg)}
+.sub{display:grid;grid-template-rows:0fr;transition:grid-template-rows .45s var(--ease)}
+.fold.open .sub{grid-template-rows:1fr}
+.sub-in{min-height:0;overflow:hidden;visibility:hidden;transition:visibility 0s .45s;display:flex;flex-direction:column;gap:2px;margin-left:20px;box-shadow:inset 1px 0 0 var(--rule)}
+.fold.open .sub-in{visibility:visible;transition-delay:0s}
+.subi{display:flex;align-items:center;min-height:44px;padding:0 12px 0 20px;border-radius:0 14px 14px 0;font-size:13.5px;color:var(--ink-2);transition:background-color .35s var(--ease),color .35s var(--ease)}
+.subi:hover{background:var(--veil);color:var(--ink)}
+.subi:focus-visible{outline-offset:-2px}
+.badge{display:grid;place-items:center;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:var(--blue);color:#fff;font-size:12px;font-weight:700}
+.soon{display:flex;align-items:center;gap:12px;min-height:44px;margin-top:14px;padding:0 12px;color:var(--mute);font-weight:500}
+.soon em{font-style:normal;font-size:12px;font-weight:600;padding:2px 9px;border-radius:999px;background:#fff;box-shadow:inset 0 0 0 1px var(--rule)}
+.scrim{display:none}
+
+.stage{flex:1;min-width:0;padding:12px;display:flex}
+.sheet{position:relative;flex:1;min-width:0;overflow:clip;border-radius:28px;background:var(--sheet);box-shadow:0 0 0 1px rgba(var(--shade),.05),0 40px 80px -50px rgba(var(--glow),.5);display:flex;flex-direction:column}
+.top{position:sticky;top:0;z-index:20;background:rgba(253,254,255,.86);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.top-in{width:100%;max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:10px 14px;min-height:64px;padding:10px clamp(18px,3vw,36px)}
+.top .menu-btn{display:none}
+.salam{font-size:15px;font-weight:600;color:var(--ink-2)}
+.top-right{display:flex;align-items:center;gap:10px 14px;margin-left:auto}
+.vr{width:1px;height:28px;background:var(--line)}
+.me{display:flex;align-items:center;gap:10px}
+.me-av{width:40px;height:40px;border-radius:14px;background:var(--blue-tint);color:var(--blue-deep);display:grid;place-items:center;font-weight:800}
+.two{display:flex;flex-direction:column;min-width:0;line-height:1.35}
+.two b{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.two small{font-size:12.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.me .two{line-height:1.25}
+.me .two small{font-size:12px}
+
+main{width:100%;max-width:1200px;margin:0 auto;padding:14px clamp(18px,3vw,36px) 64px}
+main:focus{outline:none}
+.view{display:flex;flex-direction:column;gap:26px;min-width:0}
+.block{display:flex;flex-direction:column;gap:14px;min-width:0}
+
+/* ---------- judul halaman (sama dengan Dashboard, tanpa jam analog) ---------- */
+.head-row{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px 24px}
+.head{display:flex;flex-direction:column;gap:6px;max-width:700px;min-width:0}
+.crumb{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px;color:var(--ink-3)}
+.crumb strong{font-weight:700;color:var(--blue)}
+h1{margin-top:4px;font-size:clamp(28px,5.2vw,36px);line-height:1.12;font-weight:800;letter-spacing:-.035em;text-wrap:balance}
+.lede{font-size:15px;color:var(--ink-3);max-width:62ch}
+.head-acts{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+h2{font-size:21px;line-height:1.25;font-weight:800;letter-spacing:-.025em}
+h3{font-size:17px;line-height:1.3;font-weight:800;letter-spacing:-.02em}
+.q-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 24px}
+
+/* ---------- tombol: semua pil, satu tombol biru per kelompok ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 16px;border-radius:999px;font-weight:700;white-space:nowrap;transition:background-color .3s var(--ease),box-shadow .3s var(--ease),color .3s var(--ease),transform .3s var(--ease)}
+.btn:active:not(:disabled){transform:scale(.97)}
+.btn-blue{background:var(--blue);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.2),0 1px 2px rgba(var(--shade),.2)}
+.btn-blue:hover{background:var(--blue-deep)}
+.btn-blue>.ic:first-child{margin-left:-2px}
+.btn-line{background:#fff;color:var(--ink-2);box-shadow:inset 0 0 0 1px var(--edge)}
+.btn-line:hover{color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.btn-line:disabled{background:transparent;color:var(--mute);box-shadow:inset 0 0 0 1px var(--line)}
+.btn-sm{min-height:36px;padding:0 14px;font-size:13.5px;gap:6px}
+.btn-sm .ic{width:16px;height:16px}
+.btn-block{width:100%}
+.icon-btn{display:grid;place-items:center;flex:none;width:44px;height:44px;border-radius:14px;color:var(--ink-2);transition:background-color .3s var(--ease),transform .3s var(--ease)}
+.icon-btn:hover{background:rgba(var(--shade),.06);color:var(--ink)}
+.icon-btn:active{transform:scale(.94)}
+.icon-btn.sm{width:36px;height:36px;border-radius:12px}
+.linkish{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 4px;border-radius:8px;font-weight:700;color:var(--blue-deep)}
+.linkish:hover{color:var(--blue);text-decoration:underline;text-underline-offset:4px}
+
+/* ---------- tab segmen ---------- */
+.seg{display:inline-flex;align-self:flex-start;max-width:100%;overflow-x:auto;scrollbar-width:none;padding:4px;gap:2px;border-radius:16px;background:var(--panel);box-shadow:inset 0 0 0 1px rgba(var(--shade),.05)}
+.seg::-webkit-scrollbar{display:none}
+.seg>*{display:inline-flex;align-items:center;gap:8px;min-height:38px;padding:0 14px;border-radius:12px;font-weight:600;color:var(--ink-3);white-space:nowrap;transition:background-color .3s var(--ease),color .3s var(--ease),box-shadow .3s var(--ease)}
+.seg>*:hover{color:var(--ink)}
+.seg>.on{background:#fff;color:var(--ink);font-weight:700;box-shadow:0 0 0 1px rgba(var(--shade),.05),0 6px 12px -8px rgba(var(--shade),.35)}
+.seg>*:focus-visible{outline-offset:-2px}
+.seg .cnt{display:grid;place-items:center;min-width:22px;height:20px;padding:0 6px;border-radius:10px;background:rgba(var(--shade),.08);font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
+.seg .on .cnt{background:var(--ink);color:#fff}
+.seg.sm>*{min-height:34px;padding:0 16px}
+.tray .seg{background:rgba(var(--shade),.05)}
+
+/* ---------- SOROTAN: satu per halaman, keluarga dari panel biru Dashboard ---------- */
+.spot-shell{padding:6px;border-radius:30px;background:var(--shell);box-shadow:inset 0 0 0 1px var(--blue-ring)}
+.spot{position:relative;isolation:isolate;overflow:hidden;border-radius:24px;background:#fff;padding:22px 28px 24px;box-shadow:0 18px 36px -30px rgba(var(--glow),.55)}
+/* titik halus yang memudar ke kiri, sama dengan panel absensi biru */
+.spot::after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background-image:radial-gradient(rgba(37,99,235,.13) 1px,transparent 1.4px);background-size:18px 18px;-webkit-mask-image:linear-gradient(100deg,transparent 55%,#000 100%);mask-image:linear-gradient(100deg,transparent 55%,#000 100%)}
+.k{font-size:13.5px;font-weight:600;color:var(--ink-3)}
+.big{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 8px;margin-top:2px;font-size:46px;line-height:1.08;font-weight:800;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.big .cur{font-size:22px;font-weight:700;letter-spacing:-.01em;color:var(--ink-3)}
+.big small{font-size:16px;font-weight:600;letter-spacing:0;color:var(--ink-3)}
+.note{font-size:13.5px;color:var(--ink-3)}
+.col+.col{padding-left:32px;box-shadow:inset 1px 0 0 var(--line)}
+.sw{display:inline-block;width:10px;height:10px;margin-right:7px;border-radius:3px;vertical-align:-1px;background:var(--c)}
+.mini{display:flex;flex-direction:column;gap:2px;min-width:0}
+.mini b{font-size:28px;line-height:1.15;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.mini b small{font-size:14px;font-weight:600;letter-spacing:0;color:var(--ink-3)}
+.mini .v{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--ink-2)}
+/* batang perbandingan: panjang segmen = porsi, tanpa lintasan */
+.split{display:flex;gap:3px;height:10px}
+.split i{display:block;flex:var(--w) 1 0;min-width:6px;border-radius:5px;background:var(--c);transform-origin:left center}
+.c-warn{--c:var(--amber)}
+.c-good{--c:var(--green)}
+.c-bad{--c:var(--red)}
+.c-blue{--c:var(--blue)}
+.c-rule{--c:var(--rule)}
+
+.spot-reimb{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.25fr);gap:22px 32px;align-items:center}
+.spot-reimb .pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 28px;margin-bottom:16px}
+
+.spot-cuti{display:flex;flex-direction:column;gap:16px}
+.saldo-top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px 28px}
+.saldo-top h2{font-size:19px}
+.saldo-top p.note{margin-top:2px}
+.days{display:flex;gap:4px}
+.days i{flex:1 1 0;min-width:3px;height:14px;border-radius:4px;background:var(--c,var(--rule))}
+.facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px 0}
+.facts>div{display:flex;flex-direction:column;gap:1px;min-width:0;padding:0 18px}
+.facts>div:first-child{padding-left:0}
+.facts>div+div{box-shadow:-1px 0 0 var(--line)}
+.facts dt{font-size:13px;color:var(--ink-3)}
+.facts dd{font-size:15px;font-weight:700}
+
+.spot-karyawan{display:grid;grid-template-columns:minmax(0,.75fr) minmax(0,1.1fr) minmax(0,1fr);gap:22px 32px;align-items:start}
+.dist{display:flex;flex-direction:column;gap:11px;margin-top:10px}
+.dist li{display:grid;grid-template-columns:76px minmax(0,1fr) 64px;align-items:center;gap:12px;font-weight:600}
+.dist li>span:last-child{font-size:13px;font-weight:500;color:var(--ink-3);text-align:right;white-space:nowrap}
+.dist i{display:block;height:8px;border-radius:4px;background:var(--blue);width:calc(var(--p) * 100%);min-width:6px;transform-origin:left center}
+.side-stat{display:flex;flex-direction:column;gap:1px;margin-top:16px;padding-top:14px;box-shadow:inset 0 1px 0 var(--line)}
+.side-stat span:first-child{display:flex;align-items:baseline;justify-content:space-between;gap:12px;font-size:13.5px;font-weight:600;color:var(--ink-3)}
+.side-stat b{font-size:15px;font-weight:700;color:var(--ink)}
+/* kaki sorotan: alat yang terkait ringkasan di atasnya (mis. cetak rekap) */
+.spot-foot{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 12px;padding:14px 22px 10px}
+.spot-foot .ttl{display:flex;align-items:center;gap:8px;min-height:46px;margin-right:auto;font-weight:700;color:var(--blue-deep)}
+
+.spot-profile{display:grid;grid-template-columns:minmax(0,.7fr) minmax(0,1.3fr);gap:22px 32px;align-items:center}
+.ident{display:flex;align-items:center;gap:18px;min-width:0}
+.av-xl{display:grid;place-items:center;flex:none;width:68px;height:68px;border-radius:22px;background:var(--blue-tint);color:var(--blue-deep);font-size:24px;font-weight:800}
+.ident h2{font-size:24px;letter-spacing:-.03em}
+.ident p{color:var(--ink-3)}
+.ident .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.meter-seg{display:flex;gap:4px;margin:10px 0}
+.meter-seg i{flex:1 1 0;height:10px;border-radius:4px;background:var(--rule)}
+.meter-seg i.on{background:var(--blue)}
+.miss{font-size:13.5px;color:var(--ink-3)}
+
+/* ---------- panel absensi biru (komponen yang sama dengan Dashboard) ---------- */
+.hero-shell{position:relative;padding:6px;border-radius:30px;background:var(--shell);box-shadow:inset 0 0 0 1px var(--blue-ring)}
+.hero{position:relative;isolation:isolate;display:flex;flex-wrap:wrap;align-items:center;gap:14px 28px;overflow:hidden;padding:22px 28px;border-radius:24px;color:var(--on-hero);background:radial-gradient(130% 240% at 0% 0%,var(--hero-a) 0%,var(--hero-b) 46%,var(--hero-c) 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 26px 46px -30px rgba(var(--glow),.9)}
+.hero::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(420px circle at 84% -20%,rgba(255,255,255,.2),transparent 65%)}
+.hero::after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background-image:radial-gradient(rgba(255,255,255,.17) 1px,transparent 1.3px);background-size:22px 22px;-webkit-mask-image:linear-gradient(110deg,transparent 30%,#000 100%);mask-image:linear-gradient(110deg,transparent 30%,#000 100%)}
+.hero :where(a,button):focus-visible{outline-color:#fff}
+.h-left{display:flex;flex-direction:column;gap:2px;min-width:0}
+.h-date{display:flex;flex-wrap:wrap;gap:0 8px;font-size:14px;font-weight:500;color:var(--on-hero-2)}
+.h-date b{font-weight:800;color:var(--on-hero)}
+.h-clock{display:flex;align-items:baseline;gap:10px}
+.h-time{font-family:var(--mono);font-size:clamp(38px,11vw,54px);line-height:1.08;font-weight:500;letter-spacing:-.045em;font-variant-numeric:tabular-nums}
+.h-sec{color:var(--on-hero-3)}
+.h-zone{font-size:14px;font-weight:700;color:var(--on-hero-2)}
+.punch{--r:-4deg;display:block;padding:5px 12px;border:2px solid var(--on-hero);border-radius:9px;font-family:var(--mono);font-size:14px;font-weight:600;letter-spacing:.08em;white-space:nowrap;transform:rotate(var(--r))}
+.h-right{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:12px 20px;margin-left:auto}
+.h-status{display:flex;flex-direction:column;align-items:flex-end;text-align:right;line-height:1.35}
+.h-status b{font-size:15px;font-weight:700}
+.h-status span{font-size:13.5px;color:var(--on-hero-2)}
+.cta{display:inline-flex;align-items:center;gap:14px;min-height:52px;padding:6px 6px 6px 22px;border-radius:999px;font-size:15px;font-weight:800;color:var(--on-hero);background:rgba(255,255,255,.14);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.6);transition:transform .5s var(--ease)}
+.cta:active{transform:scale(.97)}
+.knob{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;color:var(--blue-deep);background:#fff;transition:transform .5s var(--ease)}
+.cta:hover .knob{transform:translate(2px,-1px) scale(1.06)}
+
+/* ---------- strip bulan (Absensi): satu kotak per hari, dari baris tabel yang sama ---------- */
+.month{display:flex;flex-direction:column;gap:18px;padding:20px 24px 18px;border-radius:22px;background:var(--panel);box-shadow:inset 0 0 0 1px rgba(var(--shade),.05)}
+.month-top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 28px}
+.month-stats{display:flex;flex-wrap:wrap;gap:8px 40px}
+.month-stats div{display:flex;flex-direction:column;gap:2px}
+.month-stats dt{font-size:13px;font-weight:600;color:var(--ink-3)}
+.month-stats dd{font-size:14px;font-weight:600;color:var(--ink-3)}
+.month-stats dd b{margin-right:5px;font-size:30px;line-height:1.1;font-weight:800;letter-spacing:-.03em;color:var(--ink);font-variant-numeric:tabular-nums}
+.strip{display:grid;grid-template-columns:repeat(31,minmax(0,1fr));gap:4px}
+.strip li{display:grid;place-items:end center;height:46px;padding-bottom:6px;border-radius:9px;background:#fff;box-shadow:inset 0 0 0 1px var(--line);font-family:var(--mono);font-size:11.5px;font-weight:600;color:var(--mute)}
+.strip .good{background:var(--green-soft);box-shadow:none;color:var(--green-deep)}
+.strip .warn{background:var(--amber-soft);box-shadow:none;color:var(--amber-deep)}
+.strip .bad{background:var(--red-soft);box-shadow:none;color:var(--red-deep)}
+.strip .off{background:transparent;box-shadow:inset 0 0 0 1px rgba(var(--shade),.06)}
+.strip .now{box-shadow:inset 0 0 0 2px var(--blue);color:var(--blue-deep)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--ink-3)}
+.legend .sw{width:12px;height:12px;border-radius:4px}
+.sw.good{--c:var(--green-soft);box-shadow:inset 0 0 0 1.5px var(--green)}
+.sw.warn{--c:var(--amber-soft);box-shadow:inset 0 0 0 1.5px var(--amber)}
+.sw.bad{--c:var(--red-soft);box-shadow:inset 0 0 0 1.5px var(--red)}
+.sw.off{--c:transparent;box-shadow:inset 0 0 0 1.5px var(--rule)}
+.monthnav{display:flex;align-items:center;gap:6px}
+.monthnav b{min-width:128px;text-align:center;font-size:15px;font-weight:700;white-space:nowrap}
+
+/* ---------- filter, isian, tabel ---------- */
+.tools{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 16px}
+.tools-l{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 12px}
+.chips{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.chips>span{margin-right:4px;font-size:13px;font-weight:700;color:var(--ink-3)}
+.chip{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 14px;border-radius:999px;font-size:13.5px;font-weight:700;background:#fff;box-shadow:inset 0 0 0 1px var(--edge);color:var(--ink-2);transition:background-color .3s var(--ease),color .3s var(--ease),box-shadow .3s var(--ease),transform .3s var(--ease)}
+.chip:hover{box-shadow:inset 0 0 0 1px var(--ink);color:var(--ink)}
+.chip:active{transform:scale(.95)}
+.chip[aria-pressed="true"]{background:var(--ink);color:#fff;box-shadow:inset 0 0 0 1px var(--ink)}
+.chip .n{font-weight:600;opacity:.75;font-variant-numeric:tabular-nums}
+.field{display:flex;flex-direction:column;gap:7px;min-width:0}
+.field>label,.field>.lbl{font-size:13px;font-weight:700;color:var(--ink-2)}
+.req{color:var(--red-ink)}
+.help{font-size:12.5px;color:var(--ink-3)}
+.err{font-size:12.5px;font-weight:600;color:var(--red-ink)}
+.input,.select,.textarea{display:block;width:100%;min-height:46px;padding:0 14px;border:0;border-radius:14px;background:#fff;box-shadow:inset 0 0 0 1px var(--edge);color:var(--ink);transition:box-shadow .3s var(--ease),background-color .3s var(--ease)}
+.textarea{padding:11px 14px;min-height:92px;line-height:1.5;resize:vertical}
+.select{-webkit-appearance:none;appearance:none;padding-right:40px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 13px center;background-size:16px}
+.input:hover,.select:hover,.textarea:hover{box-shadow:inset 0 0 0 1px var(--ink)}
+.input:focus-visible,.select:focus-visible,.textarea:focus-visible{outline:2px solid transparent;box-shadow:inset 0 0 0 2px var(--blue),0 0 0 4px var(--blue-ring)}
+.input::placeholder,.textarea::placeholder{color:var(--mute)}
+.input:disabled,.select:disabled{background-color:var(--panel);box-shadow:inset 0 0 0 1px var(--line);color:var(--mute);cursor:not-allowed}
+.tray .input:disabled,.tray .select:disabled{background-color:transparent;box-shadow:inset 0 0 0 1px var(--rule)}
+[aria-invalid="true"]{box-shadow:inset 0 0 0 2px var(--red)!important}
+.control{position:relative}
+.affix{position:absolute;left:14px;top:0;display:flex;align-items:center;height:46px;font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink-3);pointer-events:none}
+.affix+.input{padding-left:44px}
+.input.mono{font-family:var(--mono)}
+.input.mono::placeholder{font-family:var(--ui)}
+.w-month{width:190px}
+.w-pick{width:220px}
+.search{position:relative;width:100%;max-width:320px}
+.search .ic{position:absolute;left:16px;top:14px;color:var(--ink-3);pointer-events:none}
+.search .input{padding-left:44px;background:var(--panel);font-size:14px}
+
+.table-wrap{overflow-x:auto;scrollbar-width:thin}
+.tbl{width:100%;min-width:var(--min,760px);text-align:left}
+.tbl th{height:44px;padding:0 12px;background:var(--panel);font-size:13px;font-weight:700;color:var(--ink-3);white-space:nowrap;text-align:left}
+.tbl th:first-child{border-radius:14px 0 0 14px}
+.tbl th:last-child{border-radius:0 14px 14px 0}
+.tbl td{height:var(--rh,68px);padding:10px 12px;vertical-align:middle;transition:background-color .3s var(--ease)}
+.tbl td:first-child{border-radius:16px 0 0 16px}
+.tbl td:last-child{border-radius:0 16px 16px 0}
+.tbl tbody tr:hover td{background:var(--panel)}
+.tbl .r{text-align:right}
+.tbl .fit{width:1%;white-space:nowrap}
+.tbl tr.off td{color:var(--mute)}
+.th{display:inline-flex;align-items:center;gap:6px}
+.th .ic{width:14px;height:14px;opacity:.55}
+.who{display:flex;align-items:center;gap:12px;min-width:0}
+.av{display:grid;place-items:center;flex:none;width:42px;height:42px;border-radius:14px;background:var(--blue-soft);color:var(--blue-deep);font-size:13px;font-weight:800}
+.num{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.num.strong{font-size:13.5px;font-weight:600;color:var(--ink)}
+.dash{color:var(--mute)}
+.amt{display:flex;flex-direction:column;align-items:flex-end;line-height:1.35}
+.amt b{font-family:var(--mono);font-size:14px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.amt small{font-size:12.5px;color:var(--ink-3);white-space:nowrap}
+.when{font-size:13.5px;color:var(--ink-2);white-space:nowrap}
+.go{display:inline-grid;place-items:center;width:36px;height:36px;border-radius:12px;color:var(--ink-3);transition:background-color .3s var(--ease),color .3s var(--ease)}
+.tbl tbody tr:hover .go{background:#fff;color:var(--blue)}
+.stat-cell{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px}
+.foot{padding:6px 4px 0;font-size:13px;color:var(--ink-3)}
+.rate{display:inline-flex;flex-direction:column;gap:5px;min-width:64px;font-family:var(--mono);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+.rate i{display:block;height:4px;border-radius:2px;width:calc(var(--p) * 100%);min-width:4px;background:currentColor;opacity:.55}
+.rate.full{color:var(--green-deep)}
+.rate.mid{color:var(--amber-ink)}
+.rate.low{color:var(--red-ink)}
+
+/* ---------- label status: warna hanya untuk arti ---------- */
+.tag{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:8px;font-size:12.5px;font-weight:700;white-space:nowrap;background:var(--tone-soft);color:var(--ink-2)}
+.tag.good{background:var(--green-soft);color:var(--green-deep)}
+.tag.warn{background:var(--amber-soft);color:var(--amber-deep)}
+.tag.bad{background:var(--red-soft);color:var(--red-deep)}
+
+/* ---------- keadaan kosong: bentuk baris tabel samar + teks project ---------- */
+.empty{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:216px;padding:24px 16px;text-align:center}
+.ghost{position:absolute;inset:0 0 auto;display:flex;flex-direction:column;pointer-events:none;-webkit-mask-image:linear-gradient(90deg,#000 0%,transparent 32%,transparent 68%,#000 100%);mask-image:linear-gradient(90deg,#000 0%,transparent 32%,transparent 68%,#000 100%)}
+.ghost-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1.6fr) minmax(0,1.2fr) minmax(0,1fr) 110px;gap:16px;align-items:center;height:68px;padding:10px 12px}
+.ghost-row:nth-child(2){opacity:.6}
+.ghost-row:nth-child(3){opacity:.3}
+.ghost-who{display:flex;align-items:center;gap:12px}
+.ghost-av{flex:none;width:42px;height:42px;border-radius:14px;background:var(--skeleton-2)}
+.bar{display:block;height:10px;border-radius:5px;background:var(--skeleton)}
+.empty b{position:relative;font-size:16px;font-weight:700}
+.empty p{position:relative;max-width:46ch;color:var(--ink-3)}
+body.is-empty .when-full,body:not(.is-empty) .when-empty{display:none!important}
+
+/* ---------- form ---------- */
+.form-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;align-items:start}
+.form-main{display:flex;flex-direction:column;gap:18px;min-width:0}
+.tray{display:flex;flex-direction:column;gap:16px;padding:20px 22px 16px;border-radius:22px;background:var(--panel);box-shadow:inset 0 0 0 1px rgba(var(--shade),.05)}
+.tray-head{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:36px}
+.g3{display:grid;grid-template-columns:180px minmax(0,1.2fr) minmax(0,1.2fr);gap:14px 16px;align-items:start}
+.g4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 16px;align-items:start}
+.g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px;align-items:start}
+.askrow{display:flex;flex-wrap:wrap;align-items:center;gap:2px 12px;color:var(--ink-3)}
+.line{display:flex;flex-direction:column;gap:14px;padding-top:14px;box-shadow:inset 0 1px 0 var(--rule)}
+.line-head{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:36px;font-size:13px;font-weight:700;color:var(--ink-3)}
+.tray-foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding-top:14px;box-shadow:inset 0 1px 0 var(--rule)}
+.sum{display:flex;align-items:baseline;gap:12px;color:var(--ink-3);font-weight:600}
+.sum b{font-family:var(--mono);font-size:17px;font-weight:600;color:var(--ink);white-space:nowrap;font-variant-numeric:tabular-nums}
+.rail{position:sticky;top:84px}
+.spot-rail{display:flex;flex-direction:column;gap:16px;padding:22px 22px 22px}
+.totals{display:flex;flex-direction:column;gap:8px}
+.totals div{display:flex;justify-content:space-between;gap:12px;font-size:13.5px;color:var(--ink-3)}
+.totals dd{font-family:var(--mono);font-weight:600;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.grand{padding-top:14px;box-shadow:inset 0 1px 0 var(--line)}
+.grand .big{font-size:36px}
+.rail-acts{display:flex;flex-direction:column;gap:8px}
+
+.settings{display:flex;flex-direction:column}
+.set{display:grid;grid-template-columns:230px minmax(0,1fr);gap:14px 40px;padding:28px 0}
+.set+.set{box-shadow:inset 0 1px 0 var(--line)}
+.set:first-child{padding-top:6px}
+.set-aside h2{font-size:19px}
+.set-aside p{margin-top:4px;font-size:13.5px;color:var(--ink-3)}
+.fgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 20px}
+.fgrid .wide{grid-column:1/-1}
+.record{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 32px}
+.record>div{display:flex;flex-direction:column;gap:2px;min-width:0;padding:11px 0 12px;box-shadow:inset 0 -1px 0 var(--line)}
+.record>div:nth-last-child(-n+2){box-shadow:none}
+.record dt{font-size:12.5px;font-weight:600;color:var(--ink-3)}
+.record dd{font-size:15px;font-weight:600;overflow-wrap:anywhere}
+.record dd.muted{font-weight:500;color:var(--mute)}
+.form-acts{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;padding-top:4px}
+
+/* ---------- gerak: hanya saat tampilan dibuka & tanggapan tekan ---------- */
+@media (prefers-reduced-motion:no-preference){
+  .intro .rise{animation:rise .5s var(--ease) both;animation-delay:calc(var(--i,0) * 45ms)}
+  .intro .grow{animation:grow .9s var(--ease) both;animation-delay:calc(var(--i,0) * 45ms + 220ms)}
+  .intro .pop{animation:pop .4s var(--ease) both;animation-delay:calc(var(--d,0) * 14ms + 260ms)}
+  .intro .punch{animation:thunk .36s var(--spring) .3s both}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes grow{from{transform:scaleX(0)}to{transform:none}}
+@keyframes pop{from{opacity:0;transform:translateY(6px) scale(.92)}to{opacity:1;transform:none}}
+@keyframes thunk{from{opacity:0;transform:rotate(var(--r)) scale(1.9)}to{opacity:1;transform:rotate(var(--r)) scale(1)}}
+
+/* ---------- layar sedang & kecil ---------- */
+@media (max-width:1279px){
+  .spot-karyawan{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .spot-karyawan .col-dist{grid-column:1/-1;padding:16px 0 0;box-shadow:inset 0 1px 0 var(--line)}
+  .spot-karyawan .dist{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 32px}
+}
+@media (max-width:1023px){
+  .top .menu-btn{display:grid}
+  .side{position:fixed;z-index:40;inset:0 auto 0 0;width:min(300px,86vw);height:auto;background:var(--ground);box-shadow:0 0 0 1px rgba(var(--shade),.06),30px 0 60px -30px rgba(var(--glow),.55);transform:translateX(-104%);visibility:hidden;transition:transform .5s var(--ease),visibility 0s .5s}
+  .app[data-nav="open"] .side{transform:none;visibility:visible;transition-delay:0s}
+  .app[data-nav="open"] .scrim{display:block;position:fixed;inset:0;z-index:39;background:var(--scrim)}
+  .stage{padding:8px}
+  .sheet{border-radius:22px}
+  .form-layout{grid-template-columns:minmax(0,1fr)}
+  .rail{position:static}
+  .set{grid-template-columns:minmax(0,1fr);gap:14px}
+}
+@media (max-width:760px){
+  .spot-reimb,.spot-profile,.spot-karyawan{grid-template-columns:minmax(0,1fr)}
+  .col+.col{padding:18px 0 0;box-shadow:inset 0 1px 0 var(--line)}
+  .spot-karyawan .col-dist{grid-column:auto}
+  .spot-karyawan .dist{display:flex}
+  .strip{grid-template-columns:repeat(16,minmax(0,1fr))}
+  .strip li{height:38px}
+  .g3,.g4{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .g3>.field:first-child{grid-column:1/-1}
+  .fgrid,.record{grid-template-columns:minmax(0,1fr)}
+  .record>div:nth-last-child(2){box-shadow:inset 0 -1px 0 var(--line)}
+  .facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .facts>div:nth-child(odd){padding-left:0;box-shadow:none}
+}
+@media (max-width:560px){
+  .salam,.vr,.me .two{display:none}
+  .hero{padding:20px}
+  .h-right{width:100%;margin-left:0;justify-content:space-between}
+  .h-status{align-items:flex-start;text-align:left}
+  .spot{padding:20px}
+  .big{font-size:38px}
+  .month{padding:16px}
+  .month-stats{gap:8px 24px}
+  .month-stats dd b{font-size:24px}
+  .g3,.g4,.g2{grid-template-columns:minmax(0,1fr)}
+  .tray{padding:16px 14px 14px}
+  .w-month,.w-pick,.search{width:100%;max-width:none}
+  .spot-foot{padding:14px 14px 10px}
+  .spot-foot .field,.spot-foot .btn{flex:1 1 100%}
+  .tools-l{width:100%}
+  .tools-l>.field{flex:1 1 100%}
+  .monthnav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;gap:8px}
+  .monthnav b{grid-column:1/-1;order:-1;min-width:0;text-align:left}
+}
+
+/* ---------- bukan bagian desain: tombol data contoh / keadaan kosong ---------- */
+.lab{position:fixed;left:16px;bottom:16px;z-index:50;display:flex;gap:4px;padding:5px;border-radius:999px;background:var(--ink);box-shadow:0 16px 32px -16px rgba(var(--shade),.6)}
+.lab button{min-height:36px;padding:0 14px;border-radius:999px;color:#fff;font-size:12.5px;font-weight:700}
+.lab button[aria-pressed="true"]{background:#fff;color:var(--ink)}
+.lab button:focus-visible{outline-color:#fff}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+<symbol id="i-layout-grid" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+<symbol id="i-user-round" viewBox="0 0 24 24"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></symbol>
+<symbol id="i-user-plus" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></symbol>
+<symbol id="i-briefcase" viewBox="0 0 24 24"><path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><rect width="20" height="14" x="2" y="6" rx="2"/></symbol>
+<symbol id="i-receipt-text" viewBox="0 0 24 24"><path d="M13 16H8"/><path d="M14 8H8"/><path d="M16 12H8"/><path d="M4 3a1 1 0 0 1 1-1 1.3 1.3 0 0 1 .7.2l.933.6a1.3 1.3 0 0 0 1.4 0l.934-.6a1.3 1.3 0 0 1 1.4 0l.933.6a1.3 1.3 0 0 0 1.4 0l.933-.6a1.3 1.3 0 0 1 1.4 0l.934.6a1.3 1.3 0 0 0 1.4 0l.933-.6A1.3 1.3 0 0 1 19 2a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1 1.3 1.3 0 0 1-.7-.2l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.934.6a1.3 1.3 0 0 1-1.4 0l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-1.4 0l-.934-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-.7.2 1 1 0 0 1-1-1z"/></symbol>
+<symbol id="i-calendar-days" viewBox="0 0 24 24"><path d="M8 2v3"/><path d="M16 2v3"/><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M8 13h.01"/><path d="M12 13h.01"/><path d="M16 13h.01"/><path d="M8 17h.01"/><path d="M12 17h.01"/><path d="M16 17h.01"/></symbol>
+<symbol id="i-heart-pulse" viewBox="0 0 24 24"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/><path d="M3.22 13H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27"/></symbol>
+<symbol id="i-check-check" viewBox="0 0 24 24"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="i-chart-column" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></symbol>
+<symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+<symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+<symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+<symbol id="i-chevrons-up-down" viewBox="0 0 24 24"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></symbol>
+<symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+<symbol id="i-log-out" viewBox="0 0 24 24"><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></symbol>
+<symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></symbol>
+<symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></symbol>
+<symbol id="i-message-square-warning" viewBox="0 0 24 24"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M12 15h.01"/><path d="M12 7v4"/></symbol>
+<symbol id="i-file-down" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/></symbol>
+<symbol id="i-building-complex" viewBox="0 0 24 24"><path d="M10 12h4"/><path d="M10 8h4"/><path d="M14 21v-3a2 2 0 0 0-4 0v3"/><path d="M6 10H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2"/><path d="M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+<symbol id="i-send" viewBox="0 0 24 24"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></symbol>
+<symbol id="i-archive" viewBox="0 0 24 24"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></symbol>
+<symbol id="i-calendar-plus" viewBox="0 0 24 24"><path d="M16 18h6"/><path d="M16 2v3"/><path d="M19 15v6"/><path d="M21 11.5V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h8.3"/><path d="M3 9h18"/><path d="M8 2v3"/></symbol>
+</svg>
+
+<div class="app" id="app">
+<a class="skip" href="#konten">Lewati ke konten</a>
+
+<aside class="side" id="side" aria-label="Menu">
+<div class="side-in">
+<a class="brand" href="#reimburse"><span class="logo" aria-hidden="true">OA</span><span><b>Office Automation</b><small>PT Artha Mitra Interdata</small></span></a>
+<nav aria-label="Menu utama">
+  <p class="grp">Utama</p>
+  <a class="nav" href="http://localhost:3000/dashboard" title="Buka Dashboard di aplikasi"><svg class="ic"><use href="#i-layout-grid"/></svg><span class="grow">Dashboard</span></a>
+  <a class="nav" href="#absensi" data-go="absensi"><svg class="ic"><use href="#i-clock"/></svg><span class="grow">Absensi</span></a>
+  <div class="fold">
+    <button class="nav" type="button" aria-expanded="false" aria-controls="sub-profil"><svg class="ic"><use href="#i-user-round"/></svg><span class="grow">Profil Saya</span><svg class="ic chev"><use href="#i-chevron-down"/></svg></button>
+    <div class="sub" id="sub-profil"><div class="sub-in">
+      <a class="subi" href="#profil" data-go="profil">Data Diri</a>
+      <a class="subi" href="#profil">Dokumen &amp; Keluarga</a>
+      <a class="subi" href="#profil">Sertifikat &amp; Ijazah</a>
+      <a class="subi" href="#profil">Aset Saya</a>
+    </div></div>
+  </div>
+  <p class="grp">Sumber Daya Manusia</p>
+  <div class="fold">
+    <button class="nav" type="button" aria-expanded="false" aria-controls="sub-karyawan"><svg class="ic"><use href="#i-users"/></svg><span class="grow">Karyawan &amp; Dokumen</span><svg class="ic chev"><use href="#i-chevron-down"/></svg></button>
+    <div class="sub" id="sub-karyawan"><div class="sub-in">
+      <a class="subi" href="#karyawan" data-go="karyawan">Daftar Aktif</a>
+      <a class="subi" href="#karyawan">Arsip</a>
+    </div></div>
+  </div>
+  <a class="nav" href="#karyawan"><svg class="ic"><use href="#i-user-plus"/></svg><span class="grow">Kandidat</span></a>
+  <p class="grp">Operasional &amp; Aset</p>
+  <div class="fold">
+    <button class="nav" type="button" aria-expanded="false" aria-controls="sub-project"><svg class="ic"><use href="#i-briefcase"/></svg><span class="grow">Project &amp; Customer</span><svg class="ic chev"><use href="#i-chevron-down"/></svg></button>
+    <div class="sub" id="sub-project"><div class="sub-in">
+      <a class="subi" href="#reimburse">Daftar Project</a>
+      <a class="subi" href="#reimburse">Customer &amp; Project</a>
+    </div></div>
+  </div>
+  <p class="grp">Pengajuan &amp; Keuangan</p>
+  <div class="fold">
+    <button class="nav" type="button" aria-expanded="false" aria-controls="sub-reimburse"><svg class="ic"><use href="#i-receipt-text"/></svg><span class="grow">Reimburse</span><svg class="ic chev"><use href="#i-chevron-down"/></svg></button>
+    <div class="sub" id="sub-reimburse"><div class="sub-in">
+      <a class="subi" href="#reimburse" data-go="reimburse">Daftar Reimburse</a>
+      <a class="subi" href="#reimburse-baru" data-go="reimburse-baru">Pengajuan Baru</a>
+    </div></div>
+  </div>
+  <div class="fold">
+    <button class="nav" type="button" aria-expanded="false" aria-controls="sub-cuti"><svg class="ic"><use href="#i-calendar-days"/></svg><span class="grow">Cuti &amp; Libur</span><svg class="ic chev"><use href="#i-chevron-down"/></svg></button>
+    <div class="sub" id="sub-cuti"><div class="sub-in">
+      <a class="subi" href="#cuti" data-go="cuti">Pengajuan Cuti</a>
+      <a class="subi" href="#cuti">Saldo Cuti</a>
+      <a class="subi" href="#cuti">Kalender Libur</a>
+    </div></div>
+  </div>
+  <div class="fold">
+    <button class="nav" type="button" aria-expanded="false" aria-controls="sub-kesehatan"><svg class="ic"><use href="#i-heart-pulse"/></svg><span class="grow">Kesehatan &amp; Plafon</span><svg class="ic chev"><use href="#i-chevron-down"/></svg></button>
+    <div class="sub" id="sub-kesehatan"><div class="sub-in">
+      <a class="subi" href="#reimburse">Klaim Kesehatan</a>
+      <a class="subi" href="#reimburse">Jadwal Pembayaran</a>
+    </div></div>
+  </div>
+  <p class="grp">Kontrol &amp; Sistem</p>
+  <a class="nav" href="#reimburse"><svg class="ic"><use href="#i-check-check"/></svg><span class="grow">Approval</span><span class="badge" aria-label="2 menunggu">2</span></a>
+  <div class="fold">
+    <button class="nav" type="button" aria-expanded="false" aria-controls="sub-setting"><svg class="ic"><use href="#i-settings"/></svg><span class="grow">Setting</span><svg class="ic chev"><use href="#i-chevron-down"/></svg></button>
+    <div class="sub" id="sub-setting"><div class="sub-in">
+      <a class="subi" href="#reimburse">Ringkasan</a>
+      <a class="subi" href="#reimburse">User &amp; Role</a>
+      <a class="subi" href="#reimburse">Approval Flow</a>
+    </div></div>
+  </div>
+  <div class="soon" aria-disabled="true"><svg class="ic"><use href="#i-chart-column"/></svg><span class="grow">Laporan</span><em>Menyusul</em></div>
+</nav>
+</div>
+</aside>
+<button class="scrim" id="scrim" type="button" aria-label="Tutup menu"></button>
+
+<div class="stage"><div class="sheet">
+<header class="top"><div class="top-in">
+  <button class="icon-btn menu-btn" id="menuBtn" type="button" aria-label="Buka menu" aria-controls="side" aria-expanded="false"><svg class="ic s20"><use href="#i-menu"/></svg></button>
+  <p class="salam">Selamat siang, Rudy</p>
+  <div class="top-right">
+    <a class="btn btn-blue" href="#reimburse-baru"><svg class="ic"><use href="#i-plus"/></svg>Ajukan<svg class="ic s16"><use href="#i-chevron-down"/></svg></a>
+    <span class="vr" aria-hidden="true"></span>
+    <div class="me"><span class="me-av" aria-hidden="true">R</span><span class="two"><b>Rudy</b><small>Admin</small></span></div>
+    <button class="icon-btn" type="button" aria-label="Keluar"><svg class="ic s20"><use href="#i-log-out"/></svg></button>
+  </div>
+</div></header>
+
+<main id="konten" tabindex="-1">
+
+<!-- ======================= ABSENSI ======================= -->
+<section class="view" data-view="absensi" data-title="Absensi" hidden>
+  <div class="head-row rise" style="--i:0">
+    <div class="head">
+      <nav class="crumb" aria-label="Breadcrumb"><span>Utama</span><svg class="ic s14" aria-hidden="true"><use href="#i-chevron-right"/></svg><strong aria-current="page">Absensi</strong></nav>
+      <h1>Absensi</h1>
+      <p class="lede">Clock in saat mulai kerja dan clock out saat pulang. Jam dicatat otomatis dari server (WIB).</p>
+    </div>
+  </div>
+  <nav class="seg rise" style="--i:1" aria-label="Absensi"><a class="on" href="#absensi" aria-current="page">Absensi Saya</a><a href="#absensi">Rekap Karyawan</a></nav>
+
+  <section class="hero-shell rise" style="--i:2" aria-label="Absensi hari ini">
+    <div class="hero">
+      <div class="h-left">
+        <span class="h-date"><b>Absensi</b><span>Jumat, 9 Oktober 2026</span></span>
+        <span class="h-clock"><span class="h-time"><span data-clock="hm">13:41</span><span class="h-sec" data-clock="ss">:12</span></span><span class="h-zone">WIB</span></span>
+      </div>
+      <div><span class="punch">MASUK 07:58</span></div>
+      <div class="h-right">
+        <span class="h-status"><b>Sedang bekerja</b><span>Jam kerja 08:00-17:00</span></span>
+        <button class="cta" type="button"><span>Clock Out</span><span class="knob" aria-hidden="true"><svg class="ic"><use href="#i-log-out"/></svg></span></button>
+      </div>
+    </div>
+  </section>
+
+  <section class="block rise" style="--i:3" aria-labelledby="t-riwayat">
+    <div class="q-head">
+      <h2 id="t-riwayat">Riwayat Absensi</h2>
+      <div class="monthnav">
+        <button class="btn btn-line btn-sm" type="button"><svg class="ic"><use href="#i-chevron-left"/></svg>Sebelumnya</button>
+        <b>Oktober 2026</b>
+        <button class="btn btn-line btn-sm" type="button" disabled>Berikutnya<svg class="ic"><use href="#i-chevron-right"/></svg></button>
+      </div>
+    </div>
+
+    <div class="month">
+      <div class="month-top">
+        <dl class="month-stats">
+          <div><dt>Hadir</dt><dd><b>6</b>hari</dd></div>
+          <div><dt>Terlambat</dt><dd><b>1</b>hari</dd></div>
+          <div><dt>Tidak hadir / tidak clock out</dt><dd><b>1</b>hari</dd></div>
+        </dl>
+        <p class="legend" aria-hidden="true"><span><i class="sw good"></i>Hadir</span><span><i class="sw warn"></i>Terlambat</span><span><i class="sw bad"></i>Tidak hadir</span><span><i class="sw off"></i>Akhir pekan</span></p>
+      </div>
+      <!-- satu kotak per tanggal; warnanya dari status hari yang sama dengan tabel di bawah -->
+      <ol class="strip" aria-label="Status harian Oktober 2026">
+        <li class="good pop" style="--d:1" title="Kamis 1 Okt: Hadir">1</li>
+        <li class="good pop" style="--d:2" title="Jumat 2 Okt: Hadir">2</li>
+        <li class="off pop" style="--d:3" title="Sabtu 3 Okt: Akhir pekan">3</li>
+        <li class="off pop" style="--d:4" title="Minggu 4 Okt: Akhir pekan">4</li>
+        <li class="warn pop" style="--d:5" title="Senin 5 Okt: Terlambat">5</li>
+        <li class="good pop" style="--d:6" title="Selasa 6 Okt: Hadir">6</li>
+        <li class="bad pop" style="--d:7" title="Rabu 7 Okt: Tidak hadir">7</li>
+        <li class="good pop" style="--d:8" title="Kamis 8 Okt: Hadir">8</li>
+        <li class="good now pop" style="--d:9" title="Jumat 9 Okt: Sedang bekerja">9</li>
+        <li class="off pop" style="--d:10">10</li><li class="off pop" style="--d:11">11</li>
+        <li class="pop" style="--d:12">12</li><li class="pop" style="--d:13">13</li><li class="pop" style="--d:14">14</li><li class="pop" style="--d:15">15</li><li class="pop" style="--d:16">16</li>
+        <li class="off pop" style="--d:17">17</li><li class="off pop" style="--d:18">18</li>
+        <li class="pop" style="--d:19">19</li><li class="pop" style="--d:20">20</li><li class="pop" style="--d:21">21</li><li class="pop" style="--d:22">22</li><li class="pop" style="--d:23">23</li>
+        <li class="off pop" style="--d:24">24</li><li class="off pop" style="--d:25">25</li>
+        <li class="pop" style="--d:26">26</li><li class="pop" style="--d:27">27</li><li class="pop" style="--d:28">28</li><li class="pop" style="--d:29">29</li><li class="pop" style="--d:30">30</li>
+        <li class="off pop" style="--d:31">31</li>
+      </ol>
+    </div>
+
+    <div class="table-wrap">
+      <table class="tbl" style="--min:720px;--rh:58px">
+        <thead><tr><th>Tanggal</th><th>Masuk</th><th>Pulang</th><th>Durasi</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td><b>Jumat, 9 Oktober 2026</b></td><td class="num strong">07:58</td><td class="num dash">-</td><td class="when dash">-</td><td><span class="tag">Sedang bekerja</span></td></tr>
+          <tr><td><b>Kamis, 8 Oktober 2026</b></td><td class="num strong">07:49</td><td class="num strong">17:12</td><td class="when">9 jam 23 menit</td><td><span class="tag good">Hadir</span></td></tr>
+          <tr><td><b>Rabu, 7 Oktober 2026</b></td><td class="num dash">-</td><td class="num dash">-</td><td class="when dash">-</td><td><span class="stat-cell"><span class="tag bad">Tidak hadir</span><button class="btn btn-line btn-sm" type="button"><svg class="ic"><use href="#i-message-square-warning"/></svg>Appeal</button></span></td></tr>
+          <tr><td><b>Selasa, 6 Oktober 2026</b></td><td class="num strong">07:55</td><td class="num strong">17:04</td><td class="when">9 jam 9 menit</td><td><span class="tag good">Hadir</span></td></tr>
+          <tr><td><b>Senin, 5 Oktober 2026</b></td><td class="num strong">08:14</td><td class="num strong">17:20</td><td class="when">9 jam 6 menit</td><td><span class="tag warn">Terlambat</span></td></tr>
+          <tr class="off"><td>Minggu, 4 Oktober 2026</td><td class="num dash">-</td><td class="num dash">-</td><td class="when dash">-</td><td><span class="tag">Akhir pekan</span></td></tr>
+          <tr class="off"><td>Sabtu, 3 Oktober 2026</td><td class="num dash">-</td><td class="num dash">-</td><td class="when dash">-</td><td><span class="tag">Akhir pekan</span></td></tr>
+          <tr><td><b>Jumat, 2 Oktober 2026</b></td><td class="num strong">07:51</td><td class="num strong">17:00</td><td class="when">9 jam 9 menit</td><td><span class="tag good">Hadir</span></td></tr>
+          <tr><td><b>Kamis, 1 Oktober 2026</b></td><td class="num strong">07:46</td><td class="num strong">17:31</td><td class="when">9 jam 45 menit</td><td><span class="tag good">Hadir</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>
+
+<!-- ======================= REIMBURSE: DAFTAR ======================= -->
+<section class="view" data-view="reimburse" data-title="Reimburse" hidden>
+  <div class="head-row rise" style="--i:0">
+    <div class="head">
+      <nav class="crumb" aria-label="Breadcrumb"><span>Pengajuan &amp; Keuangan</span><svg class="ic s14" aria-hidden="true"><use href="#i-chevron-right"/></svg><strong aria-current="page">Reimburse</strong></nav>
+      <h1>Reimburse</h1>
+      <p class="lede">Semua pengajuan reimburse karyawan, beserta draft milik Anda.</p>
+    </div>
+    <div class="head-acts"><a class="btn btn-blue" href="#reimburse-baru"><svg class="ic"><use href="#i-plus"/></svg>Pengajuan Baru</a></div>
+  </div>
+
+  <!-- SOROTAN: angka bulan ini + porsi menunggu vs disetujui -->
+  <section class="spot-shell rise" style="--i:1" aria-label="Ringkasan reimburse">
+    <div class="spot spot-reimb">
+      <div class="col">
+        <span class="k">Diajukan bulan ini</span>
+        <p class="big"><span class="cur">Rp</span><span class="when-full">2.773.500</span><span class="when-empty">0</span></p>
+        <p class="note"><span class="when-full">4 pengajuan</span><span class="when-empty">0 pengajuan</span></p>
+      </div>
+      <div class="col">
+        <div class="pair">
+          <div class="mini"><span class="k"><i class="sw c-warn"></i>Menunggu approval</span><b><span class="when-full">2</span><span class="when-empty">0</span> <small>pengajuan</small></b><span class="v"><span class="when-full">Rp 1.761.500</span><span class="when-empty">Rp 0</span></span></div>
+          <div class="mini"><span class="k"><i class="sw c-good"></i>Disetujui</span><b><span class="when-full">2</span><span class="when-empty">0</span> <small>pengajuan</small></b><span class="v"><span class="when-full">Rp 1.012.000</span><span class="when-empty">Rp 0</span></span></div>
+        </div>
+        <div class="split when-full" role="img" aria-label="Nominal menunggu approval Rp 1.761.500, disetujui Rp 1.012.000">
+          <i class="c-warn grow" style="--w:63.5;--i:2"></i><i class="c-good grow" style="--w:36.5;--i:3"></i>
+        </div>
+        <div class="split when-empty" aria-hidden="true"><i class="c-rule" style="--w:100"></i></div>
+      </div>
+    </div>
+    <!-- cetak rekap per orang per bulan (form GET ke /cetak/reimburse) menempel di ringkasan, bukan di atas tabel,
+         supaya tidak terbaca sebagai filter daftar -->
+    <form class="spot-foot" action="#" onsubmit="return false">
+      <span class="ttl"><svg class="ic"><use href="#i-printer"/></svg>Cetak rekap</span>
+      <div class="field"><label for="rb-bulan">Bulan transaksi</label><input class="input w-month" id="rb-bulan" type="month" value="2026-10"></div>
+      <div class="field"><label for="rb-karyawan">Karyawan</label><select class="select w-pick" id="rb-karyawan"><option>Andi Pratama</option><option>Darwin</option><option>Devi</option><option>Ika</option><option>Leonard</option><option selected>Rudy</option><option>Sinta Lestari</option><option>Yosep</option></select></div>
+      <button class="btn btn-line" type="submit">Cetak / Simpan PDF</button>
+    </form>
+  </section>
+
+  <section class="block rise" style="--i:3" aria-label="Daftar reimburse">
+    <div class="tools">
+      <div class="chips" role="group" aria-label="Status" data-filter="rb"><span>Status:</span>
+        <button class="chip" type="button" aria-pressed="true" data-f="all">Semua <span class="n when-full">5</span><span class="n when-empty">0</span></button>
+        <button class="chip" type="button" aria-pressed="false" data-f="draft">Draft <span class="n when-full">1</span><span class="n when-empty">0</span></button>
+        <button class="chip" type="button" aria-pressed="false" data-f="pending">Menunggu <span class="n when-full">2</span><span class="n when-empty">0</span></button>
+        <button class="chip" type="button" aria-pressed="false" data-f="approved">Disetujui <span class="n when-full">2</span><span class="n when-empty">0</span></button>
+      </div>
+      <div class="search"><svg class="ic"><use href="#i-search"/></svg><input class="input" type="search" placeholder="Cari nomor, pemohon, rincian..." aria-label="Cari nomor, pemohon, rincian"></div>
+    </div>
+    <div class="table-wrap">
+      <table class="tbl" style="--min:860px" data-rows="rb">
+        <thead><tr>
+          <th><span class="th">Tiket &amp; Tanggal<svg class="ic"><use href="#i-chevrons-up-down"/></svg></span></th>
+          <th><span class="th">Pemohon<svg class="ic"><use href="#i-chevrons-up-down"/></svg></span></th>
+          <th><span class="th">Rincian<svg class="ic"><use href="#i-chevrons-up-down"/></svg></span></th>
+          <th class="r"><span class="th">Nominal<svg class="ic"><use href="#i-chevrons-up-down"/></svg></span></th>
+          <th><span class="th">Status<svg class="ic"><use href="#i-chevrons-up-down"/></svg></span></th>
+          <th class="fit"><span class="sr">Buka</span></th>
+        </tr></thead>
+        <tbody class="when-full">
+          <tr data-st="pending"><td><span class="two"><b class="mono">RMB/2026/10/0005</b><small>8 Okt 2026, 10:12 WIB</small></span></td><td><span class="who"><span class="av" aria-hidden="true">SL</span><span class="two"><b>Sinta Lestari</b><small>Account Manager</small></span></span></td><td><span class="two"><span>Kunjungan customer di Cikarang</span><small>+1 baris lainnya</small></span></td><td class="r"><span class="amt"><b>Rp 486.500</b><small>Cash Rp 186.500 · CC Rp 300.000</small></span></td><td><span class="tag warn">Menunggu L1</span></td><td class="fit"><a class="go" href="#reimburse" aria-label="Buka detail"><svg class="ic"><use href="#i-chevron-right"/></svg></a></td></tr>
+          <tr data-st="pending"><td><span class="two"><b class="mono">RMB/2026/10/0004</b><small>7 Okt 2026, 17:48 WIB</small></span></td><td><span class="who"><span class="av" aria-hidden="true">AP</span><span class="two"><b>Andi Pratama</b><small>Engineer</small></span></span></td><td><span class="two"><span>Instalasi jaringan di site</span><small>+2 baris lainnya</small></span></td><td class="r"><span class="amt"><b>Rp 1.275.000</b><small>Cash Rp 1.275.000 · CC Rp 0</small></span></td><td><span class="tag warn">Menunggu L2</span></td><td class="fit"><a class="go" href="#reimburse" aria-label="Buka detail"><svg class="ic"><use href="#i-chevron-right"/></svg></a></td></tr>
+          <tr data-st="draft"><td><span class="two"><b>Draft</b><small>7 Okt 2026, 09:05 WIB</small></span></td><td><span class="who"><span class="av" aria-hidden="true">R</span><span class="two"><b>Rudy</b><small>Direktur</small></span></span></td><td><span class="two"><span>Training vendor</span></span></td><td class="r"><span class="amt"><b>Rp 350.000</b><small>Cash Rp 350.000 · CC Rp 0</small></span></td><td><span class="tag">Draft</span></td><td class="fit"><a class="go" href="#reimburse" aria-label="Buka detail"><svg class="ic"><use href="#i-chevron-right"/></svg></a></td></tr>
+          <tr data-st="approved"><td><span class="two"><b class="mono">RMB/2026/10/0002</b><small>6 Okt 2026, 15:31 WIB</small></span></td><td><span class="who"><span class="av" aria-hidden="true">Y</span><span class="two"><b>Yosep</b><small>Kepala Divisi Engineer</small></span></span></td><td><span class="two"><span>Hotel tim instalasi Semarang</span></span></td><td class="r"><span class="amt"><b>Rp 1.000.000</b><small>Cash Rp 1.000.000 · CC Rp 0</small></span></td><td><span class="tag good">Disetujui</span></td><td class="fit"><a class="go" href="#reimburse" aria-label="Buka detail"><svg class="ic"><use href="#i-chevron-right"/></svg></a></td></tr>
+          <tr data-st="approved"><td><span class="two"><b class="mono">RMB/2026/10/0001</b><small>6 Okt 2026, 15:27 WIB</small></span></td><td><span class="who"><span class="av" aria-hidden="true">D</span><span class="two"><b>Devi</b><small>Staf Umum</small></span></span></td><td><span class="two"><span>Parkir kantor pajak</span></span></td><td class="r"><span class="amt"><b>Rp 12.000</b><small>Cash Rp 12.000 · CC Rp 0</small></span></td><td><span class="tag good">Disetujui</span></td><td class="fit"><a class="go" href="#reimburse" aria-label="Buka detail"><svg class="ic"><use href="#i-chevron-right"/></svg></a></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="empty when-empty">
+      <div class="ghost" aria-hidden="true">
+        <div class="ghost-row"><span class="ghost-who"><span class="ghost-av"></span><span class="bar" style="width:60%"></span></span><span class="bar" style="width:70%"></span><span class="bar" style="width:55%"></span><span class="bar" style="width:62%"></span><span class="bar" style="width:80%;height:24px;border-radius:8px"></span></div>
+        <div class="ghost-row"><span class="ghost-who"><span class="ghost-av"></span><span class="bar" style="width:48%"></span></span><span class="bar" style="width:58%"></span><span class="bar" style="width:44%"></span><span class="bar" style="width:52%"></span><span class="bar" style="width:80%;height:24px;border-radius:8px"></span></div>
+        <div class="ghost-row"><span class="ghost-who"><span class="ghost-av"></span><span class="bar" style="width:56%"></span></span><span class="bar" style="width:64%"></span><span class="bar" style="width:50%"></span><span class="bar" style="width:46%"></span><span class="bar" style="width:80%;height:24px;border-radius:8px"></span></div>
+      </div>
+      <b>Belum ada pengajuan reimburse.</b>
+    </div>
+    <p class="foot"><span class="when-full">Menampilkan 1-5 dari 5 pengajuan</span></p>
+  </section>
+</section>
+
+<!-- ======================= REIMBURSE: PENGAJUAN BARU ======================= -->
+<section class="view" data-view="reimburse-baru" data-title="Pengajuan Reimburse" hidden>
+  <div class="head-row rise" style="--i:0">
+    <div class="head">
+      <nav class="crumb" aria-label="Breadcrumb"><span>Pengajuan &amp; Keuangan</span><svg class="ic s14" aria-hidden="true"><use href="#i-chevron-right"/></svg><a href="#reimburse">Reimburse</a><svg class="ic s14" aria-hidden="true"><use href="#i-chevron-right"/></svg><strong aria-current="page">Pengajuan Baru</strong></nav>
+      <h1>Pengajuan Reimburse</h1>
+      <p class="lede">Pilih tanggal, company, lalu project (atau New Acquisition) per kunjungan; isi satu baris per transaksi. Total dihitung otomatis.</p>
+    </div>
+  </div>
+
+  <form class="form-layout" action="#" onsubmit="return false" novalidate>
+    <div class="form-main">
+      <section class="tray rise" style="--i:1" aria-labelledby="t-k1">
+        <div class="tray-head"><h3 id="t-k1">Kunjungan 1</h3></div>
+        <div class="g3">
+          <div class="field"><label for="k1-tgl">Tanggal <span class="req" aria-hidden="true">*</span></label><input class="input" id="k1-tgl" type="date" value="2026-10-08"></div>
+          <div class="field"><label for="k1-co">Company / Customer <span class="req" aria-hidden="true">*</span></label><select class="select" id="k1-co"><option>PT Samudra Lintas Nusa</option><option>PT Tirta Daya Persada</option></select></div>
+          <div class="field"><label for="k1-pr">ID - Nama Project</label><select class="select" id="k1-pr"><option>PRJ-0012 - Instalasi jaringan gudang</option><option>New Acquisition</option></select></div>
+        </div>
+        <p class="askrow"><span>Company / project belum ada?</span><button class="linkish" type="button"><svg class="ic s16"><use href="#i-plus"/></svg>Customer baru</button><button class="linkish" type="button"><svg class="ic s16"><use href="#i-plus"/></svg>Project baru</button></p>
+
+        <div class="line">
+          <div class="line-head"><span>Baris 1</span><button class="icon-btn sm" type="button" aria-label="Hapus baris 1"><svg class="ic s16"><use href="#i-trash"/></svg></button></div>
+          <div class="g4">
+            <div class="field"><label for="b1-tipe">Tipe <span class="req" aria-hidden="true">*</span></label><select class="select" id="b1-tipe"><option>Bensin</option><option>Parkir</option><option>Tol</option><option>Training</option><option>Makan</option><option>Hotel</option></select><p class="help">Parkir &amp; training → Allowance · Bensin &amp; tol → Transport</p></div>
+            <div class="field"><label for="b1-pay">Payment <span class="req" aria-hidden="true">*</span></label><select class="select" id="b1-pay"><option>Cash</option><option>Kartu Kredit</option></select></div>
+            <div class="field"><label for="b1-tot">Total <span class="req" aria-hidden="true">*</span></label><div class="control"><span class="affix">Rp</span><input class="input mono" id="b1-tot" inputmode="numeric" value="186.500"></div></div>
+            <div class="field"><label for="b1-lok">Lokasi <span class="req" aria-hidden="true">*</span></label><input class="input" id="b1-lok" value="Cikarang"></div>
+          </div>
+          <div class="g2">
+            <div class="field"><label for="b1-nm">Names - Position <span class="req" aria-hidden="true">*</span></label><textarea class="textarea" id="b1-nm">Hendra Wijaya - Manager IT</textarea></div>
+            <div class="field"><label for="b1-akt">Aktivitas <span class="req" aria-hidden="true">*</span></label><input class="input" id="b1-akt" value="Survey lokasi instalasi"></div>
+          </div>
+          <div class="field"><span class="lbl" id="b1-kw">Ada kwitansi fisik?</span><div class="seg sm" role="group" aria-labelledby="b1-kw"><button class="on" type="button" aria-pressed="true">Ya</button><button type="button" aria-pressed="false">Tidak</button></div></div>
+        </div>
+
+        <div class="line">
+          <div class="line-head"><span>Baris 2</span><button class="icon-btn sm" type="button" aria-label="Hapus baris 2"><svg class="ic s16"><use href="#i-trash"/></svg></button></div>
+          <div class="g4">
+            <div class="field"><label for="b2-tipe">Tipe <span class="req" aria-hidden="true">*</span></label><select class="select" id="b2-tipe"><option>Parkir</option><option>Bensin</option></select><p class="help">Parkir &amp; training → Allowance · Bensin &amp; tol → Transport</p></div>
+            <div class="field"><label for="b2-pay">Payment <span class="req" aria-hidden="true">*</span></label><select class="select" id="b2-pay"><option>Cash</option><option>Kartu Kredit</option></select></div>
+            <div class="field"><label for="b2-tot">Total <span class="req" aria-hidden="true">*</span></label><div class="control"><span class="affix">Rp</span><input class="input mono" id="b2-tot" inputmode="numeric" value="15.000"></div></div>
+            <div class="field"><label for="b2-lok">Lokasi <span class="req" aria-hidden="true">*</span></label><input class="input" id="b2-lok" aria-invalid="true" aria-describedby="b2-lok-err"><p class="err" id="b2-lok-err">Lokasi wajib diisi</p></div>
+          </div>
+          <div class="g2">
+            <div class="field"><label for="b2-nm">Names - Position <span class="req" aria-hidden="true">*</span></label><textarea class="textarea" id="b2-nm" placeholder="Budi - Manager IT&#10;Sari - Staff Procurement"></textarea></div>
+            <div class="field"><label for="b2-akt">Aktivitas <span class="req" aria-hidden="true">*</span></label><input class="input" id="b2-akt"></div>
+          </div>
+          <div class="field"><span class="lbl" id="b2-kw">Ada kwitansi fisik?</span><div class="seg sm" role="group" aria-labelledby="b2-kw"><button type="button" aria-pressed="false">Ya</button><button class="on" type="button" aria-pressed="true">Tidak</button></div></div>
+        </div>
+
+        <div class="tray-foot"><button class="btn btn-line btn-sm" type="button"><svg class="ic"><use href="#i-plus"/></svg>Tambah Baris</button><span class="sum"><span>Subtotal kunjungan</span><b>Rp 201.500</b></span></div>
+      </section>
+
+      <div class="rise" style="--i:2"><button class="btn btn-line" type="button"><svg class="ic"><use href="#i-building-complex"/></svg>Tambah Kunjungan</button></div>
+
+      <div class="field rise" style="--i:3"><label for="rb-catatan">Catatan untuk approver (opsional)</label><textarea class="textarea" id="rb-catatan"></textarea></div>
+    </div>
+
+    <!-- SOROTAN halaman form: total selalu terlihat sambil mengisi -->
+    <aside class="rail rise" style="--i:2" aria-label="Total pengajuan">
+      <div class="spot-shell"><div class="spot spot-rail">
+        <dl class="totals">
+          <div><dt>Subtotal Cash</dt><dd>Rp 201.500</dd></div>
+          <div><dt>Subtotal Kartu Kredit</dt><dd>Rp 0</dd></div>
+        </dl>
+        <div class="grand"><span class="k">Total</span><p class="big"><span class="cur">Rp</span>201.500</p></div>
+        <div class="rail-acts">
+          <button class="btn btn-blue btn-block" type="submit"><svg class="ic"><use href="#i-send"/></svg>Ajukan</button>
+          <button class="btn btn-line btn-block" type="button">Simpan Draft</button>
+        </div>
+      </div></div>
+    </aside>
+  </form>
+</section>
+
+<!-- ======================= CUTI ======================= -->
+<section class="view" data-view="cuti" data-title="Cuti" hidden>
+  <div class="head-row rise" style="--i:0">
+    <div class="head">
+      <nav class="crumb" aria-label="Breadcrumb"><span>Pengajuan &amp; Keuangan</span><svg class="ic s14" aria-hidden="true"><use href="#i-chevron-right"/></svg><strong aria-current="page">Cuti &amp; Libur</strong></nav>
+      <h1>Cuti</h1>
+      <p class="lede">Pengajuan cuti Anda dan seluruh karyawan.</p>
+    </div>
+    <div class="head-acts"><button class="btn btn-blue" type="button"><svg class="ic"><use href="#i-calendar-plus"/></svg>Ajukan Cuti</button></div>
+  </div>
+  <nav class="seg rise" style="--i:1" aria-label="Cuti"><a class="on" href="#cuti" aria-current="page">Pengajuan</a><a href="#cuti">Saldo</a><a href="#cuti">Kalender Libur</a></nav>
+
+  <!-- SOROTAN: saldo, satu ruas per hari (sisa, menunggu, terpakai) -->
+  <section class="spot-shell rise" style="--i:2" aria-labelledby="t-saldo">
+    <div class="spot spot-cuti">
+      <div class="saldo-top">
+        <div><h2 id="t-saldo">Saldo Cuti Saya</h2><p class="note">Periode 1 Jan 2026 - 31 Des 2026 · sisa hangus 31 Des (maks 3 hari dibawa ke tahun berikutnya)</p></div>
+        <p class="big">13<small>/ 18 hari tersisa</small></p>
+      </div>
+      <div class="days" role="img" aria-label="13 hari tersisa, 2 hari menunggu approval, 3 hari terpakai">
+        <i class="c-blue pop" style="--d:1"></i><i class="c-blue pop" style="--d:2"></i><i class="c-blue pop" style="--d:3"></i><i class="c-blue pop" style="--d:4"></i><i class="c-blue pop" style="--d:5"></i><i class="c-blue pop" style="--d:6"></i><i class="c-blue pop" style="--d:7"></i><i class="c-blue pop" style="--d:8"></i><i class="c-blue pop" style="--d:9"></i><i class="c-blue pop" style="--d:10"></i><i class="c-blue pop" style="--d:11"></i><i class="c-blue pop" style="--d:12"></i><i class="c-blue pop" style="--d:13"></i>
+        <i class="c-warn pop" style="--d:14"></i><i class="c-warn pop" style="--d:15"></i>
+        <i class="c-rule pop" style="--d:16"></i><i class="c-rule pop" style="--d:17"></i><i class="c-rule pop" style="--d:18"></i>
+      </div>
+      <dl class="facts">
+        <div><dt>Jatah</dt><dd>18 hari</dd></div>
+        <div><dt>Carry over</dt><dd>0 hari</dd></div>
+        <div><dt><i class="sw c-rule"></i>Terpakai</dt><dd>3 hari</dd></div>
+        <div><dt><i class="sw c-warn"></i>Menunggu approval</dt><dd>2 hari</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="block rise" style="--i:3" aria-label="Daftar pengajuan cuti">
+    <div class="tools">
+      <form class="tools-l" action="#" onsubmit="return false">
+        <div class="field"><label for="ct-bulan">Filter bulan</label><input class="input w-month" id="ct-bulan" type="month" value="2026-10"></div>
+        <button class="btn btn-line" type="submit">Tampilkan</button>
+      </form>
+      <div class="search"><svg class="ic"><use href="#i-search"/></svg><input class="input" type="search" placeholder="Cari nomor, karyawan, alasan..." aria-label="Cari nomor, karyawan, alasan"></div>
+    </div>
+    <div class="table-wrap">
+      <table class="tbl" style="--min:860px">
+        <thead><tr>
+          <th><span class="th">Nomor<svg class="ic"><use href="#i-chevrons-up-down"/></svg></span></th>
+          <th><span class="th">Karyawan<svg class="ic"><use href="#i-chevrons-up-down"/></svg></span></th>
+          <th><span class="th">Tanggal<svg class="ic"><use href="#i-chevrons-up-down"/></svg></span></th>
+          <th><span class="th">Hari Kerja<svg class="ic"><use href="#i-chevrons-up-down"/></svg></span></th>
+          <th><span class="th">Alasan<svg class="ic"><use href="#i-chevrons-up-down"/></svg></span></th>
+          <th><span class="th">Status<svg class="ic"><use href="#i-chevrons-up-down"/></svg></span></th>
+        </tr></thead>
+        <tbody class="when-full">
+          <tr><td class="num strong">LV/2026/10/0003</td><td><span class="who"><span class="av" aria-hidden="true">R</span><span class="two"><b>Rudy</b><small>Direktur</small></span></span></td><td class="when">15-16 Okt 2026</td><td class="when">2 hari</td><td>Acara keluarga</td><td><span class="tag warn">Menunggu L1</span></td></tr>
+          <tr><td class="num strong">LV/2026/10/0002</td><td><span class="who"><span class="av" aria-hidden="true">D</span><span class="two"><b>Devi</b><small>Staf Umum</small></span></span></td><td class="when">20-21 Okt 2026</td><td class="when">2 hari</td><td>Keperluan keluarga</td><td><span class="tag good">Disetujui</span></td></tr>
+          <tr><td class="num strong">LV/2026/09/0007</td><td><span class="who"><span class="av" aria-hidden="true">R</span><span class="two"><b>Rudy</b><small>Direktur</small></span></span></td><td class="when">18 Sep 2026</td><td class="when">1 hari</td><td>Urusan pribadi</td><td><span class="tag good">Disetujui</span></td></tr>
+          <tr><td class="num strong">LV/2026/09/0004</td><td><span class="who"><span class="av" aria-hidden="true">AP</span><span class="two"><b>Andi Pratama</b><small>Engineer</small></span></span></td><td class="when">7-8 Sep 2026</td><td class="when">2 hari</td><td>Wisuda adik</td><td><span class="tag good">Disetujui</span></td></tr>
+          <tr><td class="num strong">LV/2026/06/0002</td><td><span class="who"><span class="av" aria-hidden="true">R</span><span class="two"><b>Rudy</b><small>Direktur</small></span></span></td><td class="when">23-24 Jun 2026</td><td class="when">2 hari</td><td>Acara keluarga</td><td><span class="tag good">Disetujui</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="empty when-empty">
+      <div class="ghost" aria-hidden="true">
+        <div class="ghost-row"><span class="bar" style="width:70%"></span><span class="ghost-who"><span class="ghost-av"></span><span class="bar" style="width:54%"></span></span><span class="bar" style="width:62%"></span><span class="bar" style="width:40%"></span><span class="bar" style="width:80%;height:24px;border-radius:8px"></span></div>
+        <div class="ghost-row"><span class="bar" style="width:64%"></span><span class="ghost-who"><span class="ghost-av"></span><span class="bar" style="width:46%"></span></span><span class="bar" style="width:52%"></span><span class="bar" style="width:36%"></span><span class="bar" style="width:80%;height:24px;border-radius:8px"></span></div>
+        <div class="ghost-row"><span class="bar" style="width:68%"></span><span class="ghost-who"><span class="ghost-av"></span><span class="bar" style="width:50%"></span></span><span class="bar" style="width:58%"></span><span class="bar" style="width:42%"></span><span class="bar" style="width:80%;height:24px;border-radius:8px"></span></div>
+      </div>
+      <b>Belum ada pengajuan cuti.</b>
+    </div>
+    <p class="foot"><span class="when-full">Menampilkan 1-5 dari 5 pengajuan</span></p>
+  </section>
+</section>
+
+<!-- ======================= KARYAWAN ======================= -->
+<section class="view" data-view="karyawan" data-title="Direktori Karyawan &amp; Dokumen" hidden>
+  <div class="head-row rise" style="--i:0">
+    <div class="head">
+      <nav class="crumb" aria-label="Breadcrumb"><span>SDM</span><svg class="ic s14" aria-hidden="true"><use href="#i-chevron-right"/></svg><strong aria-current="page">Karyawan &amp; Dokumen</strong></nav>
+      <h1>Direktori Karyawan &amp; Dokumen</h1>
+      <p class="lede">Kelola data karyawan aktif dan pantau kelengkapan data diri yang diisi masing-masing karyawan.</p>
+    </div>
+    <div class="head-acts"><a class="btn btn-line" href="#karyawan"><svg class="ic"><use href="#i-archive"/></svg>Arsip</a><button class="btn btn-blue" type="button"><svg class="ic"><use href="#i-plus"/></svg>Tambah Karyawan</button></div>
+  </div>
+
+  <!-- SOROTAN: jumlah, kelengkapan data diri, dan distribusi divisi dalam satu panel -->
+  <section class="spot-shell rise" style="--i:1" aria-label="Ringkasan karyawan">
+    <div class="spot spot-karyawan">
+      <div class="col">
+        <span class="k">Karyawan aktif</span>
+        <p class="big">8</p>
+        <p class="note">Belum ada yang bergabung bulan ini</p>
+        <p class="side-stat"><span>Arsip (Resign)<b>0 orang</b></span><span class="note">Data tetap tersimpan</span></p>
+      </div>
+      <div class="col">
+        <div class="pair" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 24px;margin-bottom:16px">
+          <div class="mini"><span class="k"><i class="sw c-good"></i>Data diri lengkap</span><b>2 <small>/ 8</small></b></div>
+          <div class="mini"><span class="k"><i class="sw c-warn"></i>Belum lengkap</span><b>6 <small>karyawan</small></b></div>
+        </div>
+        <div class="split" role="img" aria-label="2 karyawan data diri lengkap, 6 belum lengkap"><i class="c-good grow" style="--w:2;--i:2"></i><i class="c-warn grow" style="--w:6;--i:3"></i></div>
+        <p class="note" style="margin-top:10px">Perlu melengkapi data di Profil Saya</p>
+      </div>
+      <div class="col col-dist">
+        <h3>Distribusi Divisi</h3>
+        <ul class="dist">
+          <li><span>Sales</span><i class="grow" style="--p:.25;--i:3"></i><span>2 (25%)</span></li>
+          <li><span>Engineer</span><i class="grow" style="--p:.25;--i:4"></i><span>2 (25%)</span></li>
+          <li><span>Umum</span><i class="grow" style="--p:.25;--i:5"></i><span>2 (25%)</span></li>
+          <li><span>Direktur</span><i class="grow" style="--p:.25;--i:6"></i><span>2 (25%)</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <nav class="seg rise" style="--i:2" aria-label="Karyawan"><a class="on" href="#karyawan" aria-current="page">Karyawan Aktif <span class="cnt">8</span></a><a href="#karyawan">Arsip (Resign) <span class="cnt">0</span></a></nav>
+
+  <section class="block rise" style="--i:3" aria-label="Daftar karyawan aktif">
+    <div class="tools">
+      <div class="search"><svg class="ic"><use href="#i-search"/></svg><input class="input" type="search" placeholder="Cari nama, email, jabatan..." aria-label="Cari nama, email, jabatan"></div>
+      <select class="select w-pick" aria-label="Divisi"><option>Semua Divisi</option><option>Sales</option><option>Engineer</option><option>Umum</option><option>Direktur</option></select>
+    </div>
+    <div class="table-wrap">
+      <table class="tbl" style="--min:900px">
+        <thead><tr>
+          <th aria-sort="ascending"><span class="th">Karyawan &amp; Kontak<svg class="ic" style="opacity:1"><use href="#i-arrow-up"/></svg></span></th>
+          <th><span class="th">Divisi &amp; Jabatan<svg class="ic"><use href="#i-chevrons-up-down"/></svg></span></th>
+          <th><span class="th">Role<svg class="ic"><use href="#i-chevrons-up-down"/></svg></span></th>
+          <th><span class="th">Masa Kerja<svg class="ic"><use href="#i-chevrons-up-down"/></svg></span></th>
+          <th><span class="th">Data Diri<svg class="ic"><use href="#i-chevrons-up-down"/></svg></span></th>
+          <th><span class="th">Dokumen<svg class="ic"><use href="#i-chevrons-up-down"/></svg></span></th>
+          <th class="fit"><span class="sr">Aksi</span></th>
+        </tr></thead>
+        <tbody>
+          <tr><td><span class="who"><span class="av" aria-hidden="true">AP</span><span class="two"><b>Andi Pratama</b><small>andi@artha-mitra.local</small></span></span></td><td><span class="two"><b>Engineer</b><small>Engineer</small></span></td><td><span class="tag">Staf</span></td><td class="when">5 th 8 bln</td><td><span class="rate full" style="--p:1">Lengkap<i></i></span></td><td><span class="rate mid" style="--p:.78">78%<i></i></span></td><td class="fit"><a class="go" href="#karyawan" aria-label="Buka Andi Pratama"><svg class="ic"><use href="#i-chevron-right"/></svg></a></td></tr>
+          <tr><td><span class="who"><span class="av" aria-hidden="true">D</span><span class="two"><b>Darwin</b><small>darwin@artha-mitra.local</small></span></span></td><td><span class="two"><b>Kepala Divisi Sales</b><small>Sales</small></span></td><td><span class="tag">Approver</span></td><td class="when">10 th 7 bln</td><td><span class="rate mid" style="--p:.83">83%<i></i></span></td><td><span class="rate mid" style="--p:.56">56%<i></i></span></td><td class="fit"><a class="go" href="#karyawan" aria-label="Buka Darwin"><svg class="ic"><use href="#i-chevron-right"/></svg></a></td></tr>
+          <tr><td><span class="who"><span class="av" aria-hidden="true">D</span><span class="two"><b>Devi</b><small>devi@artha-mitra.local</small></span></span></td><td><span class="two"><b>Staf Umum</b><small>Umum</small></span></td><td><span class="tag">Staf</span></td><td class="when">7 th 1 bln</td><td><span class="rate full" style="--p:1">Lengkap<i></i></span></td><td><span class="rate full" style="--p:1">Lengkap<i></i></span></td><td class="fit"><a class="go" href="#karyawan" aria-label="Buka Devi"><svg class="ic"><use href="#i-chevron-right"/></svg></a></td></tr>
+          <tr><td><span class="who"><span class="av" aria-hidden="true">I</span><span class="two"><b>Ika</b><small>ika@artha-mitra.local</small></span></span></td><td><span class="two"><b>HR &amp; Finance</b><small>Umum</small></span></td><td><span class="tag">Admin</span></td><td class="when">8 th 3 bln</td><td><span class="rate low" style="--p:.42">42%<i></i></span></td><td><span class="rate low" style="--p:.33">33%<i></i></span></td><td class="fit"><a class="go" href="#karyawan" aria-label="Buka Ika"><svg class="ic"><use href="#i-chevron-right"/></svg></a></td></tr>
+          <tr><td><span class="who"><span class="av" aria-hidden="true">L</span><span class="two"><b>Leonard</b><small>leonard@artha-mitra.local</small></span></span></td><td><span class="two"><b>Direktur</b><small>Direktur</small></span></td><td><span class="tag">Admin</span></td><td class="when">16 th 9 bln</td><td><span class="rate low" style="--p:0">0%<i></i></span></td><td><span class="rate low" style="--p:0">0%<i></i></span></td><td class="fit"><a class="go" href="#karyawan" aria-label="Buka Leonard"><svg class="ic"><use href="#i-chevron-right"/></svg></a></td></tr>
+          <tr><td><span class="who"><span class="av" aria-hidden="true">R</span><span class="two"><b>Rudy</b><small>rudy@artha-mitra.local</small></span></span></td><td><span class="two"><b>Direktur</b><small>Direktur</small></span></td><td><span class="tag">Admin</span></td><td class="when">16 th 9 bln</td><td><span class="rate mid" style="--p:.58">58%<i></i></span></td><td><span class="rate low" style="--p:.11">11%<i></i></span></td><td class="fit"><a class="go" href="#karyawan" aria-label="Buka Rudy"><svg class="ic"><use href="#i-chevron-right"/></svg></a></td></tr>
+          <tr><td><span class="who"><span class="av" aria-hidden="true">SL</span><span class="two"><b>Sinta Lestari</b><small>sinta@artha-mitra.local</small></span></span></td><td><span class="two"><b>Account Manager</b><small>Sales</small></span></td><td><span class="tag">Staf</span></td><td class="when">3 th 3 bln</td><td><span class="rate low" style="--p:.25">25%<i></i></span></td><td><span class="rate low" style="--p:.22">22%<i></i></span></td><td class="fit"><a class="go" href="#karyawan" aria-label="Buka Sinta Lestari"><svg class="ic"><use href="#i-chevron-right"/></svg></a></td></tr>
+          <tr><td><span class="who"><span class="av" aria-hidden="true">Y</span><span class="two"><b>Yosep</b><small>yosep@artha-mitra.local</small></span></span></td><td><span class="two"><b>Kepala Divisi Engineer</b><small>Engineer</small></span></td><td><span class="tag">Approver</span></td><td class="when">11 th 9 bln</td><td><span class="rate mid" style="--p:.92">92%<i></i></span></td><td><span class="rate mid" style="--p:.67">67%<i></i></span></td><td class="fit"><a class="go" href="#karyawan" aria-label="Buka Yosep"><svg class="ic"><use href="#i-chevron-right"/></svg></a></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="foot">Menampilkan 1-8 dari 8 karyawan</p>
+  </section>
+</section>
+
+<!-- ======================= PROFIL SAYA: DATA DIRI ======================= -->
+<section class="view" data-view="profil" data-title="Profil Saya" hidden>
+  <div class="head-row rise" style="--i:0">
+    <div class="head">
+      <nav class="crumb" aria-label="Breadcrumb"><strong aria-current="page">Profil Saya</strong></nav>
+      <h1>Profil Saya</h1>
+      <p class="lede">Lengkapi dan perbarui data diri Anda. Data ini dipakai untuk administrasi kantor.</p>
+    </div>
+    <div class="head-acts"><a class="btn btn-line" href="#profil"><svg class="ic"><use href="#i-file-down"/></svg>Download Biodata (PDF)</a></div>
+  </div>
+  <nav class="seg rise" style="--i:1" aria-label="Profil Saya"><a class="on" href="#profil" aria-current="page">Data Diri</a><a href="#profil">Dokumen &amp; Keluarga</a><a href="#profil">Sertifikat &amp; Ijazah</a><a href="#profil">Aset Saya</a></nav>
+
+  <!-- SOROTAN: siapa pemilik profil + kelengkapan, satu ruas per isian -->
+  <section class="spot-shell rise" style="--i:2" aria-label="Kelengkapan data diri">
+    <div class="spot spot-profile">
+      <div class="col ident">
+        <span class="av-xl" aria-hidden="true">R</span>
+        <div class="two"><h2>Rudy</h2><p>Direktur</p><small>rudy@artha-mitra.local</small><span class="tags"><span class="tag">Admin</span></span></div>
+      </div>
+      <div class="col">
+        <div class="saldo-top"><span class="k">Kelengkapan Data Diri</span><p class="big" style="font-size:34px">58%</p></div>
+        <div class="meter-seg" role="progressbar" aria-label="Kelengkapan data diri" aria-valuemin="0" aria-valuemax="100" aria-valuenow="58">
+          <i class="on pop" style="--d:1"></i><i class="on pop" style="--d:2"></i><i class="on pop" style="--d:3"></i><i class="on pop" style="--d:4"></i><i class="on pop" style="--d:5"></i><i class="on pop" style="--d:6"></i><i class="on pop" style="--d:7"></i><i class="pop" style="--d:8"></i><i class="pop" style="--d:9"></i><i class="pop" style="--d:10"></i><i class="pop" style="--d:11"></i><i class="pop" style="--d:12"></i>
+        </div>
+        <p class="miss">Belum diisi: NPWP, BPJS Ketenagakerjaan, BPJS Kesehatan, Nama kontak darurat, No HP kontak darurat.</p>
+      </div>
+    </div>
+  </section>
+
+  <form class="settings rise" style="--i:3" action="#" onsubmit="return false" novalidate>
+    <section class="set" aria-labelledby="t-akun">
+      <div class="set-aside"><h2 id="t-akun">Akun &amp; Pekerjaan</h2><p>Bagian ini hanya bisa diisi &amp; diubah Admin. Hubungi Admin bila ada yang salah.</p></div>
+      <dl class="record">
+        <div><dt>Email login</dt><dd>rudy@artha-mitra.local</dd></div>
+        <div><dt>Role</dt><dd>Admin</dd></div>
+        <div><dt>Divisi</dt><dd>Direktur</dd></div>
+        <div><dt>Tanggal masuk</dt><dd>4 Januari 2010</dd></div>
+        <div><dt>Nama lengkap</dt><dd>Rudy</dd></div>
+        <div><dt>Jabatan</dt><dd>Direktur</dd></div>
+        <div><dt>NIP</dt><dd class="muted">Belum ada, diisi Admin</dd></div>
+        <div><dt>Level / grade</dt><dd class="muted">-</dd></div>
+      </dl>
+    </section>
+
+    <section class="set" aria-labelledby="t-dd">
+      <div class="set-aside"><h2 id="t-dd">Data Diri</h2><p>Sesuai KTP dan Kartu Keluarga.</p></div>
+      <div class="fgrid">
+        <div class="field"><label for="f-nik">NIK</label><input class="input mono" id="f-nik" inputmode="numeric" value="3273011403780002"></div>
+        <div class="field"><label for="f-kk">Nomor KK</label><input class="input mono" id="f-kk" inputmode="numeric" value="3273012209090014"></div>
+        <div class="field"><label for="f-tl">Tempat lahir</label><input class="input" id="f-tl" value="Bandung"></div>
+        <div class="field"><label for="f-tgl">Tanggal lahir</label><input class="input" id="f-tgl" type="date" value="1978-03-14"></div>
+        <div class="field"><label for="f-jk">Jenis kelamin</label><select class="select" id="f-jk"><option>Laki-laki</option><option>Perempuan</option></select></div>
+        <div class="field"><label for="f-sp">Status pernikahan <span class="req" aria-hidden="true">*</span></label><select class="select" id="f-sp"><option>Menikah</option><option>Belum menikah</option><option>Cerai</option></select></div>
+        <div class="field"><label for="f-hp">Nomor HP</label><input class="input mono" id="f-hp" type="tel" value="+6281220457731"></div>
+        <div class="field wide"><label for="f-al">Alamat</label><textarea class="textarea" id="f-al">Jl. Cisitu Indah III No. 12, Dago, Coblong, Kota Bandung</textarea></div>
+      </div>
+    </section>
+
+    <section class="set" aria-labelledby="t-pajak">
+      <div class="set-aside"><h2 id="t-pajak">Pajak &amp; BPJS</h2></div>
+      <div class="fgrid">
+        <div class="field wide"><label for="f-npwp">NPWP</label><input class="input mono" id="f-npwp" placeholder="15 atau 16 digit"></div>
+        <div class="field"><label for="f-tk">BPJS Ketenagakerjaan</label><input class="input mono" id="f-tk" placeholder="11 digit"></div>
+        <div class="field"><label for="f-ks">BPJS Kesehatan</label><input class="input mono" id="f-ks" placeholder="13 digit"></div>
+      </div>
+    </section>
+
+    <section class="set" aria-labelledby="t-darurat">
+      <div class="set-aside"><h2 id="t-darurat">Kontak Darurat</h2><p>Orang yang dihubungi bila terjadi keadaan darurat.</p></div>
+      <div class="fgrid">
+        <div class="field"><label for="f-kd">Nama</label><input class="input" id="f-kd"></div>
+        <div class="field"><label for="f-hub">Hubungan</label><input class="input" id="f-hub" placeholder="mis. Istri, Orang tua, Saudara"></div>
+        <div class="field"><label for="f-kdhp">Nomor HP</label><input class="input mono" id="f-kdhp" type="tel" placeholder="08xxxxxxxxxx"></div>
+      </div>
+    </section>
+
+    <div class="form-acts"><button class="btn btn-blue" type="submit">Simpan Data Diri</button></div>
+  </form>
+</section>
+
+</main>
+</div></div>
+</div>
+
+<!-- bukan bagian desain: lihat keadaan kosong pada tabel & sorotan Reimburse/Cuti -->
+<div class="lab" role="group" aria-label="Pilihan data prototipe">
+  <button type="button" aria-pressed="true" data-lab="full">Data contoh</button>
+  <button type="button" aria-pressed="false" data-lab="empty">Keadaan kosong</button>
+</div>
+
+<!-- SIMULASI: hanya untuk berpindah tampilan di prototipe. Bukan acuan perilaku. -->
+<script>
+(() => {
+  'use strict';
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const app = document.getElementById('app');
+  const main = document.getElementById('konten');
+  const views = $$('.view');
+  const calm = matchMedia('(prefers-reduced-motion: reduce)');
+  let introTimer;
+
+  const show = (name) => {
+    if (!views.some((v) => v.dataset.view === name)) name = 'reimburse';
+    views.forEach((v) => { v.hidden = v.dataset.view !== name; });
+    $$('[data-go]').forEach((a) => {
+      const on = a.dataset.go === name;
+      a.classList.toggle('on', on);
+      if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+    });
+    $$('.fold').forEach((f) => {
+      const btn = f.querySelector('.nav');
+      const has = !!f.querySelector('.subi.on');
+      btn.classList.toggle('cur', has);
+      if (has) { f.classList.add('open'); btn.setAttribute('aria-expanded', 'true'); }
+    });
+    const view = views.find((v) => v.dataset.view === name);
+    document.title = view.dataset.title + ' · Prototipe OA';
+    setDrawer(false);
+    window.scrollTo({ top: 0 });
+    if (!calm.matches) {
+      main.classList.remove('intro');
+      void main.offsetWidth;
+      main.classList.add('intro');
+      clearTimeout(introTimer);
+      introTimer = setTimeout(() => main.classList.remove('intro'), 1800);
+    }
+  };
+
+  const menuBtn = document.getElementById('menuBtn');
+  const setDrawer = (open) => {
+    if (open) app.dataset.nav = 'open'; else delete app.dataset.nav;
+    menuBtn.setAttribute('aria-expanded', String(open));
+  };
+  menuBtn.addEventListener('click', () => setDrawer(app.dataset.nav !== 'open'));
+  document.getElementById('scrim').addEventListener('click', () => setDrawer(false));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && app.dataset.nav === 'open') { setDrawer(false); menuBtn.focus(); } });
+
+  $$('.fold > .nav').forEach((btn) => btn.addEventListener('click', () => {
+    const f = btn.parentElement;
+    const open = !f.classList.contains('open');
+    f.classList.toggle('open', open);
+    btn.setAttribute('aria-expanded', String(open));
+  }));
+
+  // Pil status Reimburse: menyaring baris contoh menurut data-st.
+  $$('.chips').forEach((group) => group.addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    $$('.chip', group).forEach((c) => c.setAttribute('aria-pressed', String(c === chip)));
+    const table = document.querySelector('[data-rows="' + group.dataset.filter + '"]');
+    if (!table) return;
+    $$('tbody tr', table).forEach((tr) => { tr.hidden = chip.dataset.f !== 'all' && tr.dataset.st !== chip.dataset.f; });
+  }));
+
+  // Tombol Ya/Tidak.
+  $$('.seg.sm').forEach((seg) => seg.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    $$('button', seg).forEach((x) => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
+  }));
+
+  // Data contoh / keadaan kosong (juga lewat alamat ...html?kosong#reimburse).
+  const setData = (mode) => {
+    $$('.lab button').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.lab === mode)));
+    document.body.classList.toggle('is-empty', mode === 'empty');
+  };
+  document.querySelector('.lab').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-lab]');
+    if (b) setData(b.dataset.lab);
+  });
+  if (new URLSearchParams(location.search).has('kosong')) setData('empty');
+
+  // Jam di panel absensi (tampilan saja).
+  const fmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+  const tick = () => {
+    const t = fmt.format(new Date());
+    $$('[data-clock="hm"]').forEach((el) => { el.textContent = t.slice(0, 5); });
+    $$('[data-clock="ss"]').forEach((el) => { el.textContent = t.slice(5); });
+  };
+  tick();
+  setInterval(tick, 1000);
+
+  window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+  show(location.hash.slice(1) || 'reimburse');
+})();
+</script>
+</body>
+</html>

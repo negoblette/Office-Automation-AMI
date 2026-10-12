@@ -1,7 +1,7 @@
 "use client";
 
 // Kelompok field data karyawan, dipakai form Admin (/karyawan) dan Profil Saya (/profil).
-import { DateInputField, FormSection, SelectInputField, TextareaField, TextInputField } from "@/components/form/fields";
+import { DateInputField, FormSection, type FormSectionLayout, SelectInputField, TextareaField, TextInputField } from "@/components/form/fields";
 import { toJakartaIsoDate } from "@/lib/format";
 import { DIVISION_LABEL, GENDER_LABEL, MARITAL_STATUS_LABEL, ROLE_LABEL, toOptions } from "@/lib/labels";
 
@@ -35,11 +35,11 @@ export function EmployeeAccountSection({ mode }: { mode: "create" | "edit" }) {
   );
 }
 
-/** Data diri + pajak & BPJS — boleh diisi staf sendiri (EMP-06). */
-export function EmployeePersonalSections() {
+/** Data diri + pajak & BPJS — boleh diisi staf sendiri (EMP-06). `layout` diteruskan ke tiap FormSection. */
+export function EmployeePersonalSections({ layout }: { layout?: FormSectionLayout }) {
   return (
     <>
-      <FormSection title="Data Diri" description="Sesuai KTP dan Kartu Keluarga.">
+      <FormSection layout={layout} title="Data Diri" description="Sesuai KTP dan Kartu Keluarga.">
         <TextInputField name="nik" label="NIK" inputMode="numeric" placeholder="16 digit" />
         <TextInputField name="kkNo" label="Nomor KK" inputMode="numeric" placeholder="16 digit" />
         <TextInputField name="birthPlace" label="Tempat lahir" />
@@ -49,13 +49,13 @@ export function EmployeePersonalSections() {
         <TextInputField name="phone" label="Nomor HP" inputMode="tel" placeholder="08xxxxxxxxxx" />
         <TextareaField name="address" label="Alamat" className="sm:col-span-2" />
       </FormSection>
-      <FormSection title="Pajak & BPJS">
+      <FormSection layout={layout} title="Pajak & BPJS">
         <TextInputField name="npwp" label="NPWP" inputMode="numeric" placeholder="15 atau 16 digit" />
         <div className="hidden sm:block" />
         <TextInputField name="bpjsTkNo" label="BPJS Ketenagakerjaan" inputMode="numeric" placeholder="11 digit" />
         <TextInputField name="bpjsKesNo" label="BPJS Kesehatan" inputMode="numeric" placeholder="13 digit" />
       </FormSection>
-      <FormSection title="Kontak Darurat" description="Orang yang dihubungi bila terjadi keadaan darurat.">
+      <FormSection layout={layout} title="Kontak Darurat" description="Orang yang dihubungi bila terjadi keadaan darurat.">
         <TextInputField name="emergencyName" label="Nama" />
         <TextInputField name="emergencyRelation" label="Hubungan" placeholder="mis. Istri, Orang tua, Saudara" />
         <TextInputField name="emergencyPhone" label="Nomor HP" inputMode="tel" placeholder="08xxxxxxxxxx" />
