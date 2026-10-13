@@ -498,3 +498,8 @@ diingatkan); Cash → Personal, CC → Corporate; jenjang ijazah SMA/SMK, D1–D
 - [x] Perubahan data yang ditolak: form Data Diri terisi usulan yang ditolak + alasan, tombol "Ajukan Ulang Perubahan"; diajukan ulang dengan nomor yang sama, approval mulai lagi dari L1 (keluarga / dokumen / sertifikat: ubah lagi data yang sama = revisi)
 - [x] Alur approval yang belum diputuskan tampil "Menunggu approval Admin / Approver" (bukan nama); yang sudah diputuskan tetap menampilkan siapa yang menyetujui / menolak
 - **Cek 15.10:** [x] 413 test lulus · [x] uji di browser (Andi): tambah sertifikat Level 2 + Permanent tersimpan · [x] `/approval` (Ika): tombol Lihat perubahan, label peran
+
+### 15.11 Lonceng notifikasi (2026-10-13) ✅
+- [x] Ikon lonceng di topbar (semua halaman) dengan angka merah: dokumen/sertifikat yang akan/sudah habis masa berlakunya (karyawan: miliknya; Admin: semua), pengajuan yang menunggu persetujuan user (Approver/Admin), pengajuan milik user yang ditolak 30 hari terakhir. Klik → langsung ke halaman terkait
+- [x] Tanpa tabel baru — dihitung dari data terkini (`services/notifications.ts`); sertifikat yang dihapus pemohon tidak dihitung sebagai "ditolak"
+- **Cek 15.11:** [x] 1 DB test · [x] 414 test lulus · [x] smoke Andi / Yosep / Ika

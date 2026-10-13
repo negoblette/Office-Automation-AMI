@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { canApprove } from "@/lib/roles";
 import { countPendingApprovals } from "@/lib/services/approval-queries";
 import { listDivisions } from "@/lib/services/division";
+import { getNotifications } from "@/lib/services/notifications";
 import { DivisionsProvider } from "@/components/shared/divisions-context";
 import { cn } from "@/lib/utils";
 
@@ -33,7 +34,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
       <AppSidebar role={user.role} badges={badges} />
       <div className="flex min-h-screen flex-1 flex-col p-2 lg:py-3 lg:pr-3 lg:pl-[264px]">
         <div className="flex min-w-0 flex-1 flex-col overflow-clip rounded-[22px] bg-sheet shadow-(--elev-sheet) lg:rounded-[28px]">
-          <AppTopbar user={{ name: user.name, role: user.role }} badges={badges} />
+          <AppTopbar user={{ name: user.name, role: user.role }} badges={badges} notifications={await getNotifications(prisma, user)} />
           <main id="konten" tabIndex={-1} className="mx-auto w-full max-w-[1200px] flex-1 px-[clamp(18px,3vw,36px)] pt-3.5 pb-12 outline-none">
             <DivisionsProvider divisions={divisions}>{children}</DivisionsProvider>
           </main>

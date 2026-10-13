@@ -7,10 +7,14 @@ import { MobileNav } from "./mobile-nav";
 import type { AppRole } from "./nav-config";
 import type { NavBadges } from "./sidebar-nav";
 import { SubmitRequestMenu } from "./submit-request-menu";
+import { NotificationBell } from "./notification-bell";
+import type { NotificationItem } from "@/lib/services/notifications";
 
 type AppTopbarProps = {
   user: { name: string; role: AppRole };
   badges?: NavBadges;
+  /** Isi lonceng notifikasi (2026-10-13). */
+  notifications?: NotificationItem[];
 };
 
 const ROLE_LABELS: Record<AppRole, string> = {
@@ -20,7 +24,7 @@ const ROLE_LABELS: Record<AppRole, string> = {
 };
 
 /** Topbar di dalam lembar putih (tetap sticky). */
-export function AppTopbar({ user, badges }: AppTopbarProps) {
+export function AppTopbar({ user, badges, notifications = [] }: AppTopbarProps) {
   return (
     <header className="sticky top-0 z-20 shrink-0 bg-sheet/85 backdrop-blur">
       <div className="mx-auto flex min-h-16 w-full max-w-[1200px] items-center gap-3 px-[clamp(18px,3vw,36px)] py-2.5 sm:gap-3.5">
@@ -30,6 +34,7 @@ export function AppTopbar({ user, badges }: AppTopbarProps) {
 
         <div className="ml-auto flex items-center gap-2 sm:gap-3.5">
           <SubmitRequestMenu />
+          <NotificationBell items={notifications} />
 
           <div className="hidden h-7 w-px bg-line sm:block" aria-hidden />
 
