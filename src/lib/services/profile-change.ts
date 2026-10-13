@@ -8,7 +8,7 @@ import { DOCUMENT_TYPE_LABEL, FAMILY_RELATION_LABEL, GENDER_LABEL, MARITAL_STATU
 import type { EmployeeSelfInput } from "@/lib/validators/employee";
 import type { FamilyMemberInput } from "@/lib/validators/family";
 import type { Actor } from "./access";
-import { type ApprovalNotification, buildApproval, rejectionsOf } from "./approval";
+import { type ApprovalNotification, buildApproval, rejectionsOf, restartApproval } from "./approval";
 import { logAudit } from "./audit";
 import type { NewDocument } from "./document";
 import { ServiceError } from "./errors";
@@ -144,6 +144,29 @@ export async function requestProfileChange(db: PrismaClient, actor: Actor, input
         where: { employeeId: input.employeeId, kind: input.kind, targetId: input.targetId ?? null, status: "PENDING" },
       });
       if (duplicate) throw new ServiceError(`Masih ada perubahan serupa (${duplicate.number}) yang menunggu persetujuan`);
+
+      // Revisi (2026-10-13): perubahan terakhir untuk data yang sama ditolak → isi direvisi & diajukan ulang dengan
+      // nomor yang sama; approval mulai lagi dari L1.
+      const latest = await tx.profileChangeRequest.findFirst({
+        where: { employeeId: input.employeeId, kind: input.kind, targetId: input.targetId ?? null },
+        orderBy: { createdAt: "desc" },
+      });
+      if (latest?.status === "REJECTED") {
+        const revised = await tx.profileChangeRequest.update({
+          where: { id: latest.id },
+          data: {
+            payload: input.payload as Prisma.InputJsonValue,
+            summary: lines,
+            fileKey: fileKey ?? null,
+            fileName: fileName ?? null,
+            status: "PENDING",
+            requestedById: actor.id,
+          },
+        });
+        const approval = await restartApproval(tx, { module: "PROFILE_CHANGE", entityId: revised.id, entityNumber: revised.number, requesterId: actor.id });
+        await logAudit(tx, { actorId: actor.id, action: "UPDATE", entity: "ProfileChangeRequest", entityId: revised.id, before: latest, after: revised });
+        return { changeId: revised.id, number: revised.number, status: approval.status, notifications: approval.notifications };
+      }
     }
 
     const number = await nextDocumentNumber(tx, "PRF");
@@ -203,6 +226,18 @@ export async function listProfileChanges(db: PrismaClient, employeeId: string): 
 
 /** Ringkasan untuk antrian approval. */
 export function profileChangeSummary(change: { kind: ProfileChangeKind; summary: string[]; employee: { fullName: string } }) {
-  return `${PROFILE_CHANGE_KIND_LABEL[change.kind]} · ${change.employee.fullName} — ${change.summary.join("; ")}`;
+  // Rincian ditampilkan sebagai tabel pratinjau ("Lihat perubahan"), bukan teks panjang (2026-10-13).
+  return `${PROFILE_CHANGE_KIND_LABEL[change.kind]} · ${change.employee.fullName}`;
 }
 
+
+/**
+ * Data diri yang sedang direvisi (2026-10-13): bila perubahan data diri terakhir DITOLAK, form diisi usulan
+ * tersebut + alasan penolakan, supaya karyawan cukup memperbaiki lalu mengajukan ulang.
+ */
+export async function rejectedSelfDataDraft(db: PrismaClient, employeeId: string) {
+  const latest = await db.profileChangeRequest.findFirst({ where: { employeeId, kind: "SELF_DATA" }, orderBy: { createdAt: "desc" } });
+  if (latest?.status !== "REJECTED") return null;
+  const rejection = (await rejectionsOf(db, "PROFILE_CHANGE", [latest.id])).get(latest.id) ?? null;
+  return { number: latest.number, payload: latest.payload as Record<string, unknown>, rejection };
+}

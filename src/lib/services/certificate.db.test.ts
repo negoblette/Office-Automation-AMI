@@ -53,6 +53,11 @@ describe("certificateSchema", () => {
     expect(issues({ ...base, level: "1", endDate: "2023-12-31" })).toEqual([["endDate", "Tanggal berakhir tidak boleh sebelum tanggal diambil"]]);
     expect(certificateSchema.parse({ ...base, level: "3", endDate: "2027-01-01", noExpiry: true })).toMatchObject({ level: 3, endDate: null, degree: null });
     expect(certificateSchema.parse({ ...base, level: "1", endDate: "2027-01-01" })).toMatchObject({ level: 1, endDate: "2027-01-01" });
+    // Bug 2026-10-13: hasil parse dikirim ulang ke server dan di-parse lagi → harus tetap lolos.
+    for (const raw of [{ ...base, level: "2", noExpiry: true }, { ...base, level: "3", endDate: "2027-01-01" }]) {
+      const once = certificateSchema.parse(raw);
+      expect(certificateSchema.parse(once)).toEqual(once);
+    }
   });
 
   it("ijazah (2026-10-12): gelar, lembaga, jenjang, tanggal mulai & lulus; tanpa masa berlaku", () => {

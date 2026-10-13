@@ -7,6 +7,7 @@ import { EDUCATION_LEVEL_LABEL } from "@/lib/labels";
 import { canRevoke } from "./approval";
 import { appealSummary } from "./attendance-appeal";
 import { profileChangeSummary } from "./profile-change";
+import { approverRoleLabel } from "@/components/shared/approval-status";
 
 /** Jumlah pengajuan yang sedang menunggu persetujuan user ini (step PENDING). */
 export function countPendingApprovals(db: PrismaClient, userId: string): Promise<number> {
@@ -41,6 +42,8 @@ export type ApprovalRow = {
   summary: string | null;
   /** File pendukung (mis. scan sertifikat) — approver boleh mengunduhnya. */
   file: { key: string; name: string } | null;
+  /** Perubahan data karyawan: baris "Data: sebelum → sesudah" untuk pratinjau (2026-10-13). */
+  changeLines: string[] | null;
 };
 
 const include = {
@@ -56,9 +59,10 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
   const userIds = new Set(requests.flatMap((r) => r.steps.flatMap((s) => [...s.approverIds, ...(s.actedById ? [s.actedById] : [])])));
   const users = await db.user.findMany({
     where: { id: { in: [...userIds] } },
-    select: { id: true, email: true, employee: { select: { fullName: true } } },
+    select: { id: true, email: true, role: true, employee: { select: { fullName: true } } },
   });
   const nameOf = new Map(users.map((user) => [user.id, user.employee?.fullName ?? user.email]));
+  const roleOf = new Map(users.map((user) => [user.id, user.role]));
   const healthIds = requests.filter((r) => r.module === "HEALTH").map((r) => r.entityId);
   const claims = healthIds.length
     ? await db.healthClaim.findMany({ where: { id: { in: healthIds } }, select: { id: true, amount: true } })
@@ -95,6 +99,7 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
     steps: request.steps.map((step) => ({
       level: step.level,
       approvers: step.approverIds.map((id) => nameOf.get(id) ?? "—"),
+      approverLabel: approverRoleLabel(step.approverIds.map((id) => roleOf.get(id))),
       status: step.status,
       actedBy: step.actedById ? (nameOf.get(step.actedById) ?? null) : null,
       actedAt: step.actedAt?.toISOString() ?? null,
@@ -108,12 +113,16 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
     ...(() => {
       const change = changeOf.get(request.entityId);
       if (request.module === "PROFILE_CHANGE" && change) {
-        return { summary: profileChangeSummary(change), file: change.fileKey ? { key: change.fileKey, name: change.fileName ?? "Dokumen" } : null };
+        return {
+          summary: profileChangeSummary(change),
+          file: change.fileKey ? { key: change.fileKey, name: change.fileName ?? "Dokumen" } : null,
+          changeLines: change.summary,
+        };
       }
       const appeal = appealOf.get(request.entityId);
-      if (request.module === "ATTENDANCE_APPEAL" && appeal) return { summary: appealSummary(appeal), file: null };
+      if (request.module === "ATTENDANCE_APPEAL" && appeal) return { summary: appealSummary(appeal), file: null, changeLines: null };
       const c = certOf.get(request.entityId);
-      if (request.module !== "CERTIFICATE" || !c) return { summary: null, file: null };
+      if (request.module !== "CERTIFICATE" || !c) return { summary: null, file: null, changeLines: null };
       const parts = [
         `${c.name} (${c.employee.fullName})`,
         c.issuer && `Penerbit ${c.issuer}`,
@@ -127,7 +136,7 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
             ? `Berlaku s/d ${formatDate(c.endDate, "short")}`
             : "Permanen",
       ];
-      return { summary: parts.filter(Boolean).join(" · "), file: c.fileKey ? { key: c.fileKey, name: c.name } : null };
+      return { summary: parts.filter(Boolean).join(" · "), file: c.fileKey ? { key: c.fileKey, name: c.name } : null, changeLines: null };
     })(),
   }));
 }

@@ -4,7 +4,8 @@ import type { Actor } from "@/lib/services/access";
 import { approveRequest, rejectRequest } from "@/lib/services/approval";
 import { addCertificate } from "@/lib/services/certificate";
 import { canAccessFile, prismaFileAccessRepository } from "@/lib/services/file-access";
-import { listProfileChanges, needsProfileApproval, requestProfileChange } from "@/lib/services/profile-change";
+import { listProfileChanges, needsProfileApproval, rejectedSelfDataDraft, requestProfileChange } from "@/lib/services/profile-change";
+import { parseChangeLines } from "@/lib/profile-change-lines";
 import { certificateSchema } from "@/lib/validators/certificate";
 import { employeeSelfSchema } from "@/lib/validators/employee";
 import { familyMemberSchema } from "@/lib/validators/family";
@@ -98,5 +99,32 @@ describe("perubahan data karyawan lewat Ci Ika (2026-10-12)", () => {
     expect((await testDb.certificate.findUniqueOrThrow({ where: { id: certificate.id } })).deletedAt).toBeNull();
     await approveRequest(testDb, { requestId: (await requestOf(change.changeId)).id, actorId: u.ika });
     expect((await testDb.certificate.findUniqueOrThrow({ where: { id: certificate.id } })).deletedAt).not.toBeNull();
+  });
+
+  it("2026-10-13: data diri ditolak → form berisi usulan + alasan; ajukan ulang = nomor sama, mulai lagi dari L1", async () => {
+    const first = await requestProfileChange(testDb, actors.andi, { kind: "SELF_DATA", employeeId: actors.andi.employeeId!, payload: self() });
+    await rejectRequest(testDb, { requestId: (await requestOf(first.changeId)).id, actorId: u.ika, reason: "NIK tidak sesuai KTP" });
+
+    const draft = await rejectedSelfDataDraft(testDb, actors.andi.employeeId!);
+    expect(draft).toMatchObject({ number: first.number, payload: { nik: "3171012345678901", address: "Jl. Melati 1" }, rejection: { reason: "NIK tidak sesuai KTP" } });
+
+    const again = await requestProfileChange(testDb, actors.andi, { kind: "SELF_DATA", employeeId: actors.andi.employeeId!, payload: self({ nik: "3171012345678909" }) });
+    expect(again).toMatchObject({ changeId: first.changeId, number: first.number, status: "PENDING" });
+    expect(again.notifications[0].recipientIds).toEqual([u.ika]);
+    expect(await testDb.profileChangeRequest.count()).toBe(1);
+    expect(await rejectedSelfDataDraft(testDb, actors.andi.employeeId!)).toBeNull();
+  });
+});
+
+describe("pratinjau perubahan (2026-10-13)", () => {
+  it("baris ringkasan → tabel Data | Sebelum | Sesudah", () => {
+    expect(parseChangeLines(["Suami / Istri Rina", "NIK: — → 3171012345678901", "Alamat: Jl. A: blok 2 → Jl. B", "Suami / Istri: Rina"])).toEqual({
+      context: ["Suami / Istri Rina"],
+      rows: [
+        { label: "NIK", before: "—", after: "3171012345678901" },
+        { label: "Alamat", before: "Jl. A: blok 2", after: "Jl. B" },
+        { label: "Suami / Istri", before: "—", after: "Rina" },
+      ],
+    });
   });
 });

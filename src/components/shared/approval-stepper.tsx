@@ -8,6 +8,8 @@ export type ApprovalStepView = {
   level: number;
   /** Nama approver; lebih dari satu = salah satu cukup. */
   approvers: string[];
+  /** Peran approver (Admin / Approver) — ditampilkan selama level belum diputuskan (2026-10-13). */
+  approverLabel?: string;
   status: StepStatus;
   actedBy?: string | null;
   actedAt?: Date | string | null;
@@ -64,14 +66,17 @@ export function ApprovalStepper({ steps, requestStatus, compact = false, classNa
             </span>
             <div className={cn("min-w-0", compact ? "text-xs" : "text-sm")}>
               <p className={cn("font-medium", step.status === "SKIPPED" && "text-muted-foreground line-through")}>
-                L{step.level} · {step.approvers.join(" / ")}
+                L{step.level} ·{" "}
+                {step.status === "PENDING" || step.status === "WAITING"
+                  ? `Menunggu approval ${step.approverLabel ?? "approver"}`
+                  : step.status === "SKIPPED"
+                    ? "Dilewati"
+                    : (step.actedBy ?? step.approverLabel ?? "approver")}
               </p>
               {!compact && (
                 <p className="text-xs text-muted-foreground">
                   {STEP_STATUS_LABEL[step.status]}
-                  {step.status === "APPROVED" && step.actedBy && ` oleh ${step.actedBy}`}
                   {step.status === "APPROVED" && step.actedAt && ` · ${formatDateTime(step.actedAt)}`}
-                  {step.status === "REJECTED" && step.actedBy && ` oleh ${step.actedBy}`}
                 </p>
               )}
               {step.status === "REJECTED" && step.note && <p className={cn("font-medium text-danger", compact ? "text-xs" : "text-sm")}>Alasan: {step.note}</p>}

@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { LinkTabs } from "@/components/shared/link-tabs";
 import { PageHeader } from "@/components/shared/page-header";
 import { requestStatusBadge } from "@/components/shared/approval-status";
+import { ChangePreviewButton } from "@/components/shared/change-preview";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
@@ -76,7 +77,7 @@ function ProfileChangesPanel({ changes }: { changes: ProfileChangeView[] }) {
   return (
     <section className="rounded-2xl border border-warning/40 bg-warning-soft/40 p-4">
       <h2 className="text-sm font-semibold">
-        Perubahan data{pending ? ` — ${pending} menunggu persetujuan Ci Ika` : ""}
+        Perubahan data{pending ? ` — ${pending} menunggu approval Admin` : ""}
       </h2>
       <p className="mb-3 text-xs text-muted-foreground">Data di halaman ini baru berubah setelah disetujui. Perubahan yang ditolak bisa diubah lalu diajukan lagi.</p>
       <ul className="flex flex-col gap-2">
@@ -91,14 +92,21 @@ function ProfileChangesPanel({ changes }: { changes: ProfileChangeView[] }) {
                   {c.number} · {formatDateTime(c.createdAt)}
                 </span>
               </div>
-              <ul className="mt-1 list-disc pl-5 text-xs text-muted-foreground">
-                {c.summary.map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
+              <div className="mt-2">
+                <ChangePreviewButton title={`${c.number} · ${c.kindLabel}`} lines={c.summary} />
+              </div>
               {c.rejection && (
                 <p className="mt-1 text-xs font-medium text-danger">
                   Ditolak {c.rejection.by}: {c.rejection.reason}
+                  {c.kind === "SELF_DATA" && (
+                    <>
+                      {" "}
+                      <Link href="/profil" className="underline">
+                        Revisi &amp; ajukan ulang
+                      </Link>
+                    </>
+                  )}
+                  {c.kind !== "SELF_DATA" && " — ubah lagi datanya untuk mengajukan revisi."}
                 </p>
               )}
             </li>

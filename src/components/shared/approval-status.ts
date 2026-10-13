@@ -1,5 +1,5 @@
 // Label & warna status pengajuan/approval — satu sumber untuk semua modul (URD RMB-09).
-import type { RequestStatus, StepStatus } from "@/generated/prisma/enums";
+import type { RequestStatus, Role, StepStatus } from "@/generated/prisma/enums";
 import type { StatusVariant } from "./status-badge";
 
 /**
@@ -29,3 +29,14 @@ export const STEP_STATUS_LABEL: Record<StepStatus, string> = {
   SKIPPED: "Dilewati",
   REJECTED: "Ditolak",
 };
+
+/**
+ * Peran approver sebuah level (2026-10-13): yang ditampilkan selama level belum diputuskan, menggantikan
+ * nama orang — "Admin", "Approver", atau "Approver / Admin".
+ */
+export function approverRoleLabel(roles: (Role | null | undefined)[]): string {
+  const set = new Set(roles.filter(Boolean));
+  if (set.size === 1 && set.has("ADMIN")) return "Admin";
+  if (set.size === 1 && set.has("APPROVER")) return "Approver";
+  return "Approver / Admin";
+}

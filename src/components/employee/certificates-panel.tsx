@@ -52,7 +52,7 @@ export function CertificatesPanel({
         <div className="space-y-1">
           <h2 className="text-base font-semibold">Sertifikat & Ijazah</h2>
           <p className="text-sm text-muted-foreground">
-            Sertifikat baru diverifikasi Ci Ika. Status &ldquo;Akan kadaluarsa&rdquo; muncul 30 hari sebelum masa berlaku habis.
+            Sertifikat baru diverifikasi Admin. Status &ldquo;Akan kadaluarsa&rdquo; muncul 30 hari sebelum masa berlaku habis.
           </p>
         </div>
         {canEdit && <CertificateDialog employeeId={employeeId} />}
@@ -97,7 +97,7 @@ function CertificateRow({ employeeId, certificate, canEdit }: { employeeId: stri
             </StatusBadge>
           ) : certificate.verification === "PENDING" ? (
             <StatusBadge variant="warning" dot={false}>
-              Menunggu verifikasi Ci Ika
+              Menunggu verifikasi Admin
             </StatusBadge>
           ) : (
             <StatusBadge variant="danger" dot={false}>
@@ -187,15 +187,18 @@ function CertificateDialog({ employeeId, certificate }: { employeeId: string; ce
   const type = useWatch({ control: form.control, name: "type" });
   const noExpiry = useWatch({ control: form.control, name: "noExpiry" });
 
-  const onSubmit = form.handleSubmit((values) =>
-    submit(
+  // Kirim isian ASLI (bukan hasil transform schema): server mem-parse ulang dengan schema yang sama, dan hasil
+  // transform (level angka, tanpa `noExpiry`) tidak lolos parse kedua → "Level tidak valid" (bug 2026-10-13).
+  const onSubmit = form.handleSubmit(() => {
+    const values = form.getValues();
+    return submit(
       () => (certificate ? updateCertificateAction(certificate.id, values) : addCertificateAction(employeeId, values)),
       () => {
         setOpen(false);
         router.refresh();
       },
-    ),
-  );
+    );
+  });
 
   return (
     <Dialog

@@ -17,7 +17,8 @@ export const certificateSchema = z
     type: z.enum(CertificateType, { error: "Jenis wajib dipilih" }),
     name: textSchema("Nama / gelar", { min: 2, max: 150 }),
     issuer: optionalField(textSchema("Penerbit / lembaga", { max: 150 })),
-    level: optionalField(z.enum(CERTIFICATE_LEVELS, { error: "Level tidak valid" })),
+    // Terima "1" (form) maupun 1 (hasil parse sebelumnya) — schema aman di-parse ulang di server.
+    level: optionalField(z.union([z.enum(CERTIFICATE_LEVELS), z.number().int().min(1).max(3).transform((n) => String(n) as (typeof CERTIFICATE_LEVELS)[number])], { error: "Level tidak valid" })),
     degree: optionalField(z.enum(EducationLevel, { error: "Jenjang tidak valid" })),
     startDate: isoDateSchema,
     endDate: optionalField(isoDateSchema),
@@ -48,6 +49,7 @@ export const certificateSchema = z
       degree: professional ? null : v.degree,
       startDate: v.startDate,
       endDate: professional && !v.noExpiry ? v.endDate : null,
+      noExpiry: professional && v.noExpiry,
       graduationDate: professional ? null : v.graduationDate,
       fileKey: v.fileKey,
     };

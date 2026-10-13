@@ -492,3 +492,9 @@ diingatkan); Cash → Personal, CC → Corporate; jenjang ijazah SMA/SMK, D1–D
 - [x] (15) Maksud user: walau login sebagai Admin, fitur Admin di **Profil Saya** tetap terkunci. Perbaikan: Admin mendapat tautan **"Ubah Akun & Pekerjaan"** (ke `/karyawan/[id]/edit`) dan bisa **menambah / mengubah / menghapus Inventory Kantor** miliknya
 - [x] "Mode Admin" (konfirmasi ulang password) yang sempat dibuat **dihapus** sesuai permintaan user
 - **Cek 15.9:** [x] 411 test lulus · [x] smoke Ika: `/profil` ada tautan ubah, `/profil/aset` ada tombol Tambah Inventory, halaman Admin tanpa kunci
+### 15.10 Perbaikan setelah uji user (2026-10-13) ✅
+- [x] Bug: simpan sertifikat dengan Level → "Level tidak valid" (form mengirim hasil transform schema; server mem-parse ulang). Form kini mengirim isian asli & schema aman di-parse dua kali (+ test). Ini juga yang membuat revisi sertifikat gagal
+- [x] Antrian approval perubahan data: ringkas ("Ubah data diri · Yosep") + tombol **Lihat perubahan (n)** → tabel Data | Sebelum | Sesudah (juga di panel Profil Saya)
+- [x] Perubahan data yang ditolak: form Data Diri terisi usulan yang ditolak + alasan, tombol "Ajukan Ulang Perubahan"; diajukan ulang dengan nomor yang sama, approval mulai lagi dari L1 (keluarga / dokumen / sertifikat: ubah lagi data yang sama = revisi)
+- [x] Alur approval yang belum diputuskan tampil "Menunggu approval Admin / Approver" (bukan nama); yang sudah diputuskan tetap menampilkan siapa yang menyetujui / menolak
+- **Cek 15.10:** [x] 413 test lulus · [x] uji di browser (Andi): tambah sertifikat Level 2 + Permanent tersimpan · [x] `/approval` (Ika): tombol Lihat perubahan, label peran

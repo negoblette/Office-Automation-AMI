@@ -6,6 +6,7 @@ import { serializeMoney, toJakartaIsoDate } from "@/lib/format";
 import { listCorrections } from "./approval-correction";
 import { projectLabel } from "@/lib/labels";
 import { nextProjectCode } from "./project-queries";
+import { approverRoleLabel } from "@/components/shared/approval-status";
 
 const listInclude = {
   employee: { select: { fullName: true, position: true } },
@@ -94,13 +95,15 @@ export async function getReimbursementDetail(db: PrismaClient, reimbursementId: 
   const userIds = request?.steps.flatMap((step) => [...step.approverIds, ...(step.actedById ? [step.actedById] : [])]) ?? [];
   const users = await db.user.findMany({
     where: { id: { in: userIds } },
-    select: { id: true, email: true, employee: { select: { fullName: true } } },
+    select: { id: true, email: true, role: true, employee: { select: { fullName: true } } },
   });
   const nameOf = new Map(users.map((user) => [user.id, user.employee?.fullName ?? user.email]));
+  const roleOf = new Map(users.map((user) => [user.id, user.role]));
   const steps: ApprovalStepView[] =
     request?.steps.map((step) => ({
       level: step.level,
       approvers: step.approverIds.map((id) => nameOf.get(id) ?? "—"),
+      approverLabel: approverRoleLabel(step.approverIds.map((id) => roleOf.get(id))),
       status: step.status,
       actedBy: step.actedById ? (nameOf.get(step.actedById) ?? null) : null,
       actedAt: step.actedAt?.toISOString() ?? null,
