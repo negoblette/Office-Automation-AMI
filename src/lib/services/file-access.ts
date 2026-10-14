@@ -34,7 +34,7 @@ function mimeOf(key: string): string {
 }
 
 /** Cukup `prisma` atau `tx` dari `$transaction`. */
-export type FileAccessDb = Pick<PrismaClient, "document" | "certificate" | "reimbursementItem" | "healthClaim" | "approvalRequest" | "profileChangeRequest">;
+export type FileAccessDb = Pick<PrismaClient, "document" | "certificate" | "reimbursementItem" | "healthClaim" | "approvalRequest" | "profileChangeRequest" | "attendanceAppeal">;
 
 export function prismaFileAccessRepository(db: FileAccessDb): FileAccessRepository {
   return {
@@ -82,6 +82,16 @@ export function prismaFileAccessRepository(db: FileAccessDb): FileAccessReposito
           approverIds: request?.steps.flatMap((s) => s.approverIds) ?? [],
           pendingChange: true,
         };
+      }
+
+      // Bukti surat sakit appeal absensi (2026-10-14): pemilik & approver appeal.
+      const appeal = await db.attendanceAppeal.findFirst({ where: { fileKey: key }, select: { id: true, employeeId: true, fileName: true } });
+      if (appeal) {
+        const request = await db.approvalRequest.findUnique({
+          where: { module_entityId: { module: "ATTENDANCE_APPEAL", entityId: appeal.id } },
+          select: { steps: { select: { approverIds: true } } },
+        });
+        return { employeeId: appeal.employeeId, fileName: appeal.fileName ?? key, mimeType: mimeOf(key), approverIds: request?.steps.flatMap((s) => s.approverIds) ?? [] };
       }
 
       const receipt = await db.reimbursementItem.findFirst({

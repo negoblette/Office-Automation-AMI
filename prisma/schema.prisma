@@ -840,9 +840,14 @@ model AttendanceAppeal {
   number     String        @unique // APL/YYYY/MM/NNNN
   employeeId String
   employee   Employee      @relation(fields: [employeeId], references: [id])
-  date       DateTime      @db.Date
+  date       DateTime      @db.Date // tanggal mulai
+  /// Tanggal akhir bila appeal beberapa hari berturut-turut (2026-10-14); null = satu hari.
+  endDate    DateTime?     @db.Date
   reason     AppealReason
   note       String
+  /// Bukti surat keterangan sakit (opsional, PDF, 2026-10-14) — bisa dibuka approver.
+  fileKey    String?
+  fileName   String?
   status     RequestStatus @default(PENDING)
   approvedAt DateTime?
   createdAt  DateTime      @default(now())

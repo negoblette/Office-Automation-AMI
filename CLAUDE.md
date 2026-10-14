@@ -242,7 +242,7 @@ berjalan tidak bisa dinonaktifkan, diturunkan ke Staf, atau di-resign (`assertCa
 **Absensi:** clock in / clock out oleh tiap karyawan, jam dari server (WIB), satu baris `Attendance` per
 karyawan per hari. Terlambat / pulang cepat terhadap jam kerja `AppSetting attendance.workHours`
 (default 08:00–17:00), tidak dihitung di akhir pekan & libur. Admin mengoreksi dengan alasan wajib (audit).
-Appeal (Fase 14): hari kerja tidak hadir → appeal Sakit / Kunjungan keluar maks 7 hari (modul ATTENDANCE_APPEAL,
+Appeal (Fase 14): hari kerja tidak hadir → appeal Sakit (wajib surat keterangan sakit PDF, 2026-10-14) / Kunjungan keluar maks 7 hari (modul ATTENDANCE_APPEAL,
 `APL/…`, Bu Ika; milik Bu Ika → Fallback). Lewat 7 hari tanpa appeal → job `attendance.deduct` (01:00 WIB) memotong
 1 hari cuti (`LeaveAdjustment` ABSENCE), hanya untuk tanggal ≥ `attendance.deductionStartDate`.
 

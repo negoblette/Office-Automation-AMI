@@ -4,13 +4,17 @@ import { Clock, Loader2, LogIn, LogOut, MessageSquareWarning, Pencil, Plus } fro
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
+import { Controller, useFormContext, useWatch } from "react-hook-form";
 import { DateInputField, SelectInputField, TextareaField, TextInputField } from "@/components/form/fields";
+import { FileUpload } from "@/components/form/file-upload";
 import { FormDialog } from "@/components/form/form-dialog";
+import { FormField } from "@/components/form/form-field";
+import { FileChip } from "@/components/shared/file-chip";
 import { StatusBadge, type StatusVariant } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { APPEAL_REASON_LABEL, DAY_STATUS_LABEL, type DayStatus, formatDuration } from "@/lib/attendance";
-import { formatDate } from "@/lib/format";
+import { formatDate, toJakartaIsoDate } from "@/lib/format";
 import type { AttendanceDay, TodayAttendance } from "@/lib/services/attendance-queries";
 import { cn } from "@/lib/utils";
 import { appealSchema, attendanceCorrectionSchema } from "@/lib/validators/attendance";
@@ -208,15 +212,59 @@ function AppealDialog({ day }: { day: AttendanceDay }) {
       schema={appealSchema}
       defaults={
         day.appeal?.status === "REJECTED"
-          ? { date: day.date, reason: day.appeal.reason, note: day.appeal.note }
-          : { date: day.date, reason: "" as never, note: "" }
+          ? { date: day.date, endDate: "", reason: day.appeal.reason, note: day.appeal.note, fileKey: day.appeal.fileKey ?? "", fileName: day.appeal.fileName ?? "" }
+          : { date: day.date, endDate: "", reason: "" as never, note: "", fileKey: "", fileName: "" }
       }
       submitLabel="Ajukan Appeal"
       action={submitAppealAction}
     >
+      <DateInputField
+        name="endDate"
+        label="Sampai tanggal (opsional)"
+        min={day.date}
+        max={yesterday()}
+        hint={`Mulai ${formatDate(`${day.date}T00:00:00Z`, "weekday")}. Isi bila tidak masuk beberapa hari berturut-turut — satu appeal untuk semuanya; Sabtu, Minggu & libur dilewati.`}
+      />
       <SelectInputField name="reason" label="Alasan" required options={Object.entries(APPEAL_REASON_LABEL).map(([value, label]) => ({ value, label }))} />
       <TextareaField name="note" label="Keterangan" required />
+      <SickNoteField />
     </FormDialog>
+  );
+}
+
+/** Kemarin (YYYY-MM-DD, WIB) — batas akhir rentang appeal. */
+function yesterday() {
+  const d = new Date(Date.parse(`${toJakartaIsoDate()}T00:00:00Z`) - 86_400_000);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Upload bukti surat keterangan sakit — wajib untuk alasan Sakit, hanya muncul bila Sakit dipilih (2026-10-14). */
+function SickNoteField() {
+  const {
+    control,
+    setValue,
+    formState: { errors },
+  } = useFormContext();
+  const reason = useWatch({ control, name: "reason" });
+  const fileName = useWatch({ control, name: "fileName" });
+  if (reason !== "SICK") return null;
+  return (
+    <FormField label="Surat keterangan sakit" htmlFor="appeal-sick-note" required hint="PDF, maks 5 MB." error={errors.fileKey?.message as string | undefined}>
+      <Controller
+        control={control}
+        name="fileKey"
+        render={({ field }) => (
+          <FileUpload
+            id="appeal-sick-note"
+            value={field.value && fileName ? { key: String(field.value), fileName: String(fileName), mimeType: "application/pdf", sizeBytes: 0 } : null}
+            onChange={(file) => {
+              field.onChange(file?.key ?? "");
+              setValue("fileName", file?.fileName ?? "");
+            }}
+          />
+        )}
+      />
+    </FormField>
   );
 }
 
@@ -290,6 +338,7 @@ export function AttendanceDaysTable({ days, correctFor, appealable = false }: { 
                         Appeal {day.appeal.number} · {APPEAL_REASON_LABEL[day.appeal.reason]}: {day.appeal.note}
                       </span>
                     )}
+                    {day.appeal?.fileKey && <FileChip fileKey={day.appeal.fileKey} fileName={day.appeal.fileName ?? "Surat sakit"} className="max-w-56" />}
                     {day.appeal?.status === "REJECTED" && (
                       <span className="text-xs font-semibold text-red-ink">
                         Appeal ditolak{day.appeal.rejection ? ` (${day.appeal.rejection})` : ""}{day.canAppeal ? " — bisa direvisi & diajukan lagi" : ""}

@@ -503,3 +503,14 @@ diingatkan); Cash → Personal, CC → Corporate; jenjang ijazah SMA/SMK, D1–D
 - [x] Ikon lonceng di topbar (semua halaman) dengan angka merah: dokumen/sertifikat yang akan/sudah habis masa berlakunya (karyawan: miliknya; Admin: semua), pengajuan yang menunggu persetujuan user (Approver/Admin), pengajuan milik user yang ditolak 30 hari terakhir. Klik → langsung ke halaman terkait
 - [x] Tanpa tabel baru — dihitung dari data terkini (`services/notifications.ts`); sertifikat yang dihapus pemohon tidak dihitung sebagai "ditolak"
 - **Cek 15.11:** [x] 1 DB test · [x] 414 test lulus · [x] smoke Andi / Yosep / Ika
+
+### 15.12 Bukti sakit untuk appeal (2026-10-14) ✅
+- [x] Appeal alasan **Sakit**: upload **surat keterangan sakit (WAJIB sejak 2026-10-14, PDF)** di dialog Appeal (muncul hanya saat Sakit dipilih). Migrasi `appeal_sick_note` (`AttendanceAppeal.fileKey`, `fileName`)
+- [x] File tampil di riwayat absensi pemohon & di antrian approval (bisa dibuka approver; staf lain tidak); appeal Kunjungan keluar tidak menyimpan file
+- **Cek 15.12:** [x] 1 DB test · [x] test lulus · [x] smoke `/absensi`, `/approval`
+
+### 15.13 Appeal rentang tanggal (2026-10-14) ✅
+- [x] Dialog Appeal punya **"Sampai tanggal (opsional)"**: satu appeal (satu nomor, satu approval, satu surat sakit) untuk beberapa hari berturut-turut. Sabtu, Minggu & libur dalam rentang dilewati
+- [x] Validasi: akhir ≥ mulai & sebelum hari ini, mulai masih dalam batas 7 hari, tidak ada hari kerja yang sudah absen / cuti, tidak beririsan appeal lain. Migrasi `appeal_date_range` (`AttendanceAppeal.endDate`)
+- [x] Riwayat & rekap absensi, potong cuti otomatis, dan ringkasan di antrian approval memperhitungkan seluruh rentang
+- **Cek 15.13:** [x] 2 DB test · [x] 417 test lulus · [x] smoke `/absensi`, `/approval`

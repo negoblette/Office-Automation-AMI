@@ -1,10 +1,11 @@
 // Query halaman Absensi & kartu dashboard. Hasil aman dikirim ke Client Component (tanpa Date).
 import type { PrismaClient } from "@/generated/prisma/client";
-import { appealDeadline, type DayStatus, dayStatus, type WorkHours } from "@/lib/attendance";
+import { appealDeadline, type DayStatus, dayStatus, isWorkday, type WorkHours } from "@/lib/attendance";
 import { formatTime, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { addDays } from "@/lib/leave";
 import { getWorkHours } from "./attendance";
 import { rejectionsOf } from "./approval";
+import { appealDates, appealOverlap } from "./attendance-appeal";
 
 export type AttendanceDay = {
   date: string;
@@ -19,7 +20,7 @@ export type AttendanceDay = {
   correctionNote: string | null;
   correctedBy: string | null;
   /** Appeal hari itu (Fase 14). */
-  appeal: { number: string; reason: "SICK" | "VISIT"; status: string; note: string; rejection?: string | null } | null;
+  appeal: { number: string; reason: "SICK" | "VISIT"; status: string; note: string; rejection?: string | null; fileKey?: string | null; fileName?: string | null } | null;
   /** Saldo cuti sudah dipotong karena tidak hadir tanpa appeal. */
   leaveDeducted: boolean;
   /** Masih boleh mengajukan appeal (tidak hadir, ≤ 7 hari). */
@@ -94,8 +95,8 @@ async function loadRange(db: PrismaClient, employeeIds: string[], start: string,
     db.employmentPeriod.findMany({ where: { employeeId: { in: employeeIds } }, select: { employeeId: true, startDate: true, endDate: true } }),
     db.attendanceAppeal.findMany({
       // REJECTED ikut dimuat (2026-10-12) supaya alasan tolak tampil; status hari tetap "Tidak hadir".
-      where: { employeeId: { in: employeeIds }, date: range, status: { in: ["PENDING", "APPROVED", "REJECTED"] } },
-      select: { id: true, employeeId: true, date: true, number: true, reason: true, status: true, note: true },
+      where: { employeeId: { in: employeeIds }, status: { in: ["PENDING", "APPROVED", "REJECTED"] }, ...appealOverlap(range.gte, range.lte) },
+      select: { id: true, employeeId: true, date: true, endDate: true, number: true, reason: true, status: true, note: true, fileKey: true, fileName: true },
     }),
     db.leaveAdjustment.findMany({
       where: { employeeId: { in: employeeIds }, source: "ABSENCE", attendanceDate: range },
@@ -103,14 +104,20 @@ async function loadRange(db: PrismaClient, employeeIds: string[], start: string,
     }),
   ]);
   const rejected = await rejectionsOf(db, "ATTENDANCE_APPEAL", appeals.filter((a) => a.status === "REJECTED").map((a) => a.id));
-  const appealOf = new Map(
-    appeals.map((a) => {
-      const r = rejected.get(a.id);
-      return [`${a.employeeId}|${toJakartaIsoDate(a.date)}`, { number: a.number, reason: a.reason, status: a.status, note: a.note, rejection: r ? `${r.by}: ${r.reason}` : null }];
-    }),
-  );
-  const deductedSet = new Set(deductions.map((d) => `${d.employeeId}|${toJakartaIsoDate(d.attendanceDate!)}`));
   const holidaySet = new Set(holidays.map((h) => toJakartaIsoDate(h.date)));
+  // Appeal rentang (2026-10-14) diuraikan per hari kerja (akhir pekan & libur tetap tampil apa adanya); appeal aktif mengalahkan yang ditolak.
+  const appealOf = new Map<string, NonNullable<AttendanceDay["appeal"]>>();
+  for (const a of appeals) {
+    const r = rejected.get(a.id);
+    const view = { number: a.number, reason: a.reason, status: a.status, note: a.note, rejection: r ? `${r.by}: ${r.reason}` : null, fileKey: a.fileKey, fileName: a.fileName };
+    for (const d of appealDates(a)) {
+      if (!isWorkday(d, holidaySet)) continue;
+      const key = `${a.employeeId}|${d}`;
+      if (a.status === "REJECTED" && appealOf.has(key)) continue;
+      appealOf.set(key, view);
+    }
+  }
+  const deductedSet = new Set(deductions.map((d) => `${d.employeeId}|${toJakartaIsoDate(d.attendanceDate!)}`));
   const recordOf = new Map(attendances.map((a) => [`${a.employeeId}|${toJakartaIsoDate(a.date)}`, a]));
   const onLeave = (employeeId: string, dateIso: string) =>
     leaves.some((l) => l.employeeId === employeeId && toJakartaIsoDate(l.startDate) <= dateIso && toJakartaIsoDate(l.endDate) >= dateIso);

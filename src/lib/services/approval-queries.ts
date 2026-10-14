@@ -120,7 +120,8 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
         };
       }
       const appeal = appealOf.get(request.entityId);
-      if (request.module === "ATTENDANCE_APPEAL" && appeal) return { summary: appealSummary(appeal), file: null, changeLines: null };
+      if (request.module === "ATTENDANCE_APPEAL" && appeal)
+        return { summary: appealSummary(appeal), file: appeal.fileKey ? { key: appeal.fileKey, name: appeal.fileName ?? "Surat sakit" } : null, changeLines: null };
       const c = certOf.get(request.entityId);
       if (request.module !== "CERTIFICATE" || !c) return { summary: null, file: null, changeLines: null };
       const parts = [

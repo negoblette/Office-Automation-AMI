@@ -16,6 +16,8 @@ import { testDb } from "@/test/db";
 import { resetAndSeed } from "@/test/seed";
 
 let u: Record<string, string>;
+/** Surat keterangan sakit (wajib untuk appeal Sakit, 2026-10-14). */
+const sickNote = () => ({ fileKey: `${randomUUID()}.pdf`, fileName: "surat-dokter.pdf" });
 const actors: Record<string, Actor> = {};
 
 beforeEach(async () => {
@@ -106,9 +108,9 @@ describe("tolak & revisi (2026-10-12, OI-05)", () => {
     expect(updated.notifications[0]).toMatchObject({ template: "approval-requested" });
     expect((await testDb.certificate.findUniqueOrThrow({ where: { id: cert.id } })).status).toBe("PENDING");
 
-    const appeal = await submitAppeal(testDb, actors.andi, { date: "2026-10-12", reason: "SICK", note: "Demam" }, "2026-10-14");
+    const appeal = await submitAppeal(testDb, actors.andi, { date: "2026-10-12", reason: "SICK", note: "Demam", ...sickNote() }, "2026-10-14");
     await rejectRequest(testDb, { requestId: (await requestOf("ATTENDANCE_APPEAL", appeal.appealId)).id, actorId: u.ika, reason: "Lampirkan keterangan dokter" });
-    const again = await submitAppeal(testDb, actors.andi, { date: "2026-10-12", reason: "SICK", note: "Demam, surat dokter menyusul" }, "2026-10-15");
+    const again = await submitAppeal(testDb, actors.andi, { date: "2026-10-12", reason: "SICK", note: "Demam, surat dokter menyusul", ...sickNote() }, "2026-10-15");
     expect(again).toMatchObject({ number: appeal.number, status: "PENDING" });
   });
 });

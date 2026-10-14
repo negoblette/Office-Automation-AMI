@@ -13,13 +13,37 @@ import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { addLeaveAdjustment } from "./leave-balance";
 import { nextDocumentNumber } from "./numbering";
+import { assertFileKeyAvailable } from "./access";
 
 type Tx = Prisma.TransactionClient;
 
 /** Tanggal mulai potong cuti otomatis (AppSetting); dibuat = hari pertama job berjalan. */
 export const DEDUCTION_START_KEY = "attendance.deductionStartDate";
 
-export type AppealInput = { date: string; reason: AppealReason; note: string };
+export type AppealInput = {
+  /** Tanggal mulai. */
+  date: string;
+  /** Tanggal akhir (opsional, 2026-10-14): satu appeal untuk beberapa hari berturut-turut. */
+  endDate?: string | null;
+  reason: AppealReason;
+  note: string;
+  fileKey?: string | null;
+  fileName?: string | null;
+};
+
+/** Tanggal-tanggal yang dicakup appeal (date … endDate). */
+export function appealDates(appeal: { date: Date; endDate: Date | null }): string[] {
+  const start = toJakartaIsoDate(appeal.date);
+  const end = appeal.endDate ? toJakartaIsoDate(appeal.endDate) : start;
+  const dates: string[] = [];
+  for (let d = start; d <= end; d = addDays(d, 1)) dates.push(d);
+  return dates;
+}
+
+/** Filter Prisma: appeal yang rentangnya beririsan dengan [start, end]. */
+export function appealOverlap(start: Date, end: Date) {
+  return { date: { lte: end }, OR: [{ endDate: null, date: { gte: start } }, { endDate: { gte: start } }] };
+}
 
 async function isEmployedOn(tx: Tx | PrismaClient, employeeId: string, dateIso: string) {
   const period = await tx.employmentPeriod.findFirst({
@@ -33,7 +57,11 @@ async function holidaysBetween(tx: Tx | PrismaClient, start: string, end: string
   return new Set(rows.map((h) => toJakartaIsoDate(h.date)));
 }
 
-/** Ajukan appeal untuk satu hari tidak hadir. Kirim `notifications` setelah commit. */
+/**
+ * Ajukan appeal untuk satu hari — atau rentang hari berturut-turut (`endDate`, 2026-10-14) — tidak hadir.
+ * Sabtu, Minggu & libur dalam rentang dilewati; hari kerja lain harus benar-benar tidak hadir & tidak cuti.
+ * Kirim `notifications` setelah commit.
+ */
 export async function submitAppeal(db: PrismaClient, actor: Actor, input: AppealInput, todayIso = toJakartaIsoDate()) {
   return db.$transaction(async (tx) => {
     const employeeId = actor.employeeId;
@@ -42,25 +70,49 @@ export async function submitAppeal(db: PrismaClient, actor: Actor, input: Appeal
     if (employee?.status !== "ACTIVE") throw new ServiceError("Hanya karyawan aktif yang bisa mengajukan appeal");
 
     const date = input.date;
-    if (date >= todayIso) throw new ServiceError("Appeal hanya untuk hari yang sudah lewat", "date");
+    const end = input.endDate && input.endDate !== date ? input.endDate : date;
+    if (end < date) throw new ServiceError("Tanggal akhir tidak boleh sebelum tanggal mulai", "endDate");
+    if (end >= todayIso) throw new ServiceError("Appeal hanya untuk hari yang sudah lewat", end === date ? "date" : "endDate");
     if (todayIso > appealDeadline(date)) throw new ServiceError(`Batas appeal untuk ${formatDate(fromIsoDate(date))} sudah lewat (maks 7 hari)`, "date");
-    if (!isWorkday(date, await holidaysBetween(tx, date, date))) throw new ServiceError("Tanggal tersebut bukan hari kerja", "date");
-    if (!(await isEmployedOn(tx, employeeId, date))) throw new ServiceError("Tanggal di luar periode kerja Anda", "date");
-    if (await tx.attendance.findUnique({ where: { employeeId_date: { employeeId, date: fromIsoDate(date) } } })) {
-      throw new ServiceError("Anda sudah tercatat absen di tanggal tersebut", "date");
+
+    // Hari kerja dalam rentang (Sabtu, Minggu, libur dilewati).
+    const holidays = await holidaysBetween(tx, date, end);
+    const workdays: string[] = [];
+    for (let d = date; d <= end; d = addDays(d, 1)) if (isWorkday(d, holidays)) workdays.push(d);
+    if (workdays.length === 0) throw new ServiceError(date === end ? "Tanggal tersebut bukan hari kerja" : "Rentang tanggal tidak berisi hari kerja", "date");
+    for (const d of workdays) {
+      if (!(await isEmployedOn(tx, employeeId, d))) throw new ServiceError(`${formatDate(fromIsoDate(d))} di luar periode kerja Anda`, "date");
+    }
+    const clocked = await tx.attendance.findFirst({ where: { employeeId, date: { in: workdays.map(fromIsoDate) } }, orderBy: { date: "asc" } });
+    if (clocked) {
+      throw new ServiceError(date === end ? "Anda sudah tercatat absen di tanggal tersebut" : `Anda sudah tercatat absen pada ${formatDate(clocked.date)}`, "date");
     }
     const onLeave = await tx.leaveRequest.findFirst({
-      where: { employeeId, status: { in: ["PENDING", "APPROVED"] }, startDate: { lte: fromIsoDate(date) }, endDate: { gte: fromIsoDate(date) } },
+      where: { employeeId, status: { in: ["PENDING", "APPROVED"] }, startDate: { lte: fromIsoDate(end) }, endDate: { gte: fromIsoDate(date) } },
     });
-    if (onLeave) throw new ServiceError(`Tanggal tersebut sudah tercatat cuti (${onLeave.number})`, "date");
+    if (onLeave) throw new ServiceError(`${date === end ? "Tanggal tersebut" : "Rentang tersebut"} sudah tercatat cuti (${onLeave.number})`, "date");
     // Appeal yang ditolak boleh direvisi & diajukan ulang (2026-10-12, OI-05) selama masih dalam batas 7 hari.
     const existing = await tx.attendanceAppeal.findUnique({ where: { employeeId_date: { employeeId, date: fromIsoDate(date) } } });
     if (existing && existing.status !== "REJECTED") throw new ServiceError("Appeal untuk tanggal tersebut sudah pernah diajukan", "date");
+    const overlapping = await tx.attendanceAppeal.findFirst({
+      where: { employeeId, status: { not: "REJECTED" }, ...(existing ? { id: { not: existing.id } } : {}), ...appealOverlap(fromIsoDate(date), fromIsoDate(end)) },
+    });
+    if (overlapping) throw new ServiceError(`Sebagian tanggal sudah tercakup appeal ${overlapping.number}`, "date");
+
+    // Bukti sakit WAJIB untuk alasan Sakit (2026-10-14); file harus belum dipakai data lain.
+    if (input.reason === "SICK" && !input.fileKey) throw new ServiceError("Surat keterangan sakit wajib diupload", "fileKey");
+    const file = input.reason === "SICK" && input.fileKey ? { fileKey: input.fileKey, fileName: input.fileName ?? "surat-sakit.pdf" } : { fileKey: null, fileName: null };
+    if (file.fileKey && file.fileKey !== existing?.fileKey) await assertFileKeyAvailable(tx, file.fileKey);
 
     const number = existing ? existing.number : await nextDocumentNumber(tx, "APL");
     const appeal = existing
-      ? await tx.attendanceAppeal.update({ where: { id: existing.id }, data: { reason: input.reason, note: input.note, status: "PENDING", approvedAt: null } })
-      : await tx.attendanceAppeal.create({ data: { number, employeeId, date: fromIsoDate(date), reason: input.reason, note: input.note } });
+      ? await tx.attendanceAppeal.update({
+          where: { id: existing.id },
+          data: { endDate: end === date ? null : fromIsoDate(end), reason: input.reason, note: input.note, ...file, status: "PENDING", approvedAt: null },
+        })
+      : await tx.attendanceAppeal.create({
+          data: { number, employeeId, date: fromIsoDate(date), endDate: end === date ? null : fromIsoDate(end), reason: input.reason, note: input.note, ...file },
+        });
     const approval = await restartApproval(tx, { module: "ATTENDANCE_APPEAL", entityId: appeal.id, entityNumber: number, requesterId: actor.id });
     await logAudit(tx, { actorId: actor.id, action: existing ? "UPDATE" : "CREATE", entity: "AttendanceAppeal", entityId: appeal.id, before: existing, after: appeal });
     return { appealId: appeal.id, number, status: approval.status, notifications: approval.notifications as ApprovalNotification[] };
@@ -68,8 +120,11 @@ export async function submitAppeal(db: PrismaClient, actor: Actor, input: Appeal
 }
 
 /** Ringkasan appeal untuk antrian approval. */
-export function appealSummary(appeal: { date: Date; reason: AppealReason; note: string; employee: { fullName: string } }) {
-  return `${APPEAL_REASON_LABEL[appeal.reason]} · ${formatDate(appeal.date, "weekday")} · ${appeal.employee.fullName} — ${appeal.note}`;
+export function appealSummary(appeal: { date: Date; endDate?: Date | null; reason: AppealReason; note: string; employee: { fullName: string } }) {
+  const when = appeal.endDate
+    ? `${formatDate(appeal.date, "weekday")} – ${formatDate(appeal.endDate, "weekday")}`
+    : formatDate(appeal.date, "weekday");
+  return `${APPEAL_REASON_LABEL[appeal.reason]} · ${when} · ${appeal.employee.fullName} — ${appeal.note}`;
 }
 
 /**
@@ -96,7 +151,10 @@ export async function deductUnexcusedAbsences(db: PrismaClient, todayIso = toJak
   for (const employee of employees) {
     const [attendances, appeals, adjustments, leaves, periods] = await Promise.all([
       db.attendance.findMany({ where: { employeeId: employee.id, date: range }, select: { date: true } }),
-      db.attendanceAppeal.findMany({ where: { employeeId: employee.id, date: range, status: { in: ["PENDING", "APPROVED"] } }, select: { date: true } }),
+      db.attendanceAppeal.findMany({
+        where: { employeeId: employee.id, status: { in: ["PENDING", "APPROVED"] }, ...appealOverlap(range.gte, range.lte) },
+        select: { date: true, endDate: true },
+      }),
       db.leaveAdjustment.findMany({ where: { employeeId: employee.id, source: "ABSENCE", attendanceDate: range }, select: { attendanceDate: true } }),
       db.leaveRequest.findMany({
         where: { employeeId: employee.id, status: "APPROVED", startDate: { lte: range.lte }, endDate: { gte: range.gte } },
@@ -106,7 +164,7 @@ export async function deductUnexcusedAbsences(db: PrismaClient, todayIso = toJak
     ]);
     const excused = new Set([
       ...attendances.map((a) => toJakartaIsoDate(a.date)),
-      ...appeals.map((a) => toJakartaIsoDate(a.date)),
+      ...appeals.flatMap(appealDates),
       ...adjustments.map((a) => toJakartaIsoDate(a.attendanceDate!)),
     ]);
     const onLeave = (d: string) => leaves.some((l) => toJakartaIsoDate(l.startDate) <= d && toJakartaIsoDate(l.endDate) >= d);

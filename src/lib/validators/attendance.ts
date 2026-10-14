@@ -24,9 +24,19 @@ export const attendanceCorrectionSchema = z
 export type AttendanceCorrectionInput = z.infer<typeof attendanceCorrectionSchema>;
 
 /** Appeal tidak hadir (Fase 14): tanggal, alasan Sakit / Kunjungan keluar, keterangan. */
-export const appealSchema = z.object({
-  date: isoDateSchema,
-  reason: z.enum(["SICK", "VISIT"], { error: "Alasan wajib dipilih" }),
-  note: textSchema("Keterangan", { min: 3, max: 300 }),
-});
+export const appealSchema = z
+  .object({
+    date: isoDateSchema,
+    /** Sampai tanggal (opsional, 2026-10-14) — satu appeal untuk beberapa hari berturut-turut. */
+    endDate: optionalField(isoDateSchema),
+    reason: z.enum(["SICK", "VISIT"], { error: "Alasan wajib dipilih" }),
+    note: textSchema("Keterangan", { min: 3, max: 300 }),
+    /** Bukti surat keterangan sakit — WAJIB untuk alasan Sakit (2026-10-14). */
+    fileKey: optionalField(z.string()),
+    fileName: optionalField(textSchema("Nama file", { max: 200 })),
+  })
+  .superRefine((v, ctx) => {
+    if (v.reason === "SICK" && !v.fileKey) ctx.addIssue({ code: "custom", path: ["fileKey"], message: "Surat keterangan sakit wajib diupload" });
+    if (v.endDate && v.endDate < v.date) ctx.addIssue({ code: "custom", path: ["endDate"], message: "Tanggal akhir tidak boleh sebelum tanggal mulai" });
+  });
 export type AppealFormInput = z.infer<typeof appealSchema>;
