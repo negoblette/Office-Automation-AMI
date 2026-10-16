@@ -21,6 +21,15 @@ const STATUS_LABEL = { PENDING: "Menunggu", APPROVED: "Disetujui", REJECTED: "Di
 export default async function CetakReimbursePage({ searchParams }: { searchParams: Promise<{ karyawan?: string; bulan?: string }> }) {
   const user = await requireUser();
   const { karyawan, bulan } = await searchParams;
+  // "Semua karyawan" hanya untuk export Excel; cetak PDF tetap per orang.
+  if (karyawan === "semua") {
+    return (
+      <>
+        <PrintToolbar backHref="/reimburse" />
+        <p className="text-sm">Cetak / PDF dibuat per karyawan. Pilih satu karyawan, atau gunakan tombol Export Excel untuk semua karyawan.</p>
+      </>
+    );
+  }
   const employeeId = user.role === "ADMIN" && karyawan ? karyawan : user.employeeId;
   if (!employeeId) redirect("/akses-ditolak");
   if (karyawan && karyawan !== user.employeeId && user.role !== "ADMIN") redirect("/akses-ditolak");

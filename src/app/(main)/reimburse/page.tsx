@@ -1,4 +1,4 @@
-import { CheckCheck, Clock, Plus, Printer, Wallet } from "lucide-react";
+import { CheckCheck, Clock, FileSpreadsheet, Plus, Printer, Wallet } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/shared/page-header";
@@ -38,7 +38,7 @@ export default async function ReimbursePage() {
         }
       />
 
-      {/* Rekap per orang per bulan untuk dicetak / disimpan PDF (Fase 14). Form GET biasa, tanpa JS. */}
+      {/* Rekap per orang per bulan: cetak / PDF (Fase 14) atau export Excel (2026-10-16; Admin bisa semua karyawan). Form GET biasa, tanpa JS. */}
       <form action="/cetak/reimburse" method="get" className="flex flex-wrap items-end gap-3 rounded-2xl bg-card p-4 shadow-card">
         <label className="flex flex-col gap-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
           Bulan transaksi
@@ -53,11 +53,15 @@ export default async function ReimbursePage() {
                   {e.label}
                 </option>
               ))}
+              <option value="semua">Semua karyawan (khusus Excel)</option>
             </select>
           </label>
         )}
         <button type="submit" className={buttonVariants({ variant: "outline", size: "lg" })}>
           <Printer aria-hidden /> Cetak / Simpan PDF
+        </button>
+        <button type="submit" formAction="/api/export/reimburse" className={buttonVariants({ variant: "outline", size: "lg" })}>
+          <FileSpreadsheet aria-hidden /> Export Excel
         </button>
       </form>
 

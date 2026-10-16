@@ -129,7 +129,8 @@ const REIMBURSE_TYPES = [
 ];
 
 // URD HC-02
-const HEALTH_CATEGORIES = ["Rawat Jalan Dokter", "Vitamin", "Kacamata", "Obat-obatan"]; // Obat-obatan: 2026-10-16
+// Urutan = urutan di dropdown (sortOrder). Obat-obatan: 2026-10-16.
+const HEALTH_CATEGORIES = ["Rawat Jalan Dokter", "Obat-obatan", "Vitamin", "Kacamata"];
 
 export async function seedMasterData(prisma: PrismaClient) {
   // LeavePolicy tidak punya kunci unik: isi hanya jika tabel masih kosong.
@@ -145,8 +146,8 @@ export async function seedMasterData(prisma: PrismaClient) {
     await prisma.reimburseType.upsert({ where: { code: type.code }, create: type, update: {} });
   }
 
-  for (const name of HEALTH_CATEGORIES) {
-    await prisma.healthCategory.upsert({ where: { name }, create: { name }, update: {} });
+  for (const [i, name] of HEALTH_CATEGORIES.entries()) {
+    await prisma.healthCategory.upsert({ where: { name }, create: { name, sortOrder: (i + 1) * 10 }, update: {} });
   }
 
   console.log(

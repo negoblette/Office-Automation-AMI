@@ -172,7 +172,7 @@ export async function listPlafonds(db: PrismaClient, year: number): Promise<Plaf
 }
 
 export async function listHealthCategories(db: PrismaClient) {
-  const categories = await db.healthCategory.findMany({ where: { isActive: true }, orderBy: { name: "asc" } });
+  const categories = await db.healthCategory.findMany({ where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
   return categories.map((c) => ({ value: c.id, label: c.name }));
 }
 

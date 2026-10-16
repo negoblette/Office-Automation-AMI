@@ -223,7 +223,8 @@ Admin** (2026-10-12, `canAddCustomerProject`) (dialog di form reimburse & halama
 project baru dari staf selalu aktif, ID disarankan `nextProjectCode`); project harus milik company itu (dicek
 server) atau **New Acquisition** = flag `ReimbursementItem.newAcquisition` tanpa project (prospek). Project
 tampil "ID - Nama" (`Project.code`, `projectLabel`); subtotal per kunjungan & per tanggal; rekap cetak per
-orang per bulan di `/cetak/reimburse` (route group `(print)`, print browser → PDF).
+orang per bulan di `/cetak/reimburse` (route group `(print)`, print browser → PDF); export Excel per bulan di
+`/api/export/reimburse` (`services/reimburse-export.ts`, `exceljs`; Admin bisa semua karyawan, 2026-10-16).
 Biaya project dihitung **per tahun kalender** (cutoff 31 Des; `?tahun=` untuk history).
 
 **Isi data mandiri:** Admin hanya membuat akun minimal (nama, email, divisi,

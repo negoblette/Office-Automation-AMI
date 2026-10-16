@@ -521,4 +521,6 @@ diingatkan); Cash → Personal, CC → Corporate; jenjang ijazah SMA/SMK, D1–D
 - [x] **Approval hanya untuk upload sertifikat profesional.** Data diri, keluarga, dokumen, ijazah, dan hapus sertifikat langsung tersimpan (permintaan perubahan 15.7 tidak dipakai lagi untuk data baru; yang masih menunggu tetap bisa diproses di Approval)
 - [x] Kategori klaim kesehatan **Obat-obatan** (migrasi `health_category_medicine` + seed)
 - [x] **Cetak / PDF klaim kesehatan** `/cetak/kesehatan?tahun=&karyawan=` — rekap per orang per tahun: plafon, terpakai, menunggu, sisa, daftar klaim (kategori, status, bulan bayar, diajukan, disetujui), kolom tanda tangan. Form cetak di halaman Kesehatan (Admin bisa pilih karyawan)
-- **Cek 15.14:** [x] 2 DB test baru · [x] 419 test lulus · [x] smoke Andi
+- [x] Urutan kategori kesehatan: Rawat Jalan Dokter, Obat-obatan, Vitamin, Kacamata (`HealthCategory.sortOrder`, migrasi `health_category_order`; kategori baru di akhir, lalu A–Z)
+- [x] **Export reimburse ke Excel** `/api/export/reimburse?bulan=YYYY-MM&karyawan=<id>|semua` (library `exceljs`): sheet *Detail* (satu baris per item, filter + header beku + total) & *Ringkasan* per karyawan (disetujui / menunggu / ditolak, Personal / Corporate). Tombol "Export Excel" di halaman Reimburse; Admin bisa pilih "Semua karyawan"; staf hanya miliknya
+- **Cek 15.14:** [x] 3 DB test baru · [x] smoke Andi & Ika (export 200 / 403)

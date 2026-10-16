@@ -559,8 +559,9 @@ model Holiday {
 
 model HealthCategory {
   id       String  @id @default(cuid())
-  name     String  @unique // Rawat jalan dokter, Vitamin, Kacamata
-  isActive Boolean @default(true)
+  name      String  @unique // Rawat jalan dokter, Obat-obatan, Vitamin, Kacamata
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(100) // urutan di dropdown (2026-10-16); kategori baru di akhir, lalu A-Z
 
   claims HealthClaim[]
 }

@@ -228,7 +228,7 @@ export type ProjectDetail = NonNullable<Awaited<ReturnType<typeof getProjectDeta
 export async function listMasterData(db: PrismaClient) {
   const [types, categories] = await Promise.all([
     db.reimburseType.findMany({ orderBy: [{ isActive: "desc" }, { name: "asc" }], include: { _count: { select: { items: true } } } }),
-    db.healthCategory.findMany({ orderBy: [{ isActive: "desc" }, { name: "asc" }], include: { _count: { select: { claims: true } } } }),
+    db.healthCategory.findMany({ orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { name: "asc" }], include: { _count: { select: { claims: true } } } }),
   ]);
   return {
     types: types.map((t) => ({ id: t.id, code: t.code, name: t.name, divisions: t.divisions, isActive: t.isActive, usage: t._count.items })),
