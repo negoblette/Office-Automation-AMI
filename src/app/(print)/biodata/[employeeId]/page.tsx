@@ -161,7 +161,7 @@ export default async function BiodataPage({ params }: { params: Promise<{ employ
                 {c.level && ` · Level ${c.level}`}
                 {c.issuer && ` · ${c.issuer}`}
                 {c.type === "IJAZAH"
-                  ? ` · mulai ${date(c.startDate)}${c.graduationDate ? ` · lulus ${date(c.graduationDate)}` : ""}`
+                  ? ` · lulus ${date(c.graduationDate ?? c.startDate)}`
                   : ` · diambil ${date(c.startDate)}${c.endDate ? ` · berlaku s/d ${date(c.endDate)}` : " · permanen"}`}
                 {c.verification === "APPROVED" ? " · terverifikasi" : " · belum terverifikasi"}
               </li>

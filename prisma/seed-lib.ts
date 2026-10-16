@@ -129,7 +129,7 @@ const REIMBURSE_TYPES = [
 ];
 
 // URD HC-02
-const HEALTH_CATEGORIES = ["Rawat Jalan Dokter", "Vitamin", "Kacamata"];
+const HEALTH_CATEGORIES = ["Rawat Jalan Dokter", "Vitamin", "Kacamata", "Obat-obatan"]; // Obat-obatan: 2026-10-16
 
 export async function seedMasterData(prisma: PrismaClient) {
   // LeavePolicy tidak punya kunci unik: isi hanya jika tabel masih kosong.

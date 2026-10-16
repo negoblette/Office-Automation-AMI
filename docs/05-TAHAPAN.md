@@ -514,3 +514,11 @@ diingatkan); Cash → Personal, CC → Corporate; jenjang ijazah SMA/SMK, D1–D
 - [x] Validasi: akhir ≥ mulai & sebelum hari ini, mulai masih dalam batas 7 hari, tidak ada hari kerja yang sudah absen / cuti, tidak beririsan appeal lain. Migrasi `appeal_date_range` (`AttendanceAppeal.endDate`)
 - [x] Riwayat & rekap absensi, potong cuti otomatis, dan ringkasan di antrian approval memperhitungkan seluruh rentang
 - **Cek 15.13:** [x] 2 DB test · [x] 417 test lulus · [x] smoke `/absensi`, `/approval`
+
+### 15.14 Permintaan 2026-10-16 ✅
+- [x] Form ijazah: **Tanggal mulai dihapus** — cukup Tanggal lulus (kolom `startDate` diisi = tanggal lulus)
+- [x] Saldo cuti: kata "tersisa" dihapus ("15 / 15 hari")
+- [x] **Approval hanya untuk upload sertifikat profesional.** Data diri, keluarga, dokumen, ijazah, dan hapus sertifikat langsung tersimpan (permintaan perubahan 15.7 tidak dipakai lagi untuk data baru; yang masih menunggu tetap bisa diproses di Approval)
+- [x] Kategori klaim kesehatan **Obat-obatan** (migrasi `health_category_medicine` + seed)
+- [x] **Cetak / PDF klaim kesehatan** `/cetak/kesehatan?tahun=&karyawan=` — rekap per orang per tahun: plafon, terpakai, menunggu, sisa, daftar klaim (kategori, status, bulan bayar, diajukan, disetujui), kolom tanda tangan. Form cetak di halaman Kesehatan (Admin bisa pilih karyawan)
+- **Cek 15.14:** [x] 2 DB test baru · [x] 419 test lulus · [x] smoke Andi

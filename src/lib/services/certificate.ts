@@ -24,11 +24,20 @@ function certificateData(input: CertificateInput) {
   };
 }
 
-/** Tambah sertifikat + ajukan verifikasi. Kirim `notifications` (email approver) SETELAH commit. */
+/**
+ * Tambah sertifikat. Sertifikat PROFESIONAL diajukan verifikasi (approval); ijazah langsung tersimpan tanpa
+ * approval (2026-10-16). Kirim `notifications` (email approver) SETELAH commit.
+ */
 export async function addCertificate(db: PrismaClient, actor: Actor, employeeId: string, input: CertificateInput) {
   return db.$transaction(async (tx) => {
     await getManageableEmployee(tx, actor, employeeId);
     if (input.fileKey) await assertFileKeyAvailable(tx, input.fileKey);
+
+    if (input.type !== "PROFESSIONAL") {
+      const saved = await tx.certificate.create({ data: { employeeId, ...certificateData(input), status: "APPROVED" } });
+      await logAudit(tx, { actorId: actor.id, action: "CREATE", entity: "Certificate", entityId: saved.id, after: saved });
+      return { ...saved, notifications: [] as ApprovalNotification[] };
+    }
 
     const number = await nextDocumentNumber(tx, "CRT");
     const created = await tx.certificate.create({ data: { employeeId, ...certificateData(input), verificationNumber: number } });
@@ -64,7 +73,7 @@ export async function updateCertificate(
     const before = await tx.certificate.findUnique({ where: { id: certificateId, deletedAt: null } });
     if (!before) throw new ServiceError("Sertifikat tidak ditemukan");
     await getManageableEmployee(tx, actor, before.employeeId);
-    if (before.status === "APPROVED" && actor.role !== "ADMIN") {
+    if (before.type === "PROFESSIONAL" && before.status === "APPROVED" && actor.role !== "ADMIN") {
       throw new ServiceError("Sertifikat sudah terverifikasi; perubahan hanya oleh Admin. Tambahkan sertifikat baru bila diperpanjang.");
     }
     const fileChanged = input.fileKey !== before.fileKey;

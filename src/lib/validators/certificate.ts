@@ -9,8 +9,8 @@ export const CERTIFICATE_LEVELS = ["1", "2", "3"] as const;
  * Sertifikat profesional / ijazah (URD CERT-01). Keputusan user 2026-10-12:
  * - Profesional: Nama, Penerbit, **Level** (1–3), Tanggal diambil, **Masa berlaku wajib** kecuali dicentang
  *   "Tidak ada masa berlaku / Permanent" (`noExpiry`).
- * - Ijazah: **Gelar** (`name`, bebas), **Lembaga** (`issuer`, bebas), **Jenjang** (`degree`), **Tanggal mulai**
- *   (`startDate`) & **Tanggal lulus** (`graduationDate`); tidak punya masa berlaku (tidak ikut pengingat).
+ * - Ijazah: **Gelar** (`name`, bebas), **Lembaga** (`issuer`, bebas), **Jenjang** (`degree`), **Tanggal lulus**
+ *   (`graduationDate`; 2026-10-16 tanpa tanggal mulai — `startDate` disimpan = tanggal lulus); tanpa masa berlaku.
  */
 export const certificateSchema = z
   .object({
@@ -20,7 +20,8 @@ export const certificateSchema = z
     // Terima "1" (form) maupun 1 (hasil parse sebelumnya) — schema aman di-parse ulang di server.
     level: optionalField(z.union([z.enum(CERTIFICATE_LEVELS), z.number().int().min(1).max(3).transform((n) => String(n) as (typeof CERTIFICATE_LEVELS)[number])], { error: "Level tidak valid" })),
     degree: optionalField(z.enum(EducationLevel, { error: "Jenjang tidak valid" })),
-    startDate: isoDateSchema,
+    /** Profesional: tanggal diambil (wajib). Ijazah: tidak diisi (2026-10-16). */
+    startDate: optionalField(isoDateSchema),
     endDate: optionalField(isoDateSchema),
     noExpiry: z.boolean().default(false),
     graduationDate: optionalField(isoDateSchema),
@@ -30,13 +31,13 @@ export const certificateSchema = z
     const issue = (path: string, message: string) => ctx.addIssue({ code: "custom", path: [path], message });
     if (v.type === "PROFESSIONAL") {
       if (!v.level) issue("level", "Level wajib dipilih");
+      if (!v.startDate) issue("startDate", "Tanggal diambil wajib diisi");
       if (!v.noExpiry && !v.endDate) issue("endDate", "Masa berlaku wajib diisi, atau centang \"Tidak ada masa berlaku / Permanent\"");
-      if (!v.noExpiry && v.endDate && v.endDate < v.startDate) issue("endDate", "Tanggal berakhir tidak boleh sebelum tanggal diambil");
+      if (!v.noExpiry && v.endDate && v.startDate && v.endDate < v.startDate) issue("endDate", "Tanggal berakhir tidak boleh sebelum tanggal diambil");
     } else {
       if (!v.issuer) issue("issuer", "Lembaga wajib diisi");
       if (!v.degree) issue("degree", "Jenjang wajib dipilih");
       if (!v.graduationDate) issue("graduationDate", "Tanggal lulus wajib diisi");
-      else if (v.graduationDate < v.startDate) issue("graduationDate", "Tanggal lulus tidak boleh sebelum tanggal mulai");
     }
   })
   .transform((v) => {
@@ -47,7 +48,8 @@ export const certificateSchema = z
       issuer: v.issuer,
       level: professional && v.level ? Number(v.level) : null,
       degree: professional ? null : v.degree,
-      startDate: v.startDate,
+      // Kolom DB wajib: ijazah memakai tanggal lulus.
+      startDate: (professional ? v.startDate : v.graduationDate) as string,
       endDate: professional && !v.noExpiry ? v.endDate : null,
       noExpiry: professional && v.noExpiry,
       graduationDate: professional ? null : v.graduationDate,

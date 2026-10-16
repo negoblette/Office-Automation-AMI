@@ -11,6 +11,10 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   // Image produksi hanya berisi `.next/standalone` (Dockerfile, Tahap 10.5).
   output: "standalone",
+  // Dev server boleh dibuka dari IP jaringan kantor (mis. http://10.192.113.5:3000), bukan hanya localhost.
+  // Tanpa ini Next.js memblokir JavaScript dev → halaman tidak "hidup" & login gagal (2026-10-15).
+  // Hanya berlaku saat `npm run dev`; tambahan host lewat env DEV_ALLOWED_ORIGINS (pisahkan dengan koma).
+  allowedDevOrigins: ["10.*.*.*", "192.168.*.*", "172.*.*.*", ...(process.env.DEV_ALLOWED_ORIGINS?.split(",").map((h) => h.trim()).filter(Boolean) ?? [])],
   poweredByHeader: false,
   experimental: {
     serverActions: {

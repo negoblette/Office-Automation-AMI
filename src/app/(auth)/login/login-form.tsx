@@ -32,7 +32,8 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
   });
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
+    // method="post": bila JavaScript belum termuat, browser tidak mengirim email & password lewat URL (2026-10-15).
+    <form onSubmit={onSubmit} method="post" noValidate className="flex flex-col gap-5">
       {serverError && (
         <div
           role="alert"

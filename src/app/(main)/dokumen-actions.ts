@@ -1,8 +1,8 @@
 "use server";
 
 // Aksi dokumen & keluarga — dipakai halaman Admin (/karyawan/[id]) dan Profil Saya (/profil).
-// Hak akses (Admin atau karyawan pemilik) dicek di service. 2026-10-12: perubahan data MILIK SENDIRI
-// jadi permintaan perubahan (disetujui Ci Ika); Admin yang mengubah data karyawan lain langsung tersimpan.
+// Hak akses (Admin atau karyawan pemilik) dicek di service. Langsung tersimpan tanpa approval
+// (2026-10-16: approval hanya untuk upload sertifikat profesional).
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { type ActionResult, toActionError } from "@/lib/actions";
@@ -16,9 +16,6 @@ import {
   updateFamilyMember,
 } from "@/lib/services/document";
 import { ServiceError } from "@/lib/services/errors";
-import { enqueueApprovalNotifications } from "@/lib/mail/approval-emails";
-import { needsProfileApproval, type ProfileChangeInput, requestProfileChange } from "@/lib/services/profile-change";
-import type { Actor } from "@/lib/services/access";
 import { inspectStoredFile } from "@/lib/storage";
 import { addDocumentSchema, familyMemberSchema } from "@/lib/validators/family";
 
@@ -26,16 +23,6 @@ function revalidateDocuments() {
   revalidatePath("/karyawan", "layout");
   revalidatePath("/profil", "layout");
   revalidatePath("/approval");
-}
-
-/** Data milik sendiri → permintaan perubahan; selain itu jalankan `direct` (Admin ke karyawan lain). */
-async function ownChangeOr(user: Actor, change: ProfileChangeInput, direct: () => Promise<unknown>) {
-  if (needsProfileApproval(user, change.employeeId)) {
-    const result = await requestProfileChange(prisma, user, change);
-    await enqueueApprovalNotifications(prisma, result.notifications);
-  } else {
-    await direct();
-  }
 }
 
 /** Hapus file dari storage setelah data di DB terhapus (gagal hapus file tidak membatalkan aksi). */
@@ -49,8 +36,7 @@ export async function addDocumentAction(values: unknown): Promise<ActionResult> 
     const file = await inspectStoredFile(input.fileKey);
     if (!file) throw new ServiceError("File tidak ditemukan, silakan upload ulang");
 
-    const { employeeId, ...document } = { ...input, ...file };
-    await ownChangeOr(user, { kind: "DOCUMENT_ADD", employeeId, payload: document }, () => addDocument(prisma, user, { ...input, ...file }));
+    await addDocument(prisma, user, { ...input, ...file });
     revalidateDocuments();
     return { ok: true, data: undefined };
   } catch (error) {
@@ -63,8 +49,7 @@ export async function deleteDocumentAction(documentId: string): Promise<ActionRe
   try {
     // Soft delete: data & file tetap disimpan (NFR v1.14).
     const id = z.string().min(1).parse(documentId);
-    const owner = await prisma.document.findUnique({ where: { id }, select: { employeeId: true } });
-    await ownChangeOr(user, { kind: "DOCUMENT_DELETE", employeeId: owner?.employeeId ?? "", targetId: id, payload: {} }, () => deleteDocument(prisma, user, id));
+    await deleteDocument(prisma, user, id);
     revalidateDocuments();
     return { ok: true, data: undefined };
   } catch (error) {
@@ -76,7 +61,7 @@ export async function addFamilyMemberAction(employeeId: string, values: unknown)
   const user = await requireUser();
   try {
     const input = familyMemberSchema.parse(values);
-    await ownChangeOr(user, { kind: "FAMILY_ADD", employeeId, payload: input }, () => addFamilyMember(prisma, user, employeeId, input));
+    await addFamilyMember(prisma, user, employeeId, input);
     revalidateDocuments();
     return { ok: true, data: undefined };
   } catch (error) {
@@ -88,10 +73,7 @@ export async function updateFamilyMemberAction(memberId: string, values: unknown
   const user = await requireUser();
   try {
     const input = familyMemberSchema.parse(values);
-    const owner = await prisma.familyMember.findUnique({ where: { id: memberId }, select: { employeeId: true } });
-    await ownChangeOr(user, { kind: "FAMILY_UPDATE", employeeId: owner?.employeeId ?? "", targetId: memberId, payload: input }, () =>
-      updateFamilyMember(prisma, user, memberId, input),
-    );
+    await updateFamilyMember(prisma, user, memberId, input);
     revalidateDocuments();
     return { ok: true, data: undefined };
   } catch (error) {
@@ -102,10 +84,7 @@ export async function updateFamilyMemberAction(memberId: string, values: unknown
 export async function deleteFamilyMemberAction(memberId: string): Promise<ActionResult> {
   const user = await requireUser();
   try {
-    const owner = await prisma.familyMember.findUnique({ where: { id: memberId }, select: { employeeId: true } });
-    await ownChangeOr(user, { kind: "FAMILY_DELETE", employeeId: owner?.employeeId ?? "", targetId: memberId, payload: {} }, () =>
-      deleteFamilyMember(prisma, user, memberId),
-    );
+    await deleteFamilyMember(prisma, user, memberId);
     revalidateDocuments();
     return { ok: true, data: undefined };
   } catch (error) {

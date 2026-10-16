@@ -175,3 +175,57 @@ export async function listHealthCategories(db: PrismaClient) {
   const categories = await db.healthCategory.findMany({ where: { isActive: true }, orderBy: { name: "asc" } });
   return categories.map((c) => ({ value: c.id, label: c.name }));
 }
+
+export type HealthPrintRow = {
+  id: string;
+  number: string;
+  claimDate: string;
+  category: string;
+  note: string | null;
+  amount: number;
+  approvedAmount: number | null;
+  status: RequestStatus;
+  /** Bulan pembayaran (YYYY-MM) & sudah dibayar? */
+  payout: { month: string; paid: boolean } | null;
+};
+
+/**
+ * Rekap klaim kesehatan per karyawan per tahun untuk dicetak / disimpan PDF (2026-10-16): plafon tahunan,
+ * terpakai, menunggu, sisa, dan daftar klaim (kecuali draft). null = karyawan tidak ditemukan.
+ */
+export async function getHealthPrintData(db: PrismaClient, employeeId: string, year: number) {
+  const employee = await db.employee.findUnique({
+    where: { id: employeeId },
+    select: { id: true, fullName: true, employeeNo: true, position: true, division: true },
+  });
+  if (!employee) return null;
+  const [plafond, claims] = await Promise.all([
+    db.healthPlafond.findUnique({ where: { employeeId_year: { employeeId, year } } }),
+    db.healthClaim.findMany({
+      where: { employeeId, claimDate: yearRange(year), status: { not: "DRAFT" } },
+      orderBy: [{ claimDate: "asc" }, { number: "asc" }],
+      include: { category: { select: { name: true } }, payouts: { orderBy: { periodMonth: "asc" }, take: 1 } },
+    }),
+  ]);
+  const rows: HealthPrintRow[] = claims.map((c) => ({
+    id: c.id,
+    number: c.number,
+    claimDate: toJakartaIsoDate(c.claimDate),
+    category: c.category.name,
+    note: c.note,
+    amount: Number(c.amount),
+    approvedAmount: c.approvedAmount === null ? null : Number(c.approvedAmount),
+    status: c.status,
+    payout: c.payouts[0] ? { month: toJakartaIsoDate(c.payouts[0].periodMonth).slice(0, 7), paid: c.payouts[0].paidAt !== null } : null,
+  }));
+  // Sama dengan ringkasan kesehatan: disetujui memakai nominal disetujui, menunggu memakai nominal diajukan.
+  const approved = rows.filter((r) => r.status === "APPROVED").reduce((n, r) => n + (r.approvedAmount ?? r.amount), 0);
+  const pending = rows.filter((r) => r.status === "PENDING").reduce((n, r) => n + r.amount, 0);
+  const annual = plafond ? Number(plafond.annualAmount) : null;
+  return {
+    employee,
+    year,
+    rows,
+    summary: { annual, approved, pending, remaining: annual === null ? null : remainingPlafond(annual, approved + pending) },
+  };
+}

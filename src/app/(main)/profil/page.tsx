@@ -9,7 +9,6 @@ import { NoEmployeeRecord, ProfileShell } from "./profile-shell";
 import { ProfileForm } from "./profile-form";
 import { ProfileSpotlight } from "./profile-spotlight";
 import { divisionLabels } from "@/lib/services/division";
-import { rejectedSelfDataDraft } from "@/lib/services/profile-change";
 
 export const metadata: Metadata = { title: "Profil Saya" };
 
@@ -28,7 +27,6 @@ export default async function ProfilPage() {
         <ProfileContent
           values={employee.values}
           adminEditHref={user.role === "ADMIN" ? `/karyawan/${user.employeeId}/edit` : null}
-          revision={await rejectedSelfDataDraft(prisma, user.employeeId!)}
         />
       ) : (
         <NoEmployeeRecord />
@@ -37,23 +35,13 @@ export default async function ProfilPage() {
   );
 }
 
-/** Isi form dari usulan yang ditolak (null → "" supaya cocok dengan isian form). */
-function mergeRevision<T extends Record<string, unknown>>(current: T, payload: Record<string, unknown>): T {
-  const merged: Record<string, unknown> = { ...current };
-  for (const key of Object.keys(current)) if (key in payload) merged[key] = payload[key] ?? "";
-  return merged as T;
-}
-
 async function ProfileContent({
   values,
   adminEditHref,
-  revision,
 }: {
   values: NonNullable<Awaited<ReturnType<typeof getEmployeeFormValues>>>["values"];
   /** Admin: tautan untuk mengubah Akun & Pekerjaan miliknya sendiri. */
   adminEditHref: string | null;
-  /** Perubahan data diri terakhir yang ditolak → form diisi usulannya untuk direvisi. */
-  revision: Awaited<ReturnType<typeof rejectedSelfDataDraft>>;
 }) {
   const { email, division, role, startDate, employeeNo, fullName, position, level, ...selfValues } = values;
   const completeness = profileCompleteness(selfValues);
@@ -63,8 +51,7 @@ async function ProfileContent({
       <ProfileSpotlight name={fullName} position={position} email={email} roleLabel={ROLE_LABEL[role]} completeness={completeness} />
       <ProfileForm
         adminEditHref={adminEditHref}
-        revision={revision ? { number: revision.number, reason: revision.rejection?.reason ?? null, by: revision.rejection?.by ?? null } : null}
-        defaultValues={revision ? mergeRevision(selfValues, revision.payload) : selfValues}
+        defaultValues={selfValues}
         readOnly={{
           email,
           division: (await divisionLabels(prisma))[division] ?? division,

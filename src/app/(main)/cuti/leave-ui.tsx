@@ -57,7 +57,7 @@ export function LeaveBalanceSpotlight({ balance, title = "Saldo Cuti Saya" }: { 
         </div>
         <p className="flex flex-wrap items-baseline gap-x-2 text-[38px] leading-[1.08] font-extrabold tracking-[-0.04em] text-ink tabular-nums sm:text-[46px]">
           {balance.remaining}
-          <span className="text-base font-semibold tracking-normal text-ink-3">/ {total} hari tersisa</span>
+          <span className="text-base font-semibold tracking-normal text-ink-3">/ {total} hari</span>
         </p>
       </div>
       <div
@@ -117,7 +117,7 @@ export function LeaveBalanceCard({ balance, title = "Saldo Cuti Saya" }: { balan
         </div>
         <p className="text-3xl font-bold tabular-nums">
           {balance.remaining}
-          <span className="ml-1 text-base font-medium text-muted-foreground">/ {total} hari tersisa</span>
+          <span className="ml-1 text-base font-medium text-muted-foreground">/ {total} hari</span>
         </p>
       </div>
       <ProgressBar className="mt-4" value={usedPercent} tone={balance.remaining <= 0 ? "danger" : "info"} />

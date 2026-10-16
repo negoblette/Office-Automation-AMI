@@ -5,6 +5,7 @@ import type { Actor } from "@/lib/services/access";
 import { approveRequest } from "@/lib/services/approval";
 import { setHealthPlafond, setPayoutPaid, submitHealthClaim } from "@/lib/services/health";
 import { applyApprovedHealthClaim } from "@/lib/services/health-payout";
+import { getHealthPrintData } from "@/lib/services/health-queries";
 import { healthClaimSchema, healthPlafondSchema } from "@/lib/validators/health";
 import { testDb } from "@/test/db";
 import { resetAndSeed } from "@/test/seed";
@@ -124,5 +125,24 @@ describe("jadwal pembayaran (HC-05/06 — plafon tahunan, keputusan user 2026-09
     expect((await testDb.healthPayout.findUniqueOrThrow({ where: { id: payout.id } })).paidAt).not.toBeNull();
     await setPayoutPaid(testDb, u.ika, payout.id, false);
     expect((await testDb.healthPayout.findUniqueOrThrow({ where: { id: payout.id } })).paidAt).toBeNull();
+  });
+});
+
+describe("rekap cetak klaim kesehatan (2026-10-16)", () => {
+  it("per karyawan per tahun: plafon, terpakai (nominal disetujui), menunggu, sisa, daftar klaim tanpa draft", async () => {
+    await plafond("andi", 3_000_000, 2026);
+    const medicineId = (await testDb.healthCategory.findFirstOrThrow({ where: { name: "Obat-obatan" } })).id;
+    const first = await submitHealthClaim(testDb, actors.andi, healthClaimSchema.parse({ categoryId: medicineId, claimDate: "2026-09-10", amount: 500_000, note: "Obat flu" }));
+    await submitHealthClaim(testDb, actors.andi, healthClaimSchema.parse({ categoryId: medicineId, claimDate: "2026-09-12", amount: 200_000, note: "" }));
+    const request = await testDb.approvalRequest.findUniqueOrThrow({ where: { module_entityId: { module: "HEALTH", entityId: first.claimId } } });
+    await approveRequest(testDb, { requestId: request.id, actorId: u.ika, approvedAmount: 400_000 });
+
+    const data = (await getHealthPrintData(testDb, actors.andi.employeeId!, 2026))!;
+    expect(data.summary).toEqual({ annual: 3_000_000, approved: 400_000, pending: 200_000, remaining: 2_400_000 });
+    expect(data.rows.map((r) => [r.category, r.status, r.amount, r.approvedAmount])).toEqual([
+      ["Obat-obatan", "APPROVED", 500_000, 400_000],
+      ["Obat-obatan", "PENDING", 200_000, null],
+    ]);
+    expect((await getHealthPrintData(testDb, actors.andi.employeeId!, 2025))!.rows).toEqual([]);
   });
 });

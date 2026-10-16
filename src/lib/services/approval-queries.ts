@@ -130,9 +130,9 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
         c.level && `Level ${c.level}`,
         c.degree && `Jenjang ${EDUCATION_LEVEL_LABEL[c.degree]}`,
         c.number && !c.level && !c.degree && `No. ${c.number}`,
-        c.type === "IJAZAH" ? `Mulai ${formatDate(c.startDate, "short")}` : `Diambil ${formatDate(c.startDate, "short")}`,
+        c.type === "IJAZAH" ? `Lulus ${formatDate(c.graduationDate ?? c.startDate, "short")}` : `Diambil ${formatDate(c.startDate, "short")}`,
         c.type === "IJAZAH"
-          ? c.graduationDate && `Lulus ${formatDate(c.graduationDate, "short")}`
+          ? null
           : c.endDate
             ? `Berlaku s/d ${formatDate(c.endDate, "short")}`
             : "Permanen",

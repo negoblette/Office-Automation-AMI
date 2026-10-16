@@ -52,7 +52,7 @@ export function CertificatesPanel({
         <div className="space-y-1">
           <h2 className="text-base font-semibold">Sertifikat & Ijazah</h2>
           <p className="text-sm text-muted-foreground">
-            Sertifikat baru diverifikasi Admin. Status &ldquo;Akan kadaluarsa&rdquo; muncul 30 hari sebelum masa berlaku habis.
+            Sertifikat profesional baru diverifikasi Admin; ijazah langsung tersimpan. Status &ldquo;Akan kadaluarsa&rdquo; muncul 30 hari sebelum masa berlaku habis.
           </p>
         </div>
         {canEdit && <CertificateDialog employeeId={employeeId} />}
@@ -119,7 +119,7 @@ function CertificateRow({ employeeId, certificate, canEdit }: { employeeId: stri
         </p>
         <p className="text-sm text-muted-foreground">
           {certificate.type === "IJAZAH"
-            ? `Mulai ${date(certificate.startDate)}${certificate.graduationDate ? ` · lulus ${date(certificate.graduationDate)}` : ""}`
+            ? `Lulus ${date(certificate.graduationDate ?? certificate.startDate)}`
             : `Diambil ${date(certificate.startDate)} · ${certificate.endDate ? `berlaku s/d ${date(certificate.endDate)}` : "permanen (tanpa masa berlaku)"}`}
         </p>
         {error && (
@@ -242,7 +242,6 @@ function CertificateDialog({ employeeId, certificate }: { employeeId: string; ce
                   <TextInputField name="name" label="Gelar" required placeholder="mis. Sarjana Komputer (S.Kom)" />
                   <TextInputField name="issuer" label="Lembaga" required placeholder="mis. Universitas Indonesia" />
                   <SelectInputField name="degree" label="Jenjang" required options={toOptions(EDUCATION_LEVEL_LABEL)} />
-                  <DateInputField name="startDate" label="Tanggal mulai" required />
                   <DateInputField name="graduationDate" label="Tanggal lulus" required />
                 </>
               ) : (

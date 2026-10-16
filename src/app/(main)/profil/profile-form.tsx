@@ -34,13 +34,10 @@ export function ProfileForm({
   defaultValues,
   readOnly,
   adminEditHref = null,
-  revision = null,
 }: {
   defaultValues: Input;
   readOnly: ProfileReadOnly;
   adminEditHref?: string | null;
-  /** Perubahan data diri yang ditolak sedang direvisi (form berisi usulan tersebut). */
-  revision?: { number: string; reason: string | null; by: string | null } | null;
 }) {
   const router = useRouter();
   const [saved, setSaved] = useState(false);
@@ -62,13 +59,6 @@ export function ProfileForm({
     <FormProvider {...form}>
       <form onSubmit={onSubmit} noValidate className="rise flex flex-col" style={riseStyle(4)} onChange={() => setSaved(false)}>
         <FormAlert message={serverError} />
-        {revision && (
-          <div role="status" className="mb-4 rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-sm">
-            <p className="font-semibold text-danger">Perubahan data diri {revision.number} ditolak{revision.by ? ` oleh ${revision.by}` : ""}.</p>
-            {revision.reason && <p className="text-ink-2">Alasan: {revision.reason}</p>}
-            <p className="text-ink-3">Form di bawah berisi usulan Anda sebelumnya — perbaiki lalu klik &ldquo;Ajukan Ulang Perubahan&rdquo;.</p>
-          </div>
-        )}
         <FormSection
           layout="aside"
           title="Akun & Pekerjaan"
@@ -102,11 +92,11 @@ export function ProfileForm({
         <div className="flex flex-col-reverse items-stretch gap-3 pt-1 sm:flex-row sm:items-center sm:justify-end">
           {saved && (
             <p role="status" className="flex items-center gap-1.5 text-sm font-medium text-success">
-              <CheckCircle2 className="size-4" aria-hidden /> Perubahan dikirim — menunggu approval Admin
+              <CheckCircle2 className="size-4" aria-hidden /> Data tersimpan
             </p>
           )}
           <Button type="submit" size="lg" disabled={pending}>
-            {revision ? "Ajukan Ulang Perubahan" : "Ajukan Perubahan Data Diri"}
+            Simpan Data Diri
           </Button>
         </div>
       </form>

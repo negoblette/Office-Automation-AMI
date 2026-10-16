@@ -61,15 +61,14 @@ describe("certificateSchema", () => {
   });
 
   it("ijazah (2026-10-12): gelar, lembaga, jenjang, tanggal mulai & lulus; tanpa masa berlaku", () => {
-    const base = { type: "IJAZAH", name: "Sarjana Komputer", startDate: "2016-08-01" };
+    const base = { type: "IJAZAH", name: "Sarjana Komputer" };
     expect(issues(base)).toEqual([
       ["issuer", "Lembaga wajib diisi"],
       ["degree", "Jenjang wajib dipilih"],
       ["graduationDate", "Tanggal lulus wajib diisi"],
     ]);
-    expect(issues({ ...base, issuer: "UI", degree: "S1", graduationDate: "2016-01-01" })).toEqual([
-      ["graduationDate", "Tanggal lulus tidak boleh sebelum tanggal mulai"],
-    ]);
+    // 2026-10-16: ijazah tanpa tanggal mulai — tanggal disimpan = tanggal lulus.
+    expect(certificateSchema.parse({ ...base, issuer: "UI", degree: "S1", graduationDate: "2016-01-01" })).toMatchObject({ startDate: "2016-01-01" });
     expect(certificateSchema.parse({ ...base, issuer: "UI", degree: "S1", graduationDate: "2020-08-01", endDate: "2030-01-01", level: "2" })).toMatchObject({
       degree: "S1",
       graduationDate: "2020-08-01",
@@ -117,6 +116,20 @@ describe("verifikasi sertifikat (2026-10-12): Ci Ika", () => {
     await approveRequest(testDb, { requestId: request.id, actorId: u.ika });
     await expect(updateCertificate(testDb, actors.andi, certificate.id, input({ fileKey: certificate.fileKey }))).rejects.toThrow("sudah terverifikasi");
     await expect(updateCertificate(testDb, actors.ika, certificate.id, input({ name: "CCNP", fileKey: certificate.fileKey }))).resolves.toMatchObject({ oldFileKey: null });
+  });
+
+  it("2026-10-16: ijazah langsung tersimpan tanpa approval dan tetap bisa diubah pemiliknya", async () => {
+    const ijazah = await addCertificate(
+      testDb,
+      actors.andi,
+      actors.andi.employeeId!,
+      certificateSchema.parse({ type: "IJAZAH", name: "Sarjana Komputer", issuer: "UI", degree: "S1", graduationDate: "2020-08-01", fileKey: `${randomUUID()}.pdf` }),
+    );
+    expect(ijazah).toMatchObject({ status: "APPROVED", verificationNumber: null, notifications: [] });
+    expect(await testDb.approvalRequest.count({ where: { entityId: ijazah.id } })).toBe(0);
+    await expect(
+      updateCertificate(testDb, actors.andi, ijazah.id, certificateSchema.parse({ type: "IJAZAH", name: "Sarjana Teknik", issuer: "UI", degree: "S1", graduationDate: "2020-08-01", fileKey: ijazah.fileKey })),
+    ).resolves.toMatchObject({ notifications: [] });
   });
 
   it("hapus sertifikat yang masih menunggu → soft delete + verifikasi dibatalkan (keluar dari antrian)", async () => {

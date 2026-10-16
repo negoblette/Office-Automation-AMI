@@ -177,6 +177,7 @@ Kalender cuti bulanan (`LeaveCalendar`) tampil di dashboard & `/cuti/kalender`; 
 **Kesehatan:** plafon **hanya tahunan** per karyawan per tahun (tidak ada plafon bulanan). Klaim >
 sisa plafon tahunan ditolak saat submit. Approver mengisi nominal disetujui (≤ diajukan, `approvedAmount`);
 plafon & pembayaran memakai nominal disetujui. Klaim approved dibayar penuh: satu `HealthPayout` di bulan approval.
+Rekap cetak per orang per tahun di `/cetak/kesehatan` (2026-10-16).
 
 **Hapus data = soft delete** (`deletedAt`, NFR v1.14): Document, Certificate, FamilyMember, Candidate, Customer,
 Holiday, Reimbursement (draft), ApprovalFlow, Asset. Setiap query WAJIB memfilter `deletedAt: null` (termasuk
@@ -197,11 +198,12 @@ REJECTED) yang memanggil `restartApproval` (approval lama dihapus, mulai lagi da
 **Invoice/kwitansi:** upload dihapus (Fase 14). File lama hanya disimpan 2 tahun: job `invoice.purge`
 (harian 02:00 WIB) menghapus file & referensinya, data nominal tetap — pengecualian dari aturan soft delete.
 
-**Sertifikat:** setiap sertifikat baru diverifikasi lewat approval engine (modul CERTIFICATE, `CRT/…`, flow
+**Sertifikat:** setiap sertifikat **profesional** baru diverifikasi (ijazah langsung tersimpan, 2026-10-16) lewat approval engine (modul CERTIFICATE, `CRT/…`, flow
 Ci Ika sejak 2026-10-12); terverifikasi → hanya Admin yang bisa mengubah. Profesional: Level 1–3, masa berlaku wajib kecuali dicentang "Permanent" (`endDate` null). Ijazah: Gelar, Lembaga,
-Jenjang (`EducationLevel`), tanggal mulai & `graduationDate`, tanpa masa berlaku (2026-10-12). Upload file **hanya PDF**.
+Jenjang (`EducationLevel`), `graduationDate` (tanpa tanggal mulai; `startDate` = tanggal lulus), tanpa masa berlaku (2026-10-12). Upload file **hanya PDF**.
 
-**Perubahan data milik sendiri** (2026-10-12): data diri, keluarga, dokumen, dan hapus sertifikat terverifikasi oleh
+**Perubahan data milik sendiri** (2026-10-12; **tidak dipakai lagi sejak 2026-10-16** — data diri, keluarga, dokumen, ijazah
+langsung tersimpan; approval hanya untuk upload sertifikat profesional. Kode & tabel dibiarkan untuk permintaan lama): data diri, keluarga, dokumen, dan hapus sertifikat terverifikasi oleh
 karyawan atas datanya sendiri (siapa pun role-nya) → `requestProfileChange` (tabel `ProfileChangeRequest`, modul
 `PROFILE_CHANGE`, `PRF/…`, Ci Ika; milik Ci Ika → Fallback); diterapkan saat disetujui (`applyApprovedProfileChange`
 memanggil fungsi `*InTx` yang sama). Validasi saat mengajukan = dry-run transaksi. Admin ke karyawan lain → langsung.

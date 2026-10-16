@@ -38,7 +38,8 @@ export async function ProfileShell({
 }) {
   const tab = TABS.find((t) => t.key === active);
   const user = await requireUser();
-  const changes = user.employeeId ? await listProfileChanges(prisma, user.employeeId) : [];
+  // 2026-10-16: data diri / dokumen / keluarga langsung tersimpan; panel hanya untuk permintaan lama yang masih menunggu.
+  const changes = user.employeeId ? (await listProfileChanges(prisma, user.employeeId)).filter((c) => c.status === "PENDING") : [];
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
