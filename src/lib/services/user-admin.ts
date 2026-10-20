@@ -120,12 +120,18 @@ export async function setUserActive(db: PrismaClient, actorId: string, userId: s
   });
 }
 
-/** Admin mengetik password baru (sama seperti saat membuat akun); password tidak masuk audit. */
+/**
+ * Admin mengetik password sementara; user wajib menggantinya saat login berikutnya dan semua
+ * sesinya yang masih aktif berakhir (hardening 2026-10). Password tidak masuk audit.
+ */
 export async function resetUserPassword(db: PrismaClient, actorId: string, userId: string, password: string) {
   const passwordHash = await argon2.hash(password);
   return db.$transaction(async (tx) => {
     await getUserOrThrow(tx, userId);
-    await tx.user.update({ where: { id: userId }, data: { passwordHash } });
+    await tx.user.update({
+      where: { id: userId },
+      data: { passwordHash, mustChangePassword: true, sessionVersion: { increment: 1 } },
+    });
     await logAudit(tx, { actorId, action: "UPDATE", entity: "User", entityId: userId, after: { passwordReset: true } });
   });
 }

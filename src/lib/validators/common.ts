@@ -2,6 +2,7 @@
 // Satu schema dipakai di client (react-hook-form) dan server (Server Action).
 // Validasi file ada di lib/storage (Tahap 3.4).
 import { z } from "zod";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, passwordProblem } from "@/lib/password-policy";
 
 // ---------------------------------------------------------------------
 // Normalisasi (fungsi murni, juga dipakai di luar Zod)
@@ -168,10 +169,14 @@ export const bpjsKesSchema = requiredText("Nomor BPJS Kesehatan")
   .transform(stripSpaces)
   .pipe(z.string().regex(/^\d{13}$/, { error: "Nomor BPJS Kesehatan harus 13 digit angka" }));
 
-/** Password: minimal 8 karakter (Tech Spec §9). */
+/** Password baru (hardening 2026-10, NIST SP 800-63B-4): 15–128 karakter, bukan pola/kata umum. */
 export const passwordSchema = requiredText("Password")
-  .min(8, { error: "Password minimal 8 karakter" })
-  .max(100, { error: "Password maksimal 100 karakter" });
+  .min(PASSWORD_MIN_LENGTH, { error: `Password minimal ${PASSWORD_MIN_LENGTH} karakter` })
+  .max(PASSWORD_MAX_LENGTH, { error: `Password maksimal ${PASSWORD_MAX_LENGTH} karakter` })
+  .superRefine((value, ctx) => {
+    const problem = passwordProblem(value);
+    if (problem) ctx.addIssue({ code: "custom", message: problem });
+  });
 
 /** Teks bebas: trim, panjang min–max. */
 export function textSchema(label: string, { min = 1, max = 100 }: { min?: number; max?: number } = {}) {

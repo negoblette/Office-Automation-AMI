@@ -4,6 +4,7 @@ import type { Actor } from "@/lib/services/access";
 import { approveRequest, rejectRequest } from "@/lib/services/approval";
 import { addCertificate } from "@/lib/services/certificate";
 import { canAccessFile, prismaFileAccessRepository } from "@/lib/services/file-access";
+import { sealEmployeeData } from "@/lib/services/personal-data";
 import { listProfileChanges, needsProfileApproval, rejectedSelfDataDraft, requestProfileChange } from "@/lib/services/profile-change";
 import { parseChangeLines } from "@/lib/profile-change-lines";
 import { certificateSchema } from "@/lib/validators/certificate";
@@ -42,6 +43,9 @@ describe("perubahan data karyawan lewat Ci Ika (2026-10-12)", () => {
     const [view] = await listProfileChanges(testDb, actors.andi.employeeId!);
     expect(view).toMatchObject({ kindLabel: "Ubah data diri", status: "PENDING" });
     expect(view.summary).toEqual(expect.arrayContaining(["NIK: — → 3171012345678901", "Status pernikahan: Belum menikah → Menikah", "Alamat: — → Jl. Melati 1"]));
+    // Isi & ringkasan tersimpan terenkripsi (hardening Tahap 4).
+    const raw = await testDb.profileChangeRequest.findUniqueOrThrow({ where: { id: result.changeId } });
+    expect(JSON.stringify([raw.payload, raw.summary])).not.toContain("3171012345678901");
 
     await expect(requestProfileChange(testDb, actors.andi, { kind: "SELF_DATA", employeeId: actors.andi.employeeId!, payload: self({ address: "Lain" }) })).rejects.toThrow(
       "menunggu persetujuan",
@@ -52,7 +56,7 @@ describe("perubahan data karyawan lewat Ci Ika (2026-10-12)", () => {
   });
 
   it("validasi sama seperti simpan langsung (NIK dipakai orang lain ditolak saat mengajukan); milik Ci Ika → Fallback", async () => {
-    await testDb.employee.update({ where: { id: actors.sinta.employeeId! }, data: { nik: "3171012345678901" } });
+    await testDb.employee.update({ where: { id: actors.sinta.employeeId! }, data: sealEmployeeData({ nik: "3171012345678901" }) });
     await expect(requestProfileChange(testDb, actors.andi, { kind: "SELF_DATA", employeeId: actors.andi.employeeId!, payload: self() })).rejects.toThrow("NIK");
     expect(await testDb.profileChangeRequest.count()).toBe(0);
 

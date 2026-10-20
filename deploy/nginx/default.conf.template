@@ -1,0 +1,113 @@
+# Reverse proxy produksi Office Automation (hardening Tahap 3).
+# Template image nginx resmi: ${APP_DOMAIN}, ${TLS_CERT_PATH}, ${TLS_KEY_PATH} diisi dari environment
+# saat container start (variabel nginx seperti $host tidak ikut diganti). Hasilnya di-include di blok `http`.
+
+# ---------- Rate limit (per IP asli pengunjung) ----------
+# Semua request: 10/detik; lonjakan 40 diizinkan (satu halaman memuat banyak file sekaligus).
+limit_req_zone $binary_remote_addr zone=umum:10m rate=10r/s;
+
+# Hanya POST (simpan form, upload, login) yang dihitung; GET kuncinya kosong → tidak dihitung.
+map $request_method $kunci_post {
+    POST    $binary_remote_addr;
+    default "";
+}
+# Kirim data: 2/detik, lonjakan 20.
+limit_req_zone $kunci_post zone=tulis:10m rate=2r/s;
+# Login: 10 percobaan/menit per IP (melengkapi batas di aplikasi; mencegah RAM habis karena argon2).
+limit_req_zone $kunci_post zone=login:10m rate=10r/m;
+# Export Excel (berat): 6/menit per IP.
+limit_req_zone $binary_remote_addr zone=ekspor:10m rate=6r/m;
+# Maksimal 30 koneksi serentak per IP.
+limit_conn_zone $binary_remote_addr zone=koneksi:10m;
+
+upstream app {
+    server app:3000;
+    keepalive 16;
+}
+
+# ---------- HTTP → HTTPS ----------
+server {
+    listen 80 default_server;
+    server_name _;
+    server_tokens off;
+    # Tujuan redirect ditulis tetap (bukan $host) supaya header Host palsu tidak bisa dipakai untuk mengalihkan.
+    return 301 https://${APP_DOMAIN}$request_uri;
+}
+
+# ---------- Tolak HTTPS untuk nama domain lain (Host/SNI palsu) ----------
+server {
+    listen 443 ssl default_server;
+    server_name _;
+    ssl_reject_handshake on;
+}
+
+# ---------- Aplikasi ----------
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${APP_DOMAIN};
+    server_tokens off;
+
+    # Hanya jaringan di ALLOWED_SUBNETS (dibuat oleh proxy-start.sh); jaringan lain mendapat 403.
+    include /etc/nginx/conf.d/allowlist.inc;
+
+    # Sertifikat (lihat docs/02-TECH-SPEC.md §9). Profil Mozilla "Intermediate": hanya TLS 1.2 & 1.3.
+    ssl_certificate     ${TLS_CERT_PATH};
+    ssl_certificate_key ${TLS_KEY_PATH};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_prefer_server_ciphers off;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:TLS:10m;
+    ssl_session_tickets off;
+
+    # HSTS: browser wajib memakai HTTPS untuk domain ini selama 1 tahun.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # Batas ukuran & waktu: upload maks 5 MB (+ overhead = 6 MB, sama dengan batas Server Action);
+    # koneksi yang sengaja dibuat lambat diputus (serangan slowloris).
+    client_max_body_size 6m;
+    client_header_timeout 15s;
+    client_body_timeout 30s;
+    send_timeout 30s;
+    keepalive_timeout 30s;
+
+    limit_req_status 429;
+    limit_conn_status 429;
+    limit_conn koneksi 30;
+
+    # Header ke aplikasi DITIMPA (bukan ditambah) → IP dari client tidak bisa dipalsukan.
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host  $host;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_read_timeout 60s;
+
+    # Aturan nginx: lokasi yang menulis `limit_req` sendiri TIDAK mewarisi `limit_req` dari luar,
+    # jadi setiap lokasi menyebut semua batas yang berlaku untuknya.
+    location = /login {
+        limit_req zone=umum burst=40 nodelay;
+        limit_req zone=login burst=5 nodelay;
+        proxy_pass http://app;
+    }
+
+    location ^~ /api/auth/ {
+        limit_req zone=umum burst=40 nodelay;
+        limit_req zone=login burst=5 nodelay;
+        proxy_pass http://app;
+    }
+
+    location ^~ /api/export/ {
+        limit_req zone=ekspor burst=3 nodelay;
+        proxy_pass http://app;
+    }
+
+    location / {
+        limit_req zone=umum burst=40 nodelay;
+        limit_req zone=tulis burst=20 nodelay;
+        proxy_pass http://app;
+    }
+}

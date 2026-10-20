@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Plus_Jakarta_Sans } from "next/font/google";
+import { connection } from "next/server";
 import "./globals.css";
 
 // Font tampilan baru (docs/design/prototipe-dashboard-oa.html): Plus Jakarta Sans untuk antarmuka,
@@ -23,11 +24,14 @@ export const metadata: Metadata = {
   description: "Sistem administrasi kantor internal PT Artha Mitra Interdata",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // CSP nonce (hardening Tahap 3) hanya bisa dipasang saat render per request → semua halaman dinamis,
+  // termasuk halaman 404 bawaan.
+  await connection();
   return (
     <html
       lang="id"

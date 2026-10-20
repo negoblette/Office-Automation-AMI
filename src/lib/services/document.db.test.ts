@@ -102,6 +102,29 @@ describe("aturan dokumen keluarga (DOC-02)", () => {
     );
   });
 
+  it("NIK & tanggal lahir keluarga terenkripsi; urutan tampil sama seperti sebelum dienkripsi (hardening Tahap 4)", async () => {
+    await setMarital(andi, "MARRIED");
+    const add = (relation: "SPOUSE" | "CHILD", fullName: string, nik: string, birthDate: string) =>
+      addFamilyMember(testDb, andi, andi.employeeId!, familyMemberSchema.parse({ relation, fullName, nik, birthDate }));
+    const rina = await add("SPOUSE", "Rina", "3171014405920002", "1993-05-04");
+    await add("CHILD", "Bima", "3171011203180003", "2018-03-12");
+    await add("CHILD", "Citra", "", "");
+    await add("CHILD", "Dewi", "3171010902150004", "2015-02-09");
+    expect(rina).toMatchObject({ nik: "3171014405920002", birthDate: "1993-05-04" });
+
+    const raw = await testDb.familyMember.findUniqueOrThrow({ where: { id: rina.id } });
+    expect(JSON.stringify(raw)).not.toContain("3171014405920002");
+    expect(JSON.stringify(raw)).not.toContain("1993-05-04");
+
+    const docs = await getEmployeeDocuments(testDb, andi.employeeId!);
+    expect(docs!.family.map((m) => [m.fullName, m.nik, m.birthDate])).toEqual([
+      ["Dewi", "3171010902150004", "2015-02-09"],
+      ["Bima", "3171011203180003", "2018-03-12"],
+      ["Citra", null, null],
+      ["Rina", "3171014405920002", "1993-05-04"],
+    ]);
+  });
+
   it("anggota keluarga milik karyawan lain tidak bisa dipakai", async () => {
     await setMarital(sinta, "MARRIED");
     const sintaChild = await addFamilyMember(testDb, sinta, sinta.employeeId!, member("CHILD", "Tono"));

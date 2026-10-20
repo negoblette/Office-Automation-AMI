@@ -7,6 +7,7 @@ import type { FamilyMemberInput } from "@/lib/validators/family";
 import { type Actor, assertFileKeyAvailable, getManageableEmployee } from "./access";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
+import { openFamilyMember, sealFamilyData } from "./personal-data";
 
 export type { Actor } from "./access";
 
@@ -31,12 +32,12 @@ async function assertFamilyAllowed(tx: Tx, employeeId: string, input: FamilyMemb
   }
 }
 
+/** NIK & tanggal lahir (YYYY-MM-DD) dikunci (hardening Tahap 4). */
 function familyData(input: FamilyMemberInput) {
   return {
     relation: input.relation,
     fullName: input.fullName,
-    nik: input.nik,
-    birthDate: input.birthDate ? fromIsoDate(input.birthDate) : null,
+    ...sealFamilyData({ nik: input.nik, birthDate: input.birthDate || null }),
   };
 }
 
@@ -50,7 +51,7 @@ export async function addFamilyMemberInTx(tx: Tx, actor: Actor, employeeId: stri
 
   const member = await tx.familyMember.create({ data: { employeeId, ...familyData(input) } });
   await logAudit(tx, { actorId: actor.id, action: "CREATE", entity: "FamilyMember", entityId: member.id, after: member });
-  return member;
+  return openFamilyMember(member);
 }
 
 export async function updateFamilyMember(db: PrismaClient, actor: Actor, memberId: string, input: FamilyMemberInput) {
@@ -68,7 +69,7 @@ export async function updateFamilyMemberInTx(tx: Tx, actor: Actor, memberId: str
 
   const after = await tx.familyMember.update({ where: { id: memberId }, data: familyData(input) });
   await logAudit(tx, { actorId: actor.id, action: "UPDATE", entity: "FamilyMember", entityId: memberId, before, after });
-  return after;
+  return openFamilyMember(after);
 }
 
 /** Hapus anggota keluarga beserta dokumennya (soft delete, NFR v1.14; file tetap disimpan). */

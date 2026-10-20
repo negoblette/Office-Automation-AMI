@@ -130,7 +130,7 @@ semua direktur auto-approve; bila flow REGULAR tidak ditemukan, engine melempar 
 | Serial number | 3–50 karakter | trim, UPPERCASE |
 | BPJS Ketenagakerjaan | 11 digit | hapus spasi *(keputusan user 2026-09-24)* |
 | BPJS Kesehatan | 13 digit | hapus spasi *(keputusan user 2026-09-24)* |
-| Password | 8–100 karakter | — |
+| Password | 15–128 karakter (lihat §9) | — |
 | Nominal | integer > 0 | terima input "1.250.000" → 1250000 |
 | Tanggal | ISO date | end ≥ start |
 | File | pdf/jpg/png, ≤5 MB | cek magic bytes, bukan hanya ekstensi |
@@ -141,7 +141,7 @@ semua direktur auto-approve; bila flow REGULAR tidak ditemukan, engine melempar 
 - **Resign** (`services/employee.ts#resign`): isi `endDate` periode aktif, `endReason = "RESIGN"`, `Employee.status = RESIGNED`, `User.isActive = false`, audit log.
 - **Buat akun** (`services/employee.ts#createEmployee`, Admin): field wajib hanya nama, email, divisi, jabatan, tanggal masuk, role, dan **password awal yang diketik Admin** (diberikan ke staf; keputusan user 2026-09-24) → buat `Employee` + `EmploymentPeriod` + `User`. `nik` & `employeeNo` boleh kosong (diisi belakangan).
 - **Isi data mandiri** (EMP-06): staf mengubah data dirinya sendiri lewat `/profil`. Field yang **hanya Admin** boleh ubah: `division`, `User.role`, `email`, `EmploymentPeriod.startDate/endDate` (menentukan jatah cuti), plus field sistem (`status`, `skipApproval`). Dicek di server (schema Zod terpisah untuk staf vs Admin), bukan hanya disembunyikan di form.
-- **NIK unik**: bila NIK yang diisi sudah dipakai karyawan lain → tolak dengan pesan "NIK sudah terdaftar, hubungi Admin". Email & nomor karyawan juga unik.
+- **NIK unik**: bila NIK yang diisi sudah dipakai karyawan lain → tolak dengan pesan "NIK sudah terdaftar, hubungi Admin". Email & nomor karyawan juga unik. NIK tersimpan terenkripsi, jadi keunikannya dicek lewat sidik jari `Employee.nikHash` (HMAC-SHA256, unik) — hardening Tahap 4, §9.
 - **Pengaman Admin**: Admin tidak bisa mengubah role akunnya sendiri dan tidak bisa me-resign dirinya sendiri (mencegah terkunci dari aplikasi).
 - **Rehire**: dari `/karyawan/arsip`, Admin klik "Aktifkan kembali" → status ACTIVE, `EmploymentPeriod` baru (tanggal masuk diisi Admin), akun aktif, audit log REHIRE.
 - **Konversi kandidat**: salin data & pindahkan dokumen (ownerType → EMPLOYEE).
@@ -183,14 +183,47 @@ semua direktur auto-approve; bila flow REGULAR tidak ditemukan, engine melempar 
 Template email: `approval-requested`, `approval-progress`, `approval-final`, `reminder-expiry`. Semua berisi nomor dokumen, ringkasan, dan link ke halaman detail.
 
 ## 8. File Storage (`lib/storage/`)
-Interface `put(bytes, ext) → key`, `get(key) → bytes`, `delete(key)`. Implementasi awal `LocalStorage` (`UPLOAD_DIR`), siap ditambah `S3Storage`. Key = `<uuid>.<pdf|jpg|png>` (format lain ditolak → aman dari path traversal). Upload lewat `saveUpload(file)`: validasi magic bytes + ukuran, lalu simpan.
+Interface `put(bytes, ext) → key`, `get(key) → bytes`, `delete(key)`. Implementasi awal `LocalStorage` (`UPLOAD_DIR`), siap ditambah `S3Storage`. Key = `<uuid>.<pdf|jpg|png>` (format lain ditolak → aman dari path traversal). Upload lewat `saveUpload(file)`: validasi magic bytes + ukuran, lalu simpan. Isi file disimpan terenkripsi AES-256-GCM (header `OAE1`, key file sebagai AAD) dan dibuka di dalam `get()`, jadi ukuran, unduhan, dan hak akses tidak berubah; file lama tanpa header tetap terbaca (hardening Tahap 4).
 
 Route `/api/files/[key]` (key, bukan id, karena file tersimpan sebagai `fileKey` di 4 tabel: `Document`, `Certificate`, `ReimbursementItem.receiptFileKey`, `HealthClaim.invoiceFileKey`). Pemilik dicari di keempat tabel itu. Izin: Admin (approver selalu Admin, §4.2), atau karyawan pemilik file. Belum login → 401, tidak berhak → 403, tidak ada → 404.
 
 ## 9. Keamanan
-- Password hash argon2; minimal 8 karakter.
-- Session JWT httpOnly; role & employeeId di token; user nonaktif ditolak saat login.
+- Password hash argon2. Password baru 15–128 karakter tanpa aturan komposisi; ditolak bila berupa
+  karakter berulang, deret (123…/qwerty…), kata umum + angka/simbol, atau memuat nama/email pemilik
+  (`lib/password-policy.ts`, NIST SP 800-63B-4) — hardening 2026-10.
+- Akun baru, hasil konversi kandidat, dan hasil reset Admin wajib ganti password saat login berikutnya
+  (`User.mustChangePassword` → `/ganti-password`). Karyawan bisa ganti password sendiri (password lama wajib benar).
+- Session JWT httpOnly; role, employeeId & `sessionVersion` di token. Sesi berakhir setelah 1 jam tidak aktif
+  atau 12 jam sejak login. Ganti/reset password menaikkan `User.sessionVersion` → semua sesi lama dicabut.
+  User nonaktif ditolak saat login dan di setiap request.
 - Guard `requireUser()` / `requireAdmin()` di setiap Server Action & page.
-- Rate limit sederhana pada login.
-- Audit log: CREATE/UPDATE/DELETE, APPROVE, RESIGN, REHIRE, LOGIN.
-- Backup: `pg_dump` harian (script disiapkan saat deployment).
+- Rate limit login (`LOGIN_FAILED` di AuditLog, dengan IP): ditahan 15 menit bila 5 gagal dari email+IP yang sama,
+  20 gagal ke satu email, atau 20 gagal dari satu IP. Email tak terdaftar tetap menjalankan argon2 (anti enumerasi akun).
+- Audit log: CREATE/UPDATE/DELETE, APPROVE, RESIGN, REHIRE, LOGIN — dengan IP & user agent bila berasal dari request.
+- Content Security Policy bernonce per request (`src/proxy.ts`, `lib/security/csp.ts`); semua halaman dirender
+  dinamis (`connection()` di root layout). Mode lewat `CSP_MODE` (produksi: enforce; dev: report-only). Script, font,
+  gambar, atau koneksi ke domain luar harus ditambahkan ke CSP lebih dulu. Header tambahan: COOP & CORP same-origin.
+- Produksi hanya lewat reverse proxy nginx (`deploy/nginx/`): HTTPS TLS 1.2/1.3, HSTS 1 tahun, header IP ditimpa
+  (X-Real-IP), hanya jaringan di `ALLOWED_SUBNETS`, port diikat ke `BIND_IP`, rate limit per IP (umum 10/dtk,
+  POST 2/dtk, login 10/mnt, export 6/mnt), upload maks 6 MB. Port aplikasi tidak dibuka ke host. Sertifikat di
+  `deploy/certs/` (atau Let's Encrypt lewat `TLS_CERT_PATH`/`TLS_KEY_PATH`), di-reload otomatis tiap 6 jam.
+- Data pribadi terenkripsi AES-256-GCM per kolom (hardening Tahap 4, `docs/08-INVENTARIS-DATA.md`): NIK, No KK, NPWP,
+  BPJS TK/Kesehatan, No HP, tanggal lahir (disimpan `YYYY-MM-DD`), kontak darurat (Employee); NIK & tanggal lahir
+  keluarga; NIK & HP kandidat; isi & ringkasan `ProfileChangeRequest`. Dikunci/dibuka di lapisan service/query
+  (`services/personal-data.ts`), jadi logika & tampilan memakai nilai terbuka seperti biasa. Urutan anggota keluarga
+  dihitung di aplikasi (`compareFamilyMembers`, sama dengan ORDER BY sebelumnya). Kunci di env:
+  `DATA_ENCRYPTION_KEYS` (ring `v1:…`, entri pertama aktif → rotasi tanpa kehilangan data lama) & `DATA_INDEX_KEY`.
+  Data lama / rotasi: `npm run data:encrypt` (produksi: otomatis setelah migrasi). Data asli hanya dibuka lewat aplikasi
+  atau `data:lihat` / `data:cari-nik` di server (wajib alasan, tercatat `VIEW_PERSONAL_DATA`). Audit log tidak memuat
+  data pribadi terbuka.
+- Role database minimum: `oa` pemilik (migrasi/seed/Studio, `MIGRATE_DATABASE_URL`), `oa_app` aplikasi & worker (hanya
+  SELECT/INSERT/UPDATE/DELETE + pemilik skema `pgboss`, tanpa hak CREATE di database), `oa_backup` hanya baca
+  (`deploy/postgres/init-roles.sh`, dev: `npm run db:roles`).
+- Produksi (`docker-compose.prod.yml`): database hanya di jaringan internal `db_net` (tanpa internet; proxy tidak
+  tersambung), `pg_hba.conf` hanya `samenet` + scram-sha-256, log login/logout & DDL. Tiap service hanya menerima env
+  miliknya (worker tanpa `AUTH_SECRET` & kunci data). Container: no-new-privileges, cap_drop ALL, read-only + tmpfs,
+  batas memori/CPU/proses, rotasi log, versi image dikunci.
+- Backup harian terenkripsi `age` (`scripts/backup.sh`, role `oa_backup`) untuk minimal 2 pemegang kunci (Pak Rudy &
+  Pak Leonard); pulihkan dengan `scripts/restore.sh`, titip kunci data dengan `scripts/keys-escrow.sh`.
+- Dev: data karyawan asli dilarang; data contoh `npm run dev:data-palsu`; `npm run lint` menolak `$queryRawUnsafe` /
+  `$executeRawUnsafe`; terminal dev tidak mencetak argumen Server Action (`logging.serverFunctions: false`).

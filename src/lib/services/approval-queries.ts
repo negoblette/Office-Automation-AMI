@@ -6,6 +6,7 @@ import { formatDate } from "@/lib/format";
 import { EDUCATION_LEVEL_LABEL } from "@/lib/labels";
 import { canRevoke } from "./approval";
 import { appealSummary } from "./attendance-appeal";
+import { openLines } from "./personal-data";
 import { profileChangeSummary } from "./profile-change";
 import { approverRoleLabel } from "@/components/shared/approval-status";
 
@@ -116,7 +117,7 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
         return {
           summary: profileChangeSummary(change),
           file: change.fileKey ? { key: change.fileKey, name: change.fileName ?? "Dokumen" } : null,
-          changeLines: change.summary,
+          changeLines: openLines(change.summary),
         };
       }
       const appeal = appealOf.get(request.entityId);

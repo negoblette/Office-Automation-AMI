@@ -1,5 +1,5 @@
 import argon2 from "argon2";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { type AuthRepository, verifyCredentials } from "@/lib/services/auth";
 
 const PASSWORD = "Rahasia123!";
@@ -10,8 +10,8 @@ describe("verifyCredentials", () => {
   beforeAll(async () => {
     const passwordHash = await argon2.hash(PASSWORD);
     const users = [
-      { id: "u1", email: "andi@artha-mitra.local", passwordHash, role: "STAFF" as const, isActive: true, employeeId: "e1", employee: { fullName: "Andi Pratama" } },
-      { id: "u2", email: "resign@artha-mitra.local", passwordHash, role: "STAFF" as const, isActive: false, employeeId: "e2", employee: { fullName: "Mantan Staf" } },
+      { id: "u1", email: "andi@artha-mitra.local", passwordHash, role: "STAFF" as const, isActive: true, employeeId: "e1", sessionVersion: 0, employee: { fullName: "Andi Pratama" } },
+      { id: "u2", email: "resign@artha-mitra.local", passwordHash, role: "STAFF" as const, isActive: false, employeeId: "e2", sessionVersion: 0, employee: { fullName: "Mantan Staf" } },
     ];
     repo = { findUserByEmail: async (email) => users.find((u) => u.email === email) ?? null };
   });
@@ -20,7 +20,7 @@ describe("verifyCredentials", () => {
     const result = await verifyCredentials(repo, "andi@artha-mitra.local", PASSWORD);
     expect(result).toEqual({
       ok: true,
-      user: { id: "u1", email: "andi@artha-mitra.local", name: "Andi Pratama", role: "STAFF", employeeId: "e1" },
+      user: { id: "u1", email: "andi@artha-mitra.local", name: "Andi Pratama", role: "STAFF", employeeId: "e1", sessionVersion: 0 },
     });
   });
 
@@ -37,6 +37,13 @@ describe("verifyCredentials", () => {
   it("email tidak terdaftar ditolak dengan alasan yang sama", async () => {
     const result = await verifyCredentials(repo, "tidakada@artha-mitra.local", PASSWORD);
     expect(result).toEqual({ ok: false, reason: "INVALID_CREDENTIALS" });
+  });
+
+  it("email tidak terdaftar tetap menjalankan argon2 (waktu respons sama)", async () => {
+    const spy = vi.spyOn(argon2, "verify");
+    await verifyCredentials(repo, "tidakada@artha-mitra.local", PASSWORD);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 
   it("user nonaktif ditolak", async () => {

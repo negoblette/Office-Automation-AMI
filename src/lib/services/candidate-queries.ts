@@ -2,6 +2,7 @@
 import type { CandidateStatus, PrismaClient } from "@/generated/prisma/client";
 import { PERSONAL_DOCUMENT_TYPES } from "@/lib/employee-documents";
 import { toJakartaIsoDate } from "@/lib/format";
+import { openCandidate } from "./personal-data";
 
 export type CandidateRow = {
   id: string;
@@ -25,7 +26,7 @@ export async function listCandidates(db: PrismaClient): Promise<CandidateRow[]> 
     id: c.id,
     fullName: c.fullName,
     email: c.email,
-    phone: c.phone,
+    phone: openCandidate(c).phone,
     appliedPosition: c.appliedPosition,
     status: c.status,
     documentCount: c._count.documents,
@@ -35,11 +36,12 @@ export async function listCandidates(db: PrismaClient): Promise<CandidateRow[]> 
 }
 
 export async function getCandidateDetail(db: PrismaClient, candidateId: string) {
-  const candidate = await db.candidate.findUnique({
+  const row = await db.candidate.findUnique({
     where: { id: candidateId, deletedAt: null },
     include: { documents: { where: { deletedAt: null }, orderBy: { createdAt: "asc" } } },
   });
-  if (!candidate) return null;
+  if (!row) return null;
+  const candidate = openCandidate(row);
   const documents = candidate.documents.map((doc) => ({
     id: doc.id,
     docType: doc.docType,

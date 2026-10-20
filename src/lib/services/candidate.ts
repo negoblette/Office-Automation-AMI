@@ -1,23 +1,26 @@
 // Kandidat karyawan — URD CAN-01..03, Tech Spec §6.1 (konversi kandidat). Dikelola Admin.
 import argon2 from "argon2";
 import type { DocumentType, PrismaClient } from "@/generated/prisma/client";
+import { nikIndex } from "@/lib/crypto/field-encryption";
 import { PERSONAL_DOCUMENT_TYPES } from "@/lib/employee-documents";
 import type { CandidateInput, ConvertCandidateInput } from "@/lib/validators/candidate";
 import { assertFileKeyAvailable } from "./access";
 import { logAudit } from "./audit";
 import { createEmployeeInTx } from "./employee";
 import { ServiceError } from "./errors";
+import { openCandidate, sealCandidateData, sealEmployeeData } from "./personal-data";
 
 export async function saveCandidate(db: PrismaClient, actorId: string, candidateId: string | null, input: CandidateInput) {
   return db.$transaction(async (tx) => {
     const before = candidateId ? await tx.candidate.findUnique({ where: { id: candidateId, deletedAt: null } }) : null;
     if (candidateId && !before) throw new ServiceError("Kandidat tidak ditemukan");
     if (before?.convertedEmployeeId) throw new ServiceError("Kandidat yang sudah menjadi karyawan tidak bisa diubah");
+    // NIK & HP kandidat dikunci (hardening Tahap 4).
     const after = before
-      ? await tx.candidate.update({ where: { id: before.id }, data: input })
-      : await tx.candidate.create({ data: input });
+      ? await tx.candidate.update({ where: { id: before.id }, data: sealCandidateData(input) })
+      : await tx.candidate.create({ data: sealCandidateData(input) });
     await logAudit(tx, { actorId, action: before ? "UPDATE" : "CREATE", entity: "Candidate", entityId: after.id, before, after });
-    return after;
+    return openCandidate(after);
   });
 }
 
@@ -83,8 +86,11 @@ export async function convertCandidate(db: PrismaClient, actorId: string, candid
     if (candidate.convertedEmployeeId) throw new ServiceError("Kandidat ini sudah menjadi karyawan");
     if (candidate.status !== "ACCEPTED") throw new ServiceError("Hanya kandidat berstatus Diterima yang bisa dijadikan karyawan");
 
-    if (candidate.nik) {
-      const owner = await tx.employee.findUnique({ where: { nik: candidate.nik }, select: { fullName: true, status: true } });
+    // NIK & HP tersimpan terenkripsi (hardening Tahap 4): dibuka, NIK dicek lewat sidik jarinya, lalu dikunci ulang
+    // untuk data karyawan.
+    const { nik, phone } = openCandidate(candidate);
+    if (nik) {
+      const owner = await tx.employee.findUnique({ where: { nikHash: nikIndex(nik) }, select: { fullName: true, status: true } });
       if (owner) {
         throw new ServiceError(
           owner.status === "RESIGNED"
@@ -95,7 +101,7 @@ export async function convertCandidate(db: PrismaClient, actorId: string, candid
     }
 
     const { employeeId } = await createEmployeeInTx(tx, actorId, { ...input, fullName: candidate.fullName, email: candidate.email }, passwordHash);
-    await tx.employee.update({ where: { id: employeeId }, data: { nik: candidate.nik, phone: candidate.phone } });
+    await tx.employee.update({ where: { id: employeeId }, data: sealEmployeeData({ nik, phone }) });
     const moved = await tx.document.updateMany({
       where: { candidateId, deletedAt: null },
       data: { ownerType: "EMPLOYEE", employeeId, candidateId: null },

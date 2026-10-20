@@ -9,11 +9,16 @@ services:
       POSTGRES_USER: oa
       POSTGRES_PASSWORD: oa_password
       POSTGRES_DB: office_automation
+      # Role minimum (hardening Tahap 4): aplikasi & worker memakai oa_app, backup oa_backup. Password khusus dev.
+      OA_APP_PASSWORD: oa_app_password
+      OA_BACKUP_PASSWORD: oa_backup_password
       TZ: Asia/Jakarta
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Membuat role oa_app & oa_backup saat volume baru. Volume yang sudah ada: `docker compose up -d` lalu `npm run db:roles`.
+      - ./deploy/postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
 
   mailpit:
     image: axllent/mailpit

@@ -12,3 +12,6 @@ src/generated
 .git
 docs/design
 npm-debug.log*
+# sertifikat TLS & kunci privat (hardening Tahap 3) — jangan ikut ke image build
+deploy/certs
+deploy/letsencrypt

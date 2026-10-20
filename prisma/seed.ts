@@ -16,6 +16,12 @@ async function main() {
     throw new Error("SEED_PASSWORD wajib diisi di .env (minimal 8 karakter).");
   }
   await seedAll(prisma, await argon2.hash(seedPassword));
+
+  // Produksi: akun hasil seed wajib ganti password saat login pertama (hardening 2026-10).
+  // Akun yang sudah pernah ganti password tidak disentuh saat seed diulang.
+  if (process.env.SEED_MUST_CHANGE_PASSWORD === "true") {
+    await prisma.user.updateMany({ where: { passwordChangedAt: null }, data: { mustChangePassword: true } });
+  }
 }
 
 main()

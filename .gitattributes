@@ -1,2 +1,7 @@
 # Script shell harus LF agar jalan di container Linux
 *.sh text eol=lf
+# Konfigurasi nginx dipakai di container Linux → LF (hardening Tahap 3)
+deploy/nginx/* text eol=lf
+# Konfigurasi Postgres & image backup dipakai di container Linux → LF (hardening Tahap 4)
+deploy/postgres/* text eol=lf
+deploy/backup/* text eol=lf

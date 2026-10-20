@@ -4,7 +4,8 @@
 #   migrate — prisma migrate deploy / db seed        → service "migrate" (sekali jalan)
 # Build: docker compose -f docker-compose.prod.yml build
 
-ARG NODE_IMAGE=node:24-bookworm-slim
+# Versi dikunci sampai patch (hardening Tahap 4); naikkan dengan sengaja, lalu uji ulang.
+ARG NODE_IMAGE=node:24.21.0-bookworm-slim
 # prisma.config.ts mewajibkan DATABASE_URL walau hanya untuk `prisma generate`; nilai palsu ini
 # hanya dipakai saat build (inline di RUN), tidak tersimpan di image. Runtime memakai env compose.
 ARG BUILD_DATABASE_URL=postgresql://build:build@localhost:5432/build
@@ -63,13 +64,24 @@ ENV NODE_ENV=production TZ=Asia/Jakarta UPLOAD_DIR=/app/storage/uploads
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/dist/worker.mjs ./worker.mjs
 COPY package.json ./
+# Folder upload milik node (hardening Tahap 4): volume "uploads" yang baru dibuat mewarisi kepemilikan ini, siapa pun
+# container yang lebih dulu memasangnya.
+RUN mkdir -p /app/storage/uploads && chown -R node:node /app/storage
 USER node
 CMD ["node", "worker.mjs"]
 
 # ---------------------------------------------------------------------
-# Migrasi & seed memakai toolchain lengkap (prisma CLI, tsx).
+# Migrasi, seed, & alat data (data:encrypt / data:lihat / data:cari-nik) memakai toolchain lengkap (prisma CLI, tsx).
 FROM deps AS migrate
 WORKDIR /app
 COPY src ./src
-ENV TZ=Asia/Jakarta
+# tsconfig.json: alias "@/" untuk skrip CLI di scripts/ (hardening Tahap 4).
+COPY tsconfig.json ./
+COPY scripts ./scripts
+ENV TZ=Asia/Jakarta \
+    UPLOAD_DIR=/app/storage/uploads \
+    CHECKPOINT_DISABLE=1 \
+    NPM_CONFIG_UPDATE_NOTIFIER=false
+RUN mkdir -p /app/storage/uploads && chown -R node:node /app/storage
+USER node
 CMD ["npx", "prisma", "migrate", "deploy"]

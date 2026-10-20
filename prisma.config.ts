@@ -8,6 +8,8 @@ export default defineConfig({
     seed: "tsx prisma/seed.ts",
   },
   datasource: {
-    url: env("DATABASE_URL"),
+    // Migrasi, `db seed`, & Studio memakai role pemilik (MIGRATE_DATABASE_URL); aplikasi & worker memakai DATABASE_URL
+    // (role oa_app, hanya baca/tulis isi tabel) — hardening Tahap 4. Kosong → DATABASE_URL seperti sebelumnya.
+    url: process.env.MIGRATE_DATABASE_URL || env("DATABASE_URL"),
   },
 });

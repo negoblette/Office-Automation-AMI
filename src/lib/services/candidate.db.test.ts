@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import argon2 from "argon2";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { isEncryptedValue, nikIndex } from "@/lib/crypto/field-encryption";
 import { addCandidateDocument, convertCandidate, deleteCandidate, saveCandidate } from "@/lib/services/candidate";
 import { resignEmployee, updateSelf } from "@/lib/services/employee";
+import { openEmployee } from "@/lib/services/personal-data";
 import { candidateSchema, convertCandidateSchema } from "@/lib/validators/candidate";
 import { employeeSelfSchema } from "@/lib/validators/employee";
 import { testDb } from "@/test/db";
@@ -30,7 +32,7 @@ const candidate = (overrides: Record<string, unknown> = {}) =>
     ...overrides,
   });
 const convert = (overrides: Record<string, unknown> = {}) =>
-  convertCandidateSchema.parse({ division: "ENGINEER", position: "Network Engineer", startDate: "2026-10-01", role: "STAFF", password: "Awal12345", ...overrides });
+  convertCandidateSchema.parse({ division: "ENGINEER", position: "Network Engineer", startDate: "2026-10-01", role: "STAFF", password: "AwalPanjang2026!", ...overrides });
 const doc = (candidateId: string, docType = "KTP") => ({
   candidateId,
   docType: docType as "KTP",
@@ -52,13 +54,18 @@ describe("kandidat (CAN-01..03)", () => {
     const { employeeId, movedDocuments } = await convertCandidate(testDb, u.yosep, c.id, convert());
     expect(movedDocuments).toBe(2);
 
-    const employee = await testDb.employee.findUniqueOrThrow({ where: { id: employeeId }, include: { user: true, documents: true, periods: true } });
+    const raw = await testDb.employee.findUniqueOrThrow({ where: { id: employeeId }, include: { user: true, documents: true, periods: true } });
+    // NIK & HP disalin dalam bentuk terenkripsi + sidik jari NIK (hardening Tahap 4).
+    expect(isEncryptedValue(raw.nik!) && isEncryptedValue(raw.phone!)).toBe(true);
+    expect(raw.nikHash).toBe(nikIndex("3171012345678999"));
+    const employee = openEmployee(raw);
     expect(employee).toMatchObject({ fullName: "Rian Pratama", email: "rian@test.local", nik: "3171012345678999", phone: "+6281211112222", division: "ENGINEER" });
     expect(employee.documents.map((d) => [d.ownerType, d.candidateId])).toEqual([
       ["EMPLOYEE", null],
       ["EMPLOYEE", null],
     ]);
-    expect(await argon2.verify(employee.user!.passwordHash, "Awal12345")).toBe(true);
+    expect(await argon2.verify(employee.user!.passwordHash, "AwalPanjang2026!")).toBe(true);
+    expect(employee.user!.mustChangePassword).toBe(true);
     expect(employee.periods[0].startDate.toISOString()).toBe("2026-10-01T00:00:00.000Z");
 
     expect((await testDb.candidate.findUniqueOrThrow({ where: { id: c.id } })).convertedEmployeeId).toBe(employeeId);
@@ -78,6 +85,16 @@ describe("kandidat (CAN-01..03)", () => {
     // Tidak ada karyawan baru & dokumen tetap milik kandidat.
     expect(await testDb.employee.count({ where: { email: "rian@test.local" } })).toBe(0);
     expect(await testDb.document.count({ where: { candidateId: c.id } })).toBe(1);
+  });
+
+  it("NIK & HP kandidat tersimpan terenkripsi; hasil simpan & audit tanpa nilai terbuka (hardening Tahap 4)", async () => {
+    const c = await saveCandidate(testDb, u.yosep, null, candidate());
+    expect(c).toMatchObject({ nik: "3171012345678999", phone: "+6281211112222" });
+
+    const raw = await testDb.candidate.findUniqueOrThrow({ where: { id: c.id } });
+    expect(isEncryptedValue(raw.nik!) && isEncryptedValue(raw.phone!)).toBe(true);
+    const log = await testDb.auditLog.findFirstOrThrow({ where: { entity: "Candidate", entityId: c.id } });
+    expect(JSON.stringify(log.after)).not.toContain("3171012345678999");
   });
 
   it("email yang sudah dipakai karyawan ditolak saat konversi", async () => {

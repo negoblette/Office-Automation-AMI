@@ -7,6 +7,7 @@ import { documentCompleteness } from "@/lib/employee-documents";
 import { profileCompleteness } from "@/lib/employee-profile";
 import { toJakartaIsoDate } from "@/lib/format";
 import { rejectionsOf } from "./approval";
+import { compareFamilyMembers, openEmployee, openFamilyMember } from "./personal-data";
 
 export type EmployeeListRow = {
   id: string;
@@ -65,14 +66,15 @@ export async function listEmployees(db: PrismaClient, status: EmployeeStatus): P
 
 /** Nilai awal form edit Admin: semua field sebagai string ("" untuk kosong). */
 export async function getEmployeeFormValues(db: PrismaClient, employeeId: string) {
-  const employee = await db.employee.findUnique({
+  const row = await db.employee.findUnique({
     where: { id: employeeId },
     include: {
       user: { select: { role: true } },
       periods: { orderBy: { startDate: "desc" }, take: 1 },
     },
   });
-  if (!employee) return null;
+  if (!row) return null;
+  const employee = openEmployee(row);
 
   return {
     id: employee.id,
@@ -89,7 +91,7 @@ export async function getEmployeeFormValues(db: PrismaClient, employeeId: string
       nik: employee.nik ?? "",
       kkNo: employee.kkNo ?? "",
       birthPlace: employee.birthPlace ?? "",
-      birthDate: employee.birthDate ? toJakartaIsoDate(employee.birthDate) : "",
+      birthDate: employee.birthDate ?? "",
       gender: employee.gender ?? "",
       maritalStatus: employee.maritalStatus,
       address: employee.address ?? "",
@@ -117,10 +119,9 @@ export async function getEmployeeDetail(db: PrismaClient, employeeId: string) {
   });
   if (!employee) return null;
 
-  const { user, periods, ...data } = employee;
+  const { user, periods, ...data } = openEmployee(employee);
   return {
     ...data,
-    birthDate: data.birthDate ? toJakartaIsoDate(data.birthDate) : null,
     role: user?.role ?? null,
     userId: user?.id ?? null,
     accountActive: user?.isActive ?? false,
@@ -164,13 +165,13 @@ export async function getEmployeeDocuments(db: PrismaClient, employeeId: string)
       documents: { where: { familyMemberId: null, deletedAt: null }, select: documentSelect, orderBy: { createdAt: "asc" } },
       family: {
         where: { deletedAt: null },
-        orderBy: [{ relation: "desc" }, { birthDate: "asc" }, { createdAt: "asc" }],
         select: {
           id: true,
           relation: true,
           fullName: true,
           nik: true,
           birthDate: true,
+          createdAt: true,
           documents: { where: { deletedAt: null }, select: documentSelect, orderBy: { createdAt: "asc" } },
         },
       },
@@ -179,14 +180,18 @@ export async function getEmployeeDocuments(db: PrismaClient, employeeId: string)
   if (!employee) return null;
 
   const documents = employee.documents.map(toDocumentView);
-  const family = employee.family.map((member) => ({
-    id: member.id,
-    relation: member.relation,
-    fullName: member.fullName,
-    nik: member.nik,
-    birthDate: member.birthDate ? toJakartaIsoDate(member.birthDate) : null,
-    documents: member.documents.map(toDocumentView),
-  }));
+  // Tanggal lahir terenkripsi (hardening Tahap 4) → diurutkan di aplikasi dengan aturan ORDER BY yang sama seperti sebelumnya.
+  const family = employee.family
+    .map((member) => openFamilyMember(member))
+    .sort(compareFamilyMembers)
+    .map((member) => ({
+      id: member.id,
+      relation: member.relation,
+      fullName: member.fullName,
+      nik: member.nik,
+      birthDate: member.birthDate,
+      documents: member.documents.map(toDocumentView),
+    }));
   return {
     employeeId: employee.id,
     status: employee.status,

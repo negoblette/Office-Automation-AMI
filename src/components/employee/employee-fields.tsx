@@ -20,7 +20,7 @@ export function EmployeeAccountSection({ mode }: { mode: "create" | "edit" }) {
           type="password"
           required
           autoComplete="new-password"
-          hint="Minimal 8 karakter. Berikan ke karyawan untuk login pertama."
+          hint="Minimal 15 karakter. Karyawan wajib menggantinya saat login pertama."
         />
       )}
       <SelectInputField name="role" label="Role" required options={toOptions(ROLE_LABEL)} />

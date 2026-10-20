@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -98,5 +98,22 @@ describe("LocalStorage", () => {
   it("key berbahaya ditolak tanpa menyentuh disk", async () => {
     await expect(storage.get("../../.env")).rejects.toBeInstanceOf(FileNotFoundError);
     await expect(storage.delete("../../.env")).rejects.toBeInstanceOf(FileNotFoundError);
+  });
+
+  it("isi file tersimpan terenkripsi di disk, get mengembalikan isi asli (hardening Tahap 4)", async () => {
+    const content = new TextEncoder().encode("%PDF-1.7\nscan KTP contoh 9901012345678901");
+    const key = await storage.put(content, "pdf");
+    const onDisk = await readFile(path.join(dir, "uploads", key));
+
+    expect(onDisk.subarray(0, 4).toString("ascii")).toBe("OAE1");
+    expect(onDisk.includes(Buffer.from("9901012345678901"))).toBe(false);
+    expect(new Uint8Array(await storage.get(key))).toEqual(content);
+  });
+
+  it("file lama yang belum dienkripsi tetap terbaca", async () => {
+    const key = "0b8f7c1e-2f3a-4c5d-9e8f-0123456789ab.pdf";
+    await writeFile(path.join(dir, "uploads", key), PDF);
+
+    expect(new Uint8Array(await storage.get(key))).toEqual(PDF);
   });
 });

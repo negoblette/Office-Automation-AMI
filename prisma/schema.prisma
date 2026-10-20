@@ -28,7 +28,6 @@ enum Role {
   APPROVER // seperti STAFF + menyetujui pengajuan yang ditugaskan (Fase 14, 2026-10-02)
 }
 
-
 enum EmployeeStatus {
   ACTIVE
   RESIGNED
@@ -172,16 +171,19 @@ enum EmailStatus {
 // ---------------------------------------------------------------------
 
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  passwordHash String
-  role         Role
-  isActive     Boolean   @default(true)
-  employeeId   String?   @unique
-  employee     Employee? @relation(fields: [employeeId], references: [id])
-  lastLoginAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  passwordHash       String
+  role               Role
+  isActive           Boolean   @default(true)
+  employeeId         String?   @unique
+  employee           Employee? @relation(fields: [employeeId], references: [id])
+  lastLoginAt        DateTime?
+  sessionVersion     Int       @default(0)
+  mustChangePassword Boolean   @default(false)
+  passwordChangedAt  DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   approverOfSteps  ApprovalStepApprover[]
   approvalRequests ApprovalRequest[]      @relation("RequestRequester")
@@ -201,21 +203,24 @@ model Employee {
   id                String         @id @default(cuid())
   // Admin membuat record minimal (nama, email, divisi, jabatan, tgl masuk, role);
   // data diri lainnya dilengkapi staf sendiri, jadi boleh kosong dulu.
+  // Kolom bertanda "terenkripsi" disimpan sebagai ciphertext AES-256-GCM (hardening Tahap 4,
+  // lib/services/personal-data.ts) — jangan dibaca/ditulis langsung tanpa seal/open.
   employeeNo        String?        @unique // nomor induk karyawan internal
-  nik               String?        @unique @db.VarChar(16) // KTP, 16 digit; unik bila terisi
-  kkNo              String?        @db.VarChar(16)
+  nik               String? // KTP 16 digit, terenkripsi; keunikan lewat nikHash
+  nikHash           String?        @unique // sidik jari NIK (HMAC-SHA256) untuk cek unik & pencarian
+  kkNo              String? // terenkripsi
   fullName          String
   birthPlace        String?
-  birthDate         DateTime?      @db.Date
+  birthDate         String? // YYYY-MM-DD, terenkripsi
   gender            Gender?
   maritalStatus     MaritalStatus  @default(SINGLE)
   address           String?
-  phone             String? // format +62...
+  phone             String? // format +62..., terenkripsi
   email             String         @unique
-  npwp              String?        @db.VarChar(16) // 15/16 digit, tanpa tanda baca
-  bpjsTkNo          String?
-  bpjsKesNo         String?
-  // Kontak darurat (Fase 14), diisi karyawan sendiri.
+  npwp              String? // 15/16 digit tanpa tanda baca, terenkripsi
+  bpjsTkNo          String? // terenkripsi
+  bpjsKesNo         String? // terenkripsi
+  // Kontak darurat (Fase 14), diisi karyawan sendiri; terenkripsi.
   emergencyName     String?
   emergencyRelation String?
   emergencyPhone    String? // format +62...
@@ -241,9 +246,9 @@ model Employee {
   attendances       Attendance[]
   attendanceAppeals AttendanceAppeal[]
   fromCandidate     Candidate?
+  profileChanges    ProfileChangeRequest[]
 
   @@index([status, division])
-  profileChanges ProfileChangeRequest[]
 }
 
 model EmploymentPeriod {
@@ -265,8 +270,8 @@ model FamilyMember {
   employee   Employee       @relation(fields: [employeeId], references: [id])
   relation   FamilyRelation
   fullName   String
-  nik        String?        @db.VarChar(16)
-  birthDate  DateTime?      @db.Date
+  nik        String? // terenkripsi (hardening Tahap 4)
+  birthDate  String? // YYYY-MM-DD, terenkripsi
   documents  Document[]
   createdAt  DateTime       @default(now())
   deletedAt  DateTime? // soft delete: data tidak dihapus permanen (NFR v1.14)
@@ -423,30 +428,30 @@ model ProjectRevenue {
 // ---------------------------------------------------------------------
 
 model ReimburseType {
-  id        String     @id @default(cuid())
-  code      String     @unique // ENTERTAINMENT, MEALS, GIFT, ACCOMMODATION, TRANSPORT, ALLOWANCE
+  id        String   @id @default(cuid())
+  code      String   @unique // ENTERTAINMENT, MEALS, GIFT, ACCOMMODATION, TRANSPORT, ALLOWANCE
   name      String
   divisions String[] // kode divisi yang boleh memakai tipe ini (dropdown difilter dengan `has`)
-  isActive  Boolean    @default(true)
+  isActive  Boolean  @default(true)
 
   items ReimbursementItem[]
 }
 
 model Reimbursement {
-  id          String        @id @default(cuid())
-  number      String        @unique // RMB/YYYY/MM/NNNN
-  employeeId  String
-  employee    Employee      @relation(fields: [employeeId], references: [id])
-  division    String // kode divisi, snapshot saat submit
-  status      RequestStatus @default(DRAFT)
-  totalPersonal  BigInt     @default(0)
-  totalCorporate BigInt     @default(0)
-  total       BigInt        @default(0)
-  note        String?
-  submittedAt DateTime?
-  approvedAt  DateTime?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id             String        @id @default(cuid())
+  number         String        @unique // RMB/YYYY/MM/NNNN
+  employeeId     String
+  employee       Employee      @relation(fields: [employeeId], references: [id])
+  division       String // kode divisi, snapshot saat submit
+  status         RequestStatus @default(DRAFT)
+  totalPersonal  BigInt        @default(0)
+  totalCorporate BigInt        @default(0)
+  total          BigInt        @default(0)
+  note           String?
+  submittedAt    DateTime?
+  approvedAt     DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   items     ReimbursementItem[]
   deletedAt DateTime? // soft delete: data tidak dihapus permanen (NFR v1.14)
@@ -558,7 +563,7 @@ model Holiday {
 // ---------------------------------------------------------------------
 
 model HealthCategory {
-  id       String  @id @default(cuid())
+  id        String  @id @default(cuid())
   name      String  @unique // Rawat jalan dokter, Obat-obatan, Vitamin, Kacamata
   isActive  Boolean @default(true)
   sortOrder Int     @default(100) // urutan di dropdown (2026-10-16); kategori baru di akhir, lalu A-Z
@@ -622,9 +627,9 @@ model HealthPayout {
 model Candidate {
   id                  String          @id @default(cuid())
   fullName            String
-  nik                 String?         @db.VarChar(16)
+  nik                 String? // terenkripsi (hardening Tahap 4)
   email               String
-  phone               String?
+  phone               String? // terenkripsi
   appliedPosition     String
   status              CandidateStatus @default(APPLIED)
   notes               String?
@@ -734,9 +739,13 @@ model AuditLog {
   entityId  String
   before    Json?
   after     Json?
+  /// IP & user agent pelaku (bila aksi berasal dari request) — investigasi & rate limit login.
+  ip        String?
+  userAgent String?
   createdAt DateTime @default(now())
 
   @@index([entity, entityId])
+  @@index([action, ip, createdAt])
 }
 
 model EmailLog {

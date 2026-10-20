@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { decryptText } from "@/lib/crypto/field-encryption";
 import { type AuditDb, logAudit, toAuditJson } from "@/lib/services/audit";
 
 /** Fake db yang menyimpan argumen `auditLog.create`, sama seperti `prisma` atau `tx`. */
@@ -72,11 +73,40 @@ describe("logAudit", () => {
     ]);
   });
 
+  it("IP & user agent dicatat bila aksi berasal dari request (hardening 2026-10)", async () => {
+    const { db, created } = fakeDb();
+
+    await logAudit(db, { actorId: "u1", action: "LOGIN", entity: "User", entityId: "u1", ip: "10.0.0.1", userAgent: "Mozilla/5.0" });
+
+    expect(created[0]).toMatchObject({ ip: "10.0.0.1", userAgent: "Mozilla/5.0" });
+  });
+
   it("aksi sistem tanpa pelaku", async () => {
     const { db, created } = fakeDb();
 
     await logAudit(db, { actorId: null, action: "CREATE", entity: "LeaveBalance", entityId: "lb1", after: { days: 12 } });
 
     expect(created[0]).toMatchObject({ userId: null, action: "CREATE", after: { days: 12 } });
+  });
+
+  it("data pribadi yang masih terbuka dikunci sebelum disimpan; email & kolom lain tetap (hardening Tahap 4)", async () => {
+    const { db, created } = fakeDb();
+
+    await logAudit(db, {
+      actorId: "u1",
+      action: "UPDATE",
+      entity: "Employee",
+      entityId: "e1",
+      before: { nik: null, email: "andi@artha-mitra.local" },
+      after: { nik: "3171012345678901", birthDate: new Date("1990-05-17T00:00:00Z"), email: "andi@artha-mitra.local", address: "Jl. Melati 1" },
+    });
+
+    const entry = created[0] as { before: Record<string, string | null>; after: Record<string, string> };
+    expect(entry.before).toEqual({ nik: null, email: "andi@artha-mitra.local" });
+    expect(entry.after.email).toBe("andi@artha-mitra.local");
+    expect(entry.after.address).toBe("Jl. Melati 1");
+    expect(decryptText(entry.after.nik)).toBe("3171012345678901");
+    expect(decryptText(entry.after.birthDate)).toBe("1990-05-17");
+    expect(JSON.stringify(created)).not.toContain("3171012345678901");
   });
 });

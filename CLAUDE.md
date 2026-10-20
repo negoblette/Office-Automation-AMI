@@ -240,7 +240,10 @@ tanggal masuk/keluar — hanya boleh diisi/diubah Admin (tidak ada di `employeeS
 **Pengaman approver:** Admin yang menjadi satu-satunya approver aktif di level flow aktif / pengajuan
 berjalan tidak bisa dinonaktifkan, diturunkan ke Staf, atau di-resign (`assertCanLoseApproverRights`).
 
-**Login:** maks 5 gagal per email / 15 menit (`LOGIN_FAILED` di AuditLog).
+**Login (hardening 2026-10):** gagal dicatat `LOGIN_FAILED` di AuditLog (dengan IP). Ditahan 15 menit bila 5 gagal
+dari email+IP yang sama, 20 gagal ke satu email, atau 20 gagal dari satu IP (`login-throttle.ts`). Password baru 15–128
+karakter (`lib/password-policy.ts`); akun baru & hasil reset Admin wajib ganti password (`/ganti-password`). Sesi: idle
+1 jam, absolut 12 jam; ganti/reset password mencabut semua sesi (`User.sessionVersion`).
 
 **Absensi:** clock in / clock out oleh tiap karyawan, jam dari server (WIB), satu baris `Attendance` per
 karyawan per hari. Terlambat / pulang cepat terhadap jam kerja `AppSetting attendance.workHours`

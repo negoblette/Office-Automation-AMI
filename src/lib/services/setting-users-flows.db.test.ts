@@ -65,10 +65,12 @@ describe("User & Role", () => {
     await expect(setUserActive(testDb, u.yosep, u.andi, true)).rejects.toThrow("Arsip");
   });
 
-  it("reset password: hash baru, audit tanpa password", async () => {
+  it("reset password: hash baru, wajib ganti password, sesi lama dicabut, audit tanpa password", async () => {
     await resetUserPassword(testDb, u.yosep, u.andi, "PasswordBaru1");
     const andi = await testDb.user.findUniqueOrThrow({ where: { id: u.andi } });
     expect(await argon2.verify(andi.passwordHash, "PasswordBaru1")).toBe(true);
+    expect(andi.mustChangePassword).toBe(true);
+    expect(andi.sessionVersion).toBe(1);
     const audit = await testDb.auditLog.findFirstOrThrow({ where: { entity: "User", entityId: u.andi } });
     expect(JSON.stringify(audit.after)).not.toContain("PasswordBaru1");
   });

@@ -124,7 +124,7 @@ export function ConvertCandidateDialog({ candidate }: { candidate: CandidateDeta
           required
           autoComplete="new-password"
           className="sm:col-span-2"
-          hint="Minimal 8 karakter. Berikan ke karyawan untuk login pertama."
+          hint="Minimal 15 karakter. Karyawan wajib menggantinya saat login pertama."
         />
       </div>
     </FormDialog>

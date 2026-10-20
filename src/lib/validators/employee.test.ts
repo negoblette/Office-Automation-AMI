@@ -65,7 +65,7 @@ describe("employeeCreateSchema (akun minimal oleh Admin)", () => {
     position: "Account Manager",
     startDate: "2026-10-01",
     role: "STAFF",
-    password: "Awal12345",
+    password: "AwalPanjang2026!",
   };
 
   it("valid, email di-lowercase", () => {
@@ -77,7 +77,7 @@ describe("employeeCreateSchema (akun minimal oleh Admin)", () => {
   });
 
   it.each([
-    ["password", "pendek", "Password minimal 8 karakter"],
+    ["password", "pendek", "Password minimal 15 karakter"],
     ["division", "", "Divisi wajib dipilih"], // kode divisi dicek di server (master, 2026-10-12)
     ["role", "SUPERADMIN", "Role wajib dipilih"],
     ["startDate", "2026-02-30", "Tanggal tidak valid"],

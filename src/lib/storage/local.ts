@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { decryptFile, encryptFile } from "@/lib/crypto/file-encryption";
 import type { FileExtension } from "./validate";
 
 export interface Storage {
@@ -24,7 +25,10 @@ export class FileNotFoundError extends Error {
   }
 }
 
-/** Penyimpanan di disk lokal (UPLOAD_DIR). Siap diganti S3Storage dengan interface yang sama. */
+/**
+ * Penyimpanan di disk lokal (UPLOAD_DIR). Siap diganti S3Storage dengan interface yang sama.
+ * Isi file disimpan terenkripsi dan dibuka saat dibaca (hardening Tahap 4); file lama yang belum dienkripsi tetap terbaca.
+ */
 export class LocalStorage implements Storage {
   private readonly dir: string;
 
@@ -40,13 +44,13 @@ export class LocalStorage implements Storage {
   async put(data: Uint8Array, ext: FileExtension): Promise<string> {
     const key = `${randomUUID()}.${ext}`;
     await mkdir(this.dir, { recursive: true });
-    await writeFile(this.pathOf(key), data, { flag: "wx" });
+    await writeFile(this.pathOf(key), encryptFile(data, key), { flag: "wx" });
     return key;
   }
 
   async get(key: string): Promise<Uint8Array> {
     try {
-      return await readFile(this.pathOf(key));
+      return decryptFile(await readFile(this.pathOf(key)), key);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new FileNotFoundError(key);
       throw error;

@@ -27,7 +27,8 @@ export default async function setup() {
   }
 
   const result = spawnSync("npx", ["prisma", "migrate", "deploy"], {
-    env: { ...process.env, DATABASE_URL: testUrl },
+    // MIGRATE_DATABASE_URL (prisma.config.ts) ikut diarahkan ke DB test — kalau tidak, migrasi mengenai DB dev.
+    env: { ...process.env, DATABASE_URL: testUrl, MIGRATE_DATABASE_URL: testUrl },
     shell: true,
     encoding: "utf8",
   });

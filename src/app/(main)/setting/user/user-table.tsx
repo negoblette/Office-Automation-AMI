@@ -52,7 +52,7 @@ function PasswordDialog({ user }: { user: UserRow }) {
       submitLabel="Reset Password"
       action={(values) => resetPasswordAction(user.id, values)}
     >
-      <TextInputField name="password" label="Password baru" type="password" autoComplete="new-password" required hint="Minimal 8 karakter." />
+      <TextInputField name="password" label="Password baru" type="password" autoComplete="new-password" required hint="Minimal 15 karakter. User wajib menggantinya saat login berikutnya, dan semua sesinya berakhir." />
     </FormDialog>
   );
 }

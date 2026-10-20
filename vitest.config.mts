@@ -9,7 +9,12 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    env: { TZ: "Asia/Jakarta" },
+    env: {
+      TZ: "Asia/Jakarta",
+      // Kunci enkripsi KHUSUS TEST (hardening Tahap 4) — bukan kunci dev/produksi, sengaja tertulis di sini.
+      DATA_ENCRYPTION_KEYS: "t1:97vp7Hh7qnleT4Tsuv6gXvf3hu8qL8zVyg+BN6LiQTU=",
+      DATA_INDEX_KEY: "V8c7AeE616Y1fXmxFEspx3SovNYiDFeQbOpuyxCcmaE=",
+    },
     projects: [
       {
         extends: true,

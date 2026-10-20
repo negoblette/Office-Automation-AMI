@@ -1,8 +1,21 @@
 // Audit log (URD NF-03, Tech Spec §9). Dipanggil dari Server Action / service,
 // idealnya di dalam `prisma.$transaction` yang sama dengan perubahan datanya.
 import type { Prisma } from "@/generated/prisma/client";
+import { protectAuditValue } from "./personal-data";
 
-export type AuditAction = "CREATE" | "UPDATE" | "DELETE" | "APPROVE" | "REVOKE" | "REJECT" | "RESIGN" | "REHIRE" | "LOGIN" | "LOGIN_FAILED";
+export type AuditAction =
+  | "CREATE"
+  | "UPDATE"
+  | "DELETE"
+  | "APPROVE"
+  | "REVOKE"
+  | "REJECT"
+  | "RESIGN"
+  | "REHIRE"
+  | "LOGIN"
+  | "LOGIN_FAILED"
+  /** Data pribadi asli dibuka lewat alat engineer `data:lihat` / `data:cari-nik` (hardening Tahap 4). */
+  | "VIEW_PERSONAL_DATA";
 
 export type AuditEntry = {
   /** User pelaku; null untuk aksi sistem (mis. job worker). */
@@ -13,6 +26,9 @@ export type AuditEntry = {
   entityId: string;
   before?: unknown;
   after?: unknown;
+  /** IP & user agent pelaku (dari `requestMeta`), bila aksi berasal dari request. */
+  ip?: string | null;
+  userAgent?: string | null;
 };
 
 /** Cukup `prisma` atau `tx` dari `$transaction`. */
@@ -43,8 +59,9 @@ export function toAuditJson(value: unknown): Prisma.InputJsonValue | null {
 
 /** Catat satu entri audit log. */
 export async function logAudit(db: AuditDb, entry: AuditEntry): Promise<void> {
-  const before = toAuditJson(entry.before);
-  const after = toAuditJson(entry.after);
+  // Data pribadi yang masih terbuka dikunci dulu (hardening Tahap 4); baris dari database sudah terenkripsi.
+  const before = toAuditJson(protectAuditValue(entry.entity, entry.before));
+  const after = toAuditJson(protectAuditValue(entry.entity, entry.after));
 
   await db.auditLog.create({
     data: {
@@ -52,9 +69,11 @@ export async function logAudit(db: AuditDb, entry: AuditEntry): Promise<void> {
       action: entry.action,
       entity: entry.entity,
       entityId: entry.entityId,
-      // Kolom Json? butuh undefined (bukan null JS) untuk dibiarkan kosong.
+      // Kolom Json? butuh undefined (bukan null JS) untuk dibiarkan kosong; ip/userAgent ikut pola yang sama.
       before: before ?? undefined,
       after: after ?? undefined,
+      ip: entry.ip ?? undefined,
+      userAgent: entry.userAgent ?? undefined,
     },
   });
 }

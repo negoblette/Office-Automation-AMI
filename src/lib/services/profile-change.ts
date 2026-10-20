@@ -2,7 +2,7 @@
 // dokumen, dan hapus sertifikat terverifikasi oleh karyawan SENDIRI tidak langsung tersimpan — dibuat
 // permintaan → disetujui Ci Ika (modul PROFILE_CHANGE; milik Ci Ika → Fallback) → baru diterapkan
 // (`applyApprovedProfileChange`). Admin yang mengubah data karyawan LAIN tetap langsung.
-import type { Prisma, PrismaClient, ProfileChangeKind } from "@/generated/prisma/client";
+import type { PrismaClient, ProfileChangeKind } from "@/generated/prisma/client";
 import { formatDate } from "@/lib/format";
 import { DOCUMENT_TYPE_LABEL, FAMILY_RELATION_LABEL, GENDER_LABEL, MARITAL_STATUS_LABEL } from "@/lib/labels";
 import type { EmployeeSelfInput } from "@/lib/validators/employee";
@@ -13,6 +13,7 @@ import { logAudit } from "./audit";
 import type { NewDocument } from "./document";
 import { ServiceError } from "./errors";
 import { nextDocumentNumber } from "./numbering";
+import { openEmployee, openFamilyMember, openJson, openLines, sealJson, sealLines } from "./personal-data";
 import { runProfileChange } from "./profile-change-apply";
 
 export const PROFILE_CHANGE_KIND_LABEL: Record<ProfileChangeKind, string> = {
@@ -84,7 +85,7 @@ async function summarize(db: PrismaClient, input: ProfileChangeInput): Promise<{
   switch (input.kind) {
     case "SELF_DATA": {
       const payload = input.payload as EmployeeSelfInput;
-      const current = await db.employee.findUniqueOrThrow({ where: { id: input.employeeId } });
+      const current = openEmployee(await db.employee.findUniqueOrThrow({ where: { id: input.employeeId } }));
       const lines = (Object.keys(SELF_LABELS) as (keyof EmployeeSelfInput)[])
         .filter((key) => {
           const before = key === "birthDate" ? iso(current.birthDate) : (current[key] ?? null);
@@ -100,7 +101,7 @@ async function summarize(db: PrismaClient, input: ProfileChangeInput): Promise<{
     }
     case "FAMILY_UPDATE": {
       const p = input.payload as FamilyMemberInput;
-      const before = await db.familyMember.findUniqueOrThrow({ where: { id: input.targetId! } });
+      const before = openFamilyMember(await db.familyMember.findUniqueOrThrow({ where: { id: input.targetId! } }));
       const lines = [
         before.fullName !== p.fullName && `Nama: ${before.fullName} → ${p.fullName}`,
         (before.nik ?? null) !== (p.nik ?? null) && `NIK: ${before.nik ?? "—"} → ${p.nik ?? "—"}`,
@@ -155,8 +156,8 @@ export async function requestProfileChange(db: PrismaClient, actor: Actor, input
         const revised = await tx.profileChangeRequest.update({
           where: { id: latest.id },
           data: {
-            payload: input.payload as Prisma.InputJsonValue,
-            summary: lines,
+            payload: sealJson(input.payload),
+            summary: sealLines(lines),
             fileKey: fileKey ?? null,
             fileName: fileName ?? null,
             status: "PENDING",
@@ -176,8 +177,9 @@ export async function requestProfileChange(db: PrismaClient, actor: Actor, input
         employeeId: input.employeeId,
         kind: input.kind,
         targetId: input.targetId ?? null,
-        payload: input.payload as Prisma.InputJsonValue,
-        summary: lines,
+        // Isi & ringkasan memuat data pribadi → disimpan terenkripsi (hardening Tahap 4).
+        payload: sealJson(input.payload),
+        summary: sealLines(lines),
         fileKey: fileKey ?? null,
         fileName: fileName ?? null,
         requestedById: actor.id,
@@ -217,7 +219,7 @@ export async function listProfileChanges(db: PrismaClient, employeeId: string): 
     number: r.number,
     kind: r.kind,
     kindLabel: PROFILE_CHANGE_KIND_LABEL[r.kind],
-    summary: r.summary,
+    summary: openLines(r.summary),
     status: r.status,
     createdAt: r.createdAt.toISOString(),
     rejection: rejections.get(r.id) ?? null,
@@ -239,5 +241,5 @@ export async function rejectedSelfDataDraft(db: PrismaClient, employeeId: string
   const latest = await db.profileChangeRequest.findFirst({ where: { employeeId, kind: "SELF_DATA" }, orderBy: { createdAt: "desc" } });
   if (latest?.status !== "REJECTED") return null;
   const rejection = (await rejectionsOf(db, "PROFILE_CHANGE", [latest.id])).get(latest.id) ?? null;
-  return { number: latest.number, payload: latest.payload as Record<string, unknown>, rejection };
+  return { number: latest.number, payload: openJson(latest.payload) as Record<string, unknown>, rejection };
 }

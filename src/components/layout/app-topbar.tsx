@@ -1,5 +1,6 @@
-import { LogOut } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { KeyRound, LogOut } from "lucide-react";
+import Link from "next/link";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { PersonAvatar } from "@/components/shared/person-cell";
 import { logoutAction } from "./actions";
 import { Greeting } from "./greeting";
@@ -45,6 +46,10 @@ export function AppTopbar({ user, badges, notifications = [] }: AppTopbarProps) 
               <p className="text-xs text-ink-3">{ROLE_LABELS[user.role]}</p>
             </div>
           </div>
+
+          <Link href="/ganti-password" className={buttonVariants({ variant: "ghost", size: "icon" })} aria-label="Ganti password" title="Ganti password">
+            <KeyRound className="size-5" />
+          </Link>
 
           <form action={logoutAction}>
             <Button type="submit" variant="ghost" size="icon" aria-label="Keluar" title="Keluar">

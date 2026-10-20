@@ -59,7 +59,7 @@ describe("divisi master (2026-10-12)", () => {
       position: "Staf",
       startDate: "2026-01-05",
       role: "STAFF",
-      password: "Rahasia123!",
+      password: "AwalPanjang2026!",
     });
     await expect(createEmployee(testDb, u.ika, input)).rejects.toThrow("Divisi tidak ditemukan atau nonaktif: MARKETING");
   });

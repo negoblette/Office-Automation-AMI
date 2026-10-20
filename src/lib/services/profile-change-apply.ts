@@ -8,6 +8,7 @@ import { deleteCertificateInTx } from "./certificate";
 import { addDocumentInTx, addFamilyMemberInTx, deleteDocumentInTx, deleteFamilyMemberInTx, type NewDocument, updateFamilyMemberInTx } from "./document";
 import { applySelfDataInTx } from "./employee";
 import { ServiceError } from "./errors";
+import { openJson } from "./personal-data";
 
 type Tx = Prisma.TransactionClient;
 
@@ -48,6 +49,7 @@ export async function runProfileChange(
 export async function applyApprovedProfileChange(tx: Tx, changeId: string, approvedAt: Date) {
   const change = await tx.profileChangeRequest.findUniqueOrThrow({ where: { id: changeId } });
   const requester = await tx.user.findUniqueOrThrow({ where: { id: change.requestedById }, select: { id: true, role: true, employeeId: true } });
-  await runProfileChange(tx, requester, change);
+  // Payload tersimpan terenkripsi (hardening Tahap 4).
+  await runProfileChange(tx, requester, { ...change, payload: openJson(change.payload) });
   await tx.profileChangeRequest.update({ where: { id: changeId }, data: { status: "APPROVED", appliedAt: approvedAt } });
 }

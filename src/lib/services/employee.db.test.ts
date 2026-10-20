@@ -1,6 +1,8 @@
 import argon2 from "argon2";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { isEncryptedValue, nikIndex } from "@/lib/crypto/field-encryption";
 import { ServiceError } from "@/lib/services/errors";
+import { openEmployee } from "@/lib/services/personal-data";
 import {
   createEmployee,
   rehireEmployee,
@@ -42,7 +44,7 @@ describe("createEmployee (akun minimal oleh Admin)", () => {
     position: "Account Manager",
     startDate: "2026-10-01",
     role: "STAFF",
-    password: "Awal12345",
+    password: "AwalPanjang2026!",
   });
 
   it("membuat Employee + periode kerja + User aktif dengan password awal, dan tercatat di audit", async () => {
@@ -62,7 +64,8 @@ describe("createEmployee (akun minimal oleh Admin)", () => {
     expect(employee.periods).toHaveLength(1);
     expect(employee.periods[0].startDate.toISOString()).toBe("2026-10-01T00:00:00.000Z");
     expect(employee.user).toMatchObject({ id: userId, email: "budi@test.local", role: "STAFF", isActive: true });
-    expect(await argon2.verify(employee.user!.passwordHash, "Awal12345")).toBe(true);
+    expect(await argon2.verify(employee.user!.passwordHash, "AwalPanjang2026!")).toBe(true);
+    expect(employee.user!.mustChangePassword).toBe(true);
 
     const log = await testDb.auditLog.findFirstOrThrow({ where: { entityId: employeeId } });
     expect(log).toMatchObject({ action: "CREATE", userId: admin.userId });
@@ -89,7 +92,7 @@ describe("updateSelf (isi data mandiri, EMP-06)", () => {
       employeeSelfSchema.parse({ ...selfInput(), fullName: "Nama Lain", position: "Direktur", nik: "3171012345678901", phone: "081234567890", division: "DIRECTOR", role: "ADMIN" }),
     );
 
-    const employee = await testDb.employee.findUniqueOrThrow({ where: { id: andi.employeeId }, include: { user: true } });
+    const employee = openEmployee(await testDb.employee.findUniqueOrThrow({ where: { id: andi.employeeId }, include: { user: true } }));
     expect(employee).toMatchObject({ nik: "3171012345678901", phone: "+6281234567890", division: "ENGINEER", fullName: "Andi Pratama" });
     expect(employee.position).not.toBe("Direktur");
     expect(employee.user!.role).toBe("STAFF");
@@ -118,6 +121,29 @@ describe("updateSelf (isi data mandiri, EMP-06)", () => {
     const andi = await createTestEmployee({ fullName: "Andi", email: "andi@test.local" });
     await resignEmployee(testDb, admin.userId, andi.employeeId, "2026-09-30");
     await expect(updateSelf(testDb, andi.userId, andi.employeeId, selfInput())).rejects.toThrow(ServiceError);
+  });
+
+  it("data pribadi tersimpan terenkripsi, NIK punya sidik jari, audit tanpa nilai terbuka (hardening Tahap 4)", async () => {
+    const andi = await createTestEmployee({ fullName: "Andi", email: "andi@test.local" });
+    const result = await updateSelf(
+      testDb,
+      andi.userId,
+      andi.employeeId,
+      selfInput({ nik: "3171012345678901", phone: "081234567890", birthDate: "1990-05-17", emergencyName: "siti aminah", address: "Jl. Melati 1" }),
+    );
+
+    const raw = await testDb.employee.findUniqueOrThrow({ where: { id: andi.employeeId } });
+    for (const value of [raw.nik, raw.phone, raw.birthDate, raw.emergencyName]) expect(isEncryptedValue(value!)).toBe(true);
+    expect(raw.address).toBe("Jl. Melati 1");
+    expect(raw.nikHash).toBe(nikIndex("3171012345678901"));
+    // Nilai kembalian & hasil baca tetap terbuka, tanggal lahir YYYY-MM-DD.
+    const expected = { nik: "3171012345678901", phone: "+6281234567890", birthDate: "1990-05-17", emergencyName: "Siti Aminah" };
+    expect(result).toMatchObject(expected);
+    expect(openEmployee(raw)).toMatchObject(expected);
+
+    const log = await testDb.auditLog.findFirstOrThrow({ where: { entityId: andi.employeeId, action: "UPDATE" } });
+    expect(JSON.stringify(log.after)).not.toContain("3171012345678901");
+    expect(JSON.stringify(log.after)).not.toContain("81234567890");
   });
 });
 
@@ -174,10 +200,12 @@ describe("resign & rehire (EMP-03, EMP-04)", () => {
 
     await resignEmployee(testDb, admin.userId, andi.employeeId, "2026-09-30");
 
-    const employee = await testDb.employee.findUniqueOrThrow({
-      where: { id: andi.employeeId },
-      include: { user: true, periods: true },
-    });
+    const employee = openEmployee(
+      await testDb.employee.findUniqueOrThrow({
+        where: { id: andi.employeeId },
+        include: { user: true, periods: true },
+      }),
+    );
     expect(employee).toMatchObject({ status: "RESIGNED", nik: "3171012345678901" });
     expect(employee.user!.isActive).toBe(false);
     expect(employee.periods[0]).toMatchObject({ endReason: "RESIGN" });

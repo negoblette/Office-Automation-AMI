@@ -2,10 +2,12 @@
 // Semua fungsi menerima `db` supaya bisa dites dengan database test.
 import argon2 from "argon2";
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
+import { nikIndex } from "@/lib/crypto/field-encryption";
 import { fromIsoDate } from "@/lib/format";
 import type { EmployeeAdminUpdateInput, EmployeeCreateInput, EmployeeSelfInput } from "@/lib/validators/employee";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
+import { openEmployee, sealEmployeeData } from "./personal-data";
 import { assertCanLoseApproverRights } from "./user-admin";
 import { canApprove } from "@/lib/roles";
 import { assertDivisions } from "./division";
@@ -28,7 +30,8 @@ async function assertEmailAvailable(tx: Tx, email: string, exceptEmployeeId?: st
 
 async function assertNikAvailable(tx: Tx, nik: string | null | undefined, exceptEmployeeId: string) {
   if (!nik) return;
-  const owner = await tx.employee.findUnique({ where: { nik }, select: { id: true } });
+  // NIK tersimpan terenkripsi (hardening Tahap 4) → dicari lewat sidik jarinya.
+  const owner = await tx.employee.findUnique({ where: { nikHash: nikIndex(nik) }, select: { id: true } });
   if (owner && owner.id !== exceptEmployeeId) {
     throw new ServiceError("NIK sudah terdaftar, hubungi Admin", "nik");
   }
@@ -42,23 +45,25 @@ async function assertEmployeeNoAvailable(tx: Tx, employeeNo: string | null | und
   }
 }
 
-/** Data diri → kolom Prisma (tanggal ISO → Date). */
+/** Data diri → kolom Prisma. Kolom data pribadi dikunci (hardening Tahap 4); tanggal lahir disimpan sebagai YYYY-MM-DD. */
 function selfData(input: EmployeeSelfInput) {
   return {
-    nik: input.nik,
-    kkNo: input.kkNo,
     birthPlace: input.birthPlace,
-    birthDate: input.birthDate ? fromIsoDate(input.birthDate) : null,
     gender: input.gender,
     maritalStatus: input.maritalStatus,
     address: input.address,
-    phone: input.phone,
-    npwp: input.npwp,
-    bpjsTkNo: input.bpjsTkNo,
-    bpjsKesNo: input.bpjsKesNo,
-    emergencyName: input.emergencyName,
-    emergencyRelation: input.emergencyRelation,
-    emergencyPhone: input.emergencyPhone,
+    ...sealEmployeeData({
+      nik: input.nik,
+      kkNo: input.kkNo,
+      birthDate: input.birthDate || null,
+      phone: input.phone,
+      npwp: input.npwp,
+      bpjsTkNo: input.bpjsTkNo,
+      bpjsKesNo: input.bpjsKesNo,
+      emergencyName: input.emergencyName,
+      emergencyRelation: input.emergencyRelation,
+      emergencyPhone: input.emergencyPhone,
+    }),
   };
 }
 
@@ -90,7 +95,7 @@ export async function createEmployeeInTx(tx: Tx, actorId: string, input: Employe
       division: input.division,
       position: input.position,
       periods: { create: { startDate: fromIsoDate(input.startDate) } },
-      user: { create: { email: input.email, passwordHash, role: input.role } },
+      user: { create: { email: input.email, passwordHash, role: input.role, mustChangePassword: true } },
     },
     include: { user: { select: { id: true } } },
   });
@@ -127,7 +132,7 @@ export async function applySelfDataInTx(tx: Tx, actorId: string, employeeId: str
   const after = await tx.employee.update({ where: { id: employeeId }, data: selfData(input) });
 
   await logAudit(tx, { actorId, action: "UPDATE", entity: "Employee", entityId: employeeId, before, after });
-  return after;
+  return openEmployee(after);
 }
 
 /** Admin mengubah semua data, termasuk divisi, role, email login, dan tanggal masuk periode terakhir. */
@@ -181,7 +186,7 @@ export async function updateByAdmin(
       before: { ...before, startDate: latest.startDate },
       after: { ...after, role: input.role, startDate },
     });
-    return after;
+    return openEmployee(after);
   });
 }
 

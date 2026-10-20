@@ -20,9 +20,9 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   // Sudah login (dan akun masih aktif) → langsung ke dashboard.
   // Dicek di sini, bukan di proxy, supaya akun nonaktif dengan token lama tidak berputar-putar.
   const user = await getCurrentUser();
-  if (user) redirect("/dashboard");
+  if (user) redirect(user.mustChangePassword ? "/ganti-password" : "/dashboard");
 
-  const { callbackUrl } = await searchParams;
+  const { callbackUrl, pesan } = await searchParams;
 
   return (
     <main className="flex flex-1 items-center justify-center bg-background px-4 py-12">
@@ -42,6 +42,11 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             <h2 className="text-lg font-semibold text-foreground">Masuk ke akun Anda</h2>
             <p className="text-sm text-muted-foreground">Gunakan email dan password kantor Anda.</p>
           </div>
+          {pesan === "password-diganti" && (
+            <p role="status" className="mb-5 rounded-lg bg-success-soft px-3 py-2.5 text-sm font-medium text-success">
+              Password berhasil diganti. Silakan masuk dengan password baru.
+            </p>
+          )}
           <LoginForm callbackUrl={toInternalPath(callbackUrl)} />
         </div>
 

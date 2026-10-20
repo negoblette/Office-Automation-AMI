@@ -24,7 +24,10 @@ const REMINDER_JOBS: Record<string, typeof certificateReminders> = {
 
 async function main() {
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
-  const boss = new PgBoss({ connectionString: process.env.DATABASE_URL });
+  // Hardening Tahap 4: skema pgboss disiapkan deploy/postgres/init-roles.sh (milik oa_app, yang sengaja tidak berhak
+  // CREATE SCHEMA). Skema belum ada (database lama tanpa init-roles) → pg-boss membuatnya sendiri seperti sebelumnya.
+  const [{ exists: pgbossSchemaExists }] = await db.$queryRaw<[{ exists: boolean }]>`SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'pgboss') AS "exists"`;
+  const boss = new PgBoss({ connectionString: process.env.DATABASE_URL, createSchema: !pgbossSchemaExists });
   boss.on("error", (error) => console.error("[worker] pg-boss error", error));
   await boss.start();
 
