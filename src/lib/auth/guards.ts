@@ -5,6 +5,7 @@ import type { Role } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { auth } from "./index";
 import { canApprove } from "@/lib/roles";
+import { mfaRequired } from "@/lib/services/mfa";
 
 export type CurrentUser = {
   id: string;
@@ -14,6 +15,8 @@ export type CurrentUser = {
   employeeId: string | null;
   /** true = wajib ganti password dulu (akun baru / habis di-reset Admin). */
   mustChangePassword: boolean;
+  /** true = role wajib MFA (Admin/Approver) tapi authenticator belum didaftarkan → wajib ke /mfa dulu (hardening Tahap 5). */
+  mustSetupMfa: boolean;
 };
 
 /**
@@ -36,6 +39,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
       employeeId: true,
       sessionVersion: true,
       mustChangePassword: true,
+      mfaSecret: true,
       employee: { select: { fullName: true } },
     },
   });
@@ -49,17 +53,42 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     role: user.role,
     employeeId: user.employeeId,
     mustChangePassword: user.mustChangePassword,
+    mustSetupMfa: mfaRequired(user.role) && !user.mfaSecret,
   };
 });
 
 /**
+ * Untuk route API (`/api/files`, export): user login yang sudah menyelesaikan langkah wajib (ganti password awal,
+ * daftar MFA). Halaman memakai `requireUser` yang mengarahkan ke langkah tersebut.
+ */
+export async function getReadyUser(): Promise<CurrentUser | null> {
+  const user = await getCurrentUser();
+  return user && !user.mustChangePassword && !user.mustSetupMfa ? user : null;
+}
+
+/** Halaman tujuan untuk user yang baru login / masih punya langkah wajib. */
+export function homePathFor(user: CurrentUser): string {
+  if (user.mustChangePassword) return "/ganti-password";
+  if (user.mustSetupMfa) return "/mfa";
+  return "/dashboard";
+}
+
+/**
  * Wajib login. Dipakai di setiap page `(main)` dan Server Action. Akun yang wajib ganti
  * password diarahkan ke /ganti-password, kecuali halaman & aksi ganti password itu sendiri.
+ * Setelah itu, Admin/Approver yang belum mendaftarkan MFA diarahkan ke /mfa (hardening Tahap 5).
  */
-export async function requireUser({ allowPasswordChange = false }: { allowPasswordChange?: boolean } = {}): Promise<CurrentUser> {
+export async function requireUser({
+  allowPasswordChange = false,
+  allowMfaSetup = false,
+}: { allowPasswordChange?: boolean; allowMfaSetup?: boolean } = {}): Promise<CurrentUser> {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  if (user.mustChangePassword && !allowPasswordChange) redirect("/ganti-password");
+  if (user.mustChangePassword) {
+    if (!allowPasswordChange) redirect("/ganti-password");
+  } else if (user.mustSetupMfa && !allowMfaSetup) {
+    redirect("/mfa");
+  }
   return user;
 }
 

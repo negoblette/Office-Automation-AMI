@@ -41,6 +41,14 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO oa_app;
 -- Tabel dari migrasi berikutnya (dibuat role pemilik) otomatis bisa dipakai aplikasi.
 ALTER DEFAULT PRIVILEGES FOR ROLE :"owner" IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO oa_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE :"owner" IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO oa_app;
+-- Audit log permanen (hardening Tahap 6): aplikasi hanya membaca & menambah baris. Trigger "AuditLog_immutable" (migrasi)
+-- tetap menolak UPDATE/DELETE walau hak ini diberikan ulang. Dicek dulu karena volume baru belum punya tabel.
+DO $$
+BEGIN
+  IF to_regclass('public."AuditLog"') IS NOT NULL THEN
+    REVOKE UPDATE, DELETE, TRUNCATE ON "AuditLog" FROM oa_app;
+  END IF;
+END $$;
 
 -- Antrian pg-boss: skemanya milik oa_app supaya worker bisa membuat & memperbarui tabel antriannya sendiri tanpa hak
 -- CREATE di database (hak itu bisa dipakai membuat skema bernama "oa" yang membajak migrasi Prisma).

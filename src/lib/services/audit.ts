@@ -15,7 +15,15 @@ export type AuditAction =
   | "LOGIN"
   | "LOGIN_FAILED"
   /** Data pribadi asli dibuka lewat alat engineer `data:lihat` / `data:cari-nik` (hardening Tahap 4). */
-  | "VIEW_PERSONAL_DATA";
+  | "VIEW_PERSONAL_DATA"
+  /** File upload diunduh / dibuka lewat /api/files (hardening Tahap 6). */
+  | "DOWNLOAD"
+  /** Export data (mis. Excel reimburse) — hardening Tahap 6. */
+  | "EXPORT"
+  /** Admin membuka blokir login suatu email (pengganti menghapus catatan LOGIN_FAILED; audit log permanen). */
+  | "LOGIN_UNLOCK"
+  /** Alarm keamanan yang sudah dikirim ke Admin (juga dipakai untuk mencegah email ganda). */
+  | "SECURITY_ALERT";
 
 export type AuditEntry = {
   /** User pelaku; null untuk aksi sistem (mis. job worker). */

@@ -114,7 +114,7 @@ export async function addDocument(db: PrismaClient, actor: Actor, input: NewDocu
 export async function addDocumentInTx(tx: Tx, actor: Actor, input: NewDocument) {
   const employee = await getManageableEmployee(tx, actor, input.employeeId);
 
-  await assertFileKeyAvailable(tx, input.fileKey, input.employeeId);
+  await assertFileKeyAvailable(tx, input.fileKey, actor.id, input.employeeId);
 
   if (input.familyMemberId) {
     const member = await tx.familyMember.findUnique({ where: { id: input.familyMemberId, deletedAt: null } });

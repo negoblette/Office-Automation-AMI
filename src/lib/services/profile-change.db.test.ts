@@ -12,6 +12,7 @@ import { employeeSelfSchema } from "@/lib/validators/employee";
 import { familyMemberSchema } from "@/lib/validators/family";
 import { testDb } from "@/test/db";
 import { resetAndSeed } from "@/test/seed";
+import { asUploadedBy, withUpload } from "@/test/uploads";
 
 let u: Record<string, string>;
 const actors: Record<string, Actor> = {};
@@ -32,6 +33,8 @@ const requestOf = (entityId: string) =>
   testDb.approvalRequest.findUniqueOrThrow({ where: { module_entityId: { module: "PROFILE_CHANGE", entityId } } });
 const self = (overrides: Record<string, unknown> = {}) =>
   employeeSelfSchema.parse({ maritalStatus: "MARRIED", nik: "3171012345678901", address: "Jl. Melati 1", ...overrides });
+
+const addCert = withUpload(addCertificate);
 
 describe("perubahan data karyawan lewat Ci Ika (2026-10-12)", () => {
   it("data diri: tidak langsung tersimpan; ringkasan sebelum → sesudah; diterapkan setelah Ci Ika setuju", async () => {
@@ -78,6 +81,7 @@ describe("perubahan data karyawan lewat Ci Ika (2026-10-12)", () => {
     expect((await listProfileChanges(testDb, actors.andi.employeeId!))[0]).toMatchObject({ status: "REJECTED", rejection: { reason: "Lampirkan surat nikah", by: "Ika" } });
 
     const fileKey = `${randomUUID()}.pdf`;
+    await asUploadedBy(actors.andi.id, fileKey);
     const doc = await requestProfileChange(testDb, actors.andi, {
       kind: "DOCUMENT_ADD",
       employeeId: actors.andi.employeeId!,
@@ -91,9 +95,7 @@ describe("perubahan data karyawan lewat Ci Ika (2026-10-12)", () => {
   });
 
   it("hapus sertifikat terverifikasi milik sendiri lewat persetujuan", async () => {
-    const certificate = await addCertificate(
-      testDb,
-      actors.andi,
+    const certificate = await addCert(actors.andi,
       actors.andi.employeeId!,
       certificateSchema.parse({ type: "PROFESSIONAL", name: "CCNA", level: "1", startDate: "2024-01-01", noExpiry: true, fileKey: `${randomUUID()}.pdf` }),
     );

@@ -104,6 +104,9 @@ docs/
   `saveUpload()` di `lib/storage` (validasi magic bytes + simpan). Satu request =
   satu file (batas body Server Action 6 MB di `next.config.ts`); form dengan banyak
   lampiran (mis. kwitansi per baris reimburse) meng-upload file satu per satu.
+  Hardening Tahap 7 (2026-10-21): upload dicatat `UploadedFile` (kuota 30 file/jam, 200 MB/hari); file hanya bisa
+  ditautkan pengunggahnya — kolom file baru WAJIB lewat `assertFileKeyAvailable(tx, key, actorId)` dan didaftarkan di
+  `services/upload.ts#referencedKeys` (kalau tidak, job `storage.orphan-purge` menghapusnya). PDF ber-JavaScript ditolak.
 - Email **tidak pernah dikirim langsung** dari request — selalu enqueue ke pg-boss.
 - Modul pengajuan (Reimburse, Cuti, Kesehatan, Expense/Revenue): di dalam `$transaction`
   submit panggil `nextDocumentNumber(tx, prefix)` + `buildApproval(tx, …)`; SETELAH commit
@@ -243,7 +246,13 @@ berjalan tidak bisa dinonaktifkan, diturunkan ke Staf, atau di-resign (`assertCa
 **Login (hardening 2026-10):** gagal dicatat `LOGIN_FAILED` di AuditLog (dengan IP). Ditahan 15 menit bila 5 gagal
 dari email+IP yang sama, 20 gagal ke satu email, atau 20 gagal dari satu IP (`login-throttle.ts`). Password baru 15–128
 karakter (`lib/password-policy.ts`); akun baru & hasil reset Admin wajib ganti password (`/ganti-password`). Sesi: idle
-1 jam, absolut 12 jam; ganti/reset password mencabut semua sesi (`User.sessionVersion`).
+1 jam, absolut 12 jam; ganti/reset password mencabut semua sesi (`User.sessionVersion`). **MFA (hardening Tahap 5,
+2026-10-20):** Admin & Approver wajib kode TOTP authenticator (`services/mfa.ts`, halaman `/mfa`, kode cadangan sekali
+pakai, reset MFA oleh Admin lain di Setting → User); email `security-notice` saat password/MFA berubah. Detail: Tech Spec §9.
+**Audit & alarm (hardening Tahap 6, 2026-10-21):** AuditLog **permanen** (trigger menolak UPDATE/DELETE — jangan menulis
+kode yang mengubah/menghapus baris audit; buka blokir login = entri `LOGIN_UNLOCK`). Aksi penting menyertakan `meta`
+(`requestMeta`) untuk IP & perangkat; unduhan/export lewat `recordDataAccess`. Alarm ke Admin (`security-monitor.ts` +
+`enqueueSecurityAlert`): login gagal beruntun akun Admin/Approver, ubah role, akses data besar-besaran. `/api/health`.
 
 **Absensi:** clock in / clock out oleh tiap karyawan, jam dari server (WIB), satu baris `Attendance` per
 karyawan per hari. Terlambat / pulang cepat terhadap jam kerja `AppSetting attendance.workHours`

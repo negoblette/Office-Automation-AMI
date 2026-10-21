@@ -1,11 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { z } from "zod";
 import { type ActionResult, toActionError } from "@/lib/actions";
 import { requireApprover } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { enqueueApprovalNotifications } from "@/lib/mail/approval-emails";
+import { requestMeta } from "@/lib/request-meta";
 import { type ApproveResult, approveRequest, rejectRequest, revokeApproval } from "@/lib/services/approval";
 import { type CorrectionTarget, correctRequest, getCorrectionTargets } from "@/lib/services/approval-correction";
 
@@ -21,7 +23,7 @@ export async function approveAction(values: unknown): Promise<ActionResult<{ sta
   const admin = await requireApprover();
   try {
     const { requestId, note, approvedAmount } = approveSchema.parse(values);
-    const result = await approveRequest(prisma, { requestId, actorId: admin.id, note: note || null, approvedAmount: approvedAmount ?? null });
+    const result = await approveRequest(prisma, { requestId, actorId: admin.id, note: note || null, approvedAmount: approvedAmount ?? null, meta: requestMeta(await headers()) });
     // Email di-enqueue SETELAH transaksi approve commit.
     await enqueueApprovalNotifications(prisma, result.notifications);
     revalidatePath("/", "layout");
@@ -52,7 +54,7 @@ const correctionSchema = z.array(
 export async function correctRequestAction(requestId: string, changes: unknown): Promise<ActionResult> {
   const user = await requireApprover();
   try {
-    await correctRequest(prisma, user.id, z.string().min(1).parse(requestId), correctionSchema.parse(changes));
+    await correctRequest(prisma, user.id, z.string().min(1).parse(requestId), correctionSchema.parse(changes), requestMeta(await headers()));
     revalidatePath("/", "layout");
     return { ok: true, data: undefined };
   } catch (error) {
@@ -70,7 +72,7 @@ export async function revokeApprovalAction(values: unknown): Promise<ActionResul
   const user = await requireApprover();
   try {
     const { requestId, reason } = revokeSchema.parse(values);
-    const result = await revokeApproval(prisma, { requestId, actorId: user.id, reason });
+    const result = await revokeApproval(prisma, { requestId, actorId: user.id, reason, meta: requestMeta(await headers()) });
     await enqueueApprovalNotifications(prisma, result.notifications);
     revalidatePath("/", "layout");
     return { ok: true, data: undefined };
@@ -89,7 +91,7 @@ export async function rejectAction(values: unknown): Promise<ActionResult> {
   const user = await requireApprover();
   try {
     const { requestId, reason } = rejectSchema.parse(values);
-    const result = await rejectRequest(prisma, { requestId, actorId: user.id, reason });
+    const result = await rejectRequest(prisma, { requestId, actorId: user.id, reason, meta: requestMeta(await headers()) });
     await enqueueApprovalNotifications(prisma, result.notifications);
     revalidatePath("/", "layout");
     return { ok: true, data: undefined };

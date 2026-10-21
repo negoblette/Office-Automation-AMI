@@ -199,7 +199,43 @@ Route `/api/files/[key]` (key, bukan id, karena file tersimpan sebagai `fileKey`
 - Guard `requireUser()` / `requireAdmin()` di setiap Server Action & page.
 - Rate limit login (`LOGIN_FAILED` di AuditLog, dengan IP): ditahan 15 menit bila 5 gagal dari email+IP yang sama,
   20 gagal ke satu email, atau 20 gagal dari satu IP. Email tak terdaftar tetap menjalankan argon2 (anti enumerasi akun).
+- **MFA (hardening Tahap 5, 2026-10-20):** Admin & Approver wajib kode 6 digit TOTP (Google/Microsoft Authenticator;
+  RFC 6238, SHA-1, 30 detik, toleransi ±1 langkah) — `services/mfa.ts`, library `otpauth` + `qrcode`. Belum terdaftar →
+  setelah login (dan setelah ganti password awal) diarahkan ke `/mfa` sebelum bisa memakai aplikasi; route API memakai
+  `getReadyUser()`. Login dua langkah: password benar → form meminta kode (`mfa_required`); kode salah dihitung
+  `LOGIN_FAILED`. Kode yang sama tidak bisa dipakai dua kali (`User.mfaLastStep`). Rahasia disimpan terenkripsi
+  (`User.mfaSecret`, `encryptText`). 10 kode cadangan sekali pakai (`MfaBackupCode`, hanya hash SHA-256), ditampilkan
+  sekali, bisa dibuat ulang di `/mfa` dengan kode authenticator. Admin me-reset MFA user lain (Setting → User, bukan
+  akun sendiri) → data MFA dihapus, sesi dicabut, tercatat di audit (`after.mfaReset`). Email `security-notice` ke
+  pemilik akun setiap password diganti/di-reset, MFA diaktifkan/di-reset, kode cadangan dibuat ulang atau dipakai.
 - Audit log: CREATE/UPDATE/DELETE, APPROVE, RESIGN, REHIRE, LOGIN — dengan IP & user agent bila berasal dari request.
+- **Audit, monitoring & alarm (hardening Tahap 6, 2026-10-21):**
+  - IP & perangkat juga dicatat di ubah role / aktif-nonaktif / reset password / reset MFA, approve / tolak / batalkan /
+    koreksi approval. Unduhan file (`/api/files`, `DOWNLOAD`) dan export Excel (`EXPORT`) ikut tercatat.
+  - **Audit log permanen:** trigger `AuditLog_immutable` menolak UPDATE/DELETE (migrasi `audit_log_immutable`), plus
+    `oa_app` tidak punya hak UPDATE/DELETE/TRUNCATE di tabel itu. Akibatnya User dengan riwayat audit tidak bisa dihapus
+    permanen (memang dinonaktifkan). Pengganti hapus catatan gagal: Admin **buka blokir login** di Setting → User
+    (`LOGIN_UNLOCK`; gagal sebelum unlock tidak dihitung lagi untuk email itu, batas per IP tetap).
+  - **Alarm email ke semua Admin aktif** (`services/security-monitor.ts`, template `security-alert`, dicatat
+    `SECURITY_ALERT` sekaligus anti-email ganda): ≥ 5 login gagal ke akun Admin/Approver dalam 15 menit (sekali per
+    jendela); setiap perubahan role; ≥ 50 unduhan/export/buka data pribadi oleh satu user dalam 1 jam (sekali per jam).
+  - **SMTP wajib TLS di produksi** (`smtpTransportOptions`): 465 TLS langsung, port lain wajib STARTTLS, minimal TLS 1.2,
+    sertifikat valid. Dev Mailpit tanpa TLS (`SMTP_REQUIRE_TLS=true` untuk memaksa).
+  - **`GET /api/health`** (tanpa login): `{status, database}` 200 / 503, tanpa detail; dipakai healthcheck Docker app.
+  - Belum: salinan backup otomatis ke NAS/cloud (ditunda sampai tujuan penyimpanan ditentukan).
+- **Upload & file (hardening Tahap 7, 2026-10-21):**
+  - Setiap upload dicatat di `UploadedFile` (pengunggah, ukuran). File **hanya bisa ditautkan ke data oleh pengunggahnya**
+    (`assertFileKeyAvailable(tx, key, actorId, …)` → `assertUploadedBy`); key tanpa catatan upload ditolak. Pengecualian:
+    dokumen dari permintaan perubahan yang disetujui (ditautkan approver).
+  - Kuota per orang: 30 file / jam, 200 MB / 24 jam (`UPLOAD_QUOTA`).
+  - PDF berisi JavaScript, Launch, SubmitForm/ImportData, file tersemat, RichMedia, atau XFA ditolak saat upload
+    (`pdfActiveContent`, juga memeriksa nama ber-escape `#xx` dan stream FlateDecode / object stream). Link & /OpenAction
+    untuk zoom tetap boleh.
+  - `/api/files`: CSP ketat (`default-src 'none'`, tanpa skrip/form/frame), `sandbox` untuk gambar lama; PDF tanpa
+    `sandbox` supaya penampil PDF Chrome/Edge tetap jalan. Plus `X-Download-Options: noopen`.
+  - Job `storage.orphan-purge` (harian 03:00 WIB): file di storage berumur ≥ 24 jam yang tidak dipakai data apa pun
+    (termasuk data yang di-soft-delete — file-nya tetap disimpan) dihapus & dicatat audit (`DELETE` entity `File`).
+  - ClamAV belum dipasang (opsional, bisa ditambah nanti).
 - Content Security Policy bernonce per request (`src/proxy.ts`, `lib/security/csp.ts`); semua halaman dirender
   dinamis (`connection()` di root layout). Mode lewat `CSP_MODE` (produksi: enforce; dev: report-only). Script, font,
   gambar, atau koneksi ke domain luar harus ditambahkan ke CSP lebih dulu. Header tambahan: COOP & CORP same-origin.

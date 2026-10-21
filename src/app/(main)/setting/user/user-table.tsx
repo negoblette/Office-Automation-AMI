@@ -1,6 +1,6 @@
 "use client";
 
-import { KeyRound, Loader2, UserCog } from "lucide-react";
+import { KeyRound, Loader2, LockOpen, ShieldOff, UserCog } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
@@ -14,7 +14,7 @@ import { formatDateTime } from "@/lib/format";
 import { ROLE_LABEL, toOptions } from "@/lib/labels";
 import type { UserRow } from "@/lib/services/user-admin";
 import { resetPasswordSchema, userRoleSchema } from "@/lib/validators/setting";
-import { resetPasswordAction, setUserActiveAction, setUserRoleAction } from "./actions";
+import { resetMfaAction, resetPasswordAction, setUserActiveAction, setUserRoleAction, unlockLoginAction } from "./actions";
 import { DivisionName } from "@/components/shared/division-name";
 
 function RoleDialog({ user }: { user: UserRow }) {
@@ -54,6 +54,74 @@ function PasswordDialog({ user }: { user: UserRow }) {
     >
       <TextInputField name="password" label="Password baru" type="password" autoComplete="new-password" required hint="Minimal 15 karakter. User wajib menggantinya saat login berikutnya, dan semua sesinya berakhir." />
     </FormDialog>
+  );
+}
+
+/** Reset MFA (hardening Tahap 5): HP hilang & kode cadangan habis. User wajib mendaftar ulang saat login berikutnya. */
+function ResetMfaButton({ user }: { user: UserRow }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={`Reset MFA ${user.name}`}
+        title="Reset MFA"
+        disabled={pending}
+        onClick={() => {
+          if (!window.confirm(`Reset MFA ${user.name}? Semua sesinya berakhir dan ia wajib mendaftarkan aplikasi authenticator lagi saat login. Tercatat di audit.`)) return;
+          setError(null);
+          startTransition(async () => {
+            const result = await resetMfaAction(user.id);
+            if (result.ok) router.refresh();
+            else setError(result.error);
+          });
+        }}
+      >
+        {pending ? <Loader2 className="animate-spin" aria-hidden /> : <ShieldOff />}
+      </Button>
+      {error && (
+        <p role="alert" className="max-w-64 text-xs font-medium text-danger">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Buka blokir login (hardening Tahap 6): percobaan gagal sebelumnya tidak dihitung lagi; tercatat di audit. */
+function UnlockLoginButton({ user }: { user: UserRow }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={`Buka blokir login ${user.name}`}
+        title="Buka blokir login"
+        disabled={pending}
+        onClick={() => {
+          if (!window.confirm(`Buka blokir login ${user.name}? Pastikan percobaan gagal tadi memang dari pemilik akun. Tercatat di audit.`)) return;
+          setError(null);
+          startTransition(async () => {
+            const result = await unlockLoginAction(user.id);
+            if (result.ok) router.refresh();
+            else setError(result.error);
+          });
+        }}
+      >
+        {pending ? <Loader2 className="animate-spin" aria-hidden /> : <LockOpen />}
+      </Button>
+      {error && (
+        <p role="alert" className="max-w-64 text-xs font-medium text-danger">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -127,6 +195,12 @@ function buildColumns(currentUserId: string) {
         <div className="flex flex-wrap gap-1">
           <StatusBadge variant={row.original.isActive ? "success" : "neutral"}>{row.original.isActive ? "Aktif" : "Nonaktif"}</StatusBadge>
           {row.original.employeeStatus === "RESIGNED" && <StatusBadge variant="warning" dot={false}>Resign</StatusBadge>}
+          {row.original.loginLocked && <StatusBadge variant="danger" dot={false}>Diblokir</StatusBadge>}
+          {row.original.mfaEnabled ? (
+            <StatusBadge variant="info" dot={false}>MFA</StatusBadge>
+          ) : (
+            row.original.role !== "STAFF" && row.original.isActive && <StatusBadge variant="warning" dot={false}>MFA belum</StatusBadge>
+          )}
         </div>
       ),
     }),
@@ -151,6 +225,8 @@ function buildColumns(currentUserId: string) {
           <div className="flex items-start gap-1">
             <RoleDialog user={row.original} />
             <PasswordDialog user={row.original} />
+            {row.original.mfaEnabled && <ResetMfaButton user={row.original} />}
+            {row.original.loginLocked && <UnlockLoginButton user={row.original} />}
             {row.original.employeeStatus !== "RESIGNED" && <ActiveToggle user={row.original} />}
           </div>
         ),

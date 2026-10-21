@@ -9,6 +9,7 @@ import { canAccessFile, prismaFileAccessRepository } from "@/lib/services/file-a
 import { certificateSchema } from "@/lib/validators/certificate";
 import { testDb } from "@/test/db";
 import { resetAndSeed } from "@/test/seed";
+import { withUpload } from "@/test/uploads";
 
 let u: Record<string, string>;
 const actors: Record<string, Actor> = {};
@@ -36,6 +37,11 @@ const input = (overrides: Record<string, unknown> = {}) =>
     fileKey: `${randomUUID()}.pdf`,
     ...overrides,
   });
+
+/** Service dengan file yang di-upload aktor sendiri (hardening Tahap 7). */
+const addCert = withUpload(addCertificate);
+const updateCert = withUpload(updateCertificate);
+const addDoc = withUpload(addDocument);
 
 const requestOf = (certificateId: string) =>
   testDb.approvalRequest.findUniqueOrThrow({ where: { module_entityId: { module: "CERTIFICATE", entityId: certificateId } }, include: { steps: { orderBy: { level: "asc" } } } });
@@ -80,7 +86,7 @@ describe("certificateSchema", () => {
 
 describe("verifikasi sertifikat (2026-10-12): Ci Ika", () => {
   it("staf menambah sertifikat → nomor CRT, menunggu Ci Ika → Terverifikasi", async () => {
-    const certificate = await addCertificate(testDb, actors.andi, actors.andi.employeeId!, input());
+    const certificate = await addCert(actors.andi, actors.andi.employeeId!, input());
     expect(certificate).toMatchObject({ status: "PENDING", verificationNumber: expect.stringMatching(/^CRT\/\d{4}\/\d{2}\/0001$/) });
     expect(certificate.notifications[0]).toMatchObject({ template: "approval-requested", recipientIds: [u.ika] });
     expect(await testDb.auditLog.count({ where: { entityId: certificate.id, action: "CREATE" } })).toBe(1);
@@ -93,13 +99,13 @@ describe("verifikasi sertifikat (2026-10-12): Ci Ika", () => {
   });
 
   it("sertifikat milik Ci Ika → Fallback (Ko Rudy / Ko Leonard)", async () => {
-    const certificate = await addCertificate(testDb, actors.ika, actors.ika.employeeId!, input());
+    const certificate = await addCert(actors.ika, actors.ika.employeeId!, input());
     expect([...certificate.notifications[0].recipientIds].sort()).toEqual([u.rudy, u.leonard].sort());
   });
 
   it("Approver boleh membuka file sertifikat yang ia verifikasi; staf lain tidak", async () => {
     // Alur Ci Ika: Ko Yosep (Approver, tidak tercantum) tidak boleh; Ci Ika boleh.
-    const certificate = await addCertificate(testDb, actors.andi, actors.andi.employeeId!, input());
+    const certificate = await addCert(actors.andi, actors.andi.employeeId!, input());
     const owner = await prismaFileAccessRepository(testDb).findFileOwner(certificate.fileKey!);
     expect(owner?.approverIds).toEqual([u.ika]);
     expect(canAccessFile({ id: u.yosep, role: "APPROVER", employeeId: actors.yosep.employeeId }, owner!)).toBe(false);
@@ -108,32 +114,30 @@ describe("verifikasi sertifikat (2026-10-12): Ci Ika", () => {
   });
 
   it("setelah terverifikasi staf tidak bisa mengubah; Admin bisa. Staf lain tidak berhak", async () => {
-    const certificate = await addCertificate(testDb, actors.andi, actors.andi.employeeId!, input());
-    await expect(updateCertificate(testDb, actors.sinta, certificate.id, input())).rejects.toThrow("Anda tidak berhak");
-    await expect(updateCertificate(testDb, actors.andi, certificate.id, input({ name: "CCNA v2", fileKey: certificate.fileKey }))).resolves.toMatchObject({ oldFileKey: null, notifications: [] });
+    const certificate = await addCert(actors.andi, actors.andi.employeeId!, input());
+    await expect(updateCert(actors.sinta, certificate.id, input())).rejects.toThrow("Anda tidak berhak");
+    await expect(updateCert(actors.andi, certificate.id, input({ name: "CCNA v2", fileKey: certificate.fileKey }))).resolves.toMatchObject({ oldFileKey: null, notifications: [] });
 
     const request = await requestOf(certificate.id);
     await approveRequest(testDb, { requestId: request.id, actorId: u.ika });
-    await expect(updateCertificate(testDb, actors.andi, certificate.id, input({ fileKey: certificate.fileKey }))).rejects.toThrow("sudah terverifikasi");
-    await expect(updateCertificate(testDb, actors.ika, certificate.id, input({ name: "CCNP", fileKey: certificate.fileKey }))).resolves.toMatchObject({ oldFileKey: null });
+    await expect(updateCert(actors.andi, certificate.id, input({ fileKey: certificate.fileKey }))).rejects.toThrow("sudah terverifikasi");
+    await expect(updateCert(actors.ika, certificate.id, input({ name: "CCNP", fileKey: certificate.fileKey }))).resolves.toMatchObject({ oldFileKey: null });
   });
 
   it("2026-10-16: ijazah langsung tersimpan tanpa approval dan tetap bisa diubah pemiliknya", async () => {
-    const ijazah = await addCertificate(
-      testDb,
-      actors.andi,
+    const ijazah = await addCert(actors.andi,
       actors.andi.employeeId!,
       certificateSchema.parse({ type: "IJAZAH", name: "Sarjana Komputer", issuer: "UI", degree: "S1", graduationDate: "2020-08-01", fileKey: `${randomUUID()}.pdf` }),
     );
     expect(ijazah).toMatchObject({ status: "APPROVED", verificationNumber: null, notifications: [] });
     expect(await testDb.approvalRequest.count({ where: { entityId: ijazah.id } })).toBe(0);
     await expect(
-      updateCertificate(testDb, actors.andi, ijazah.id, certificateSchema.parse({ type: "IJAZAH", name: "Sarjana Teknik", issuer: "UI", degree: "S1", graduationDate: "2020-08-01", fileKey: ijazah.fileKey })),
+      updateCert(actors.andi, ijazah.id, certificateSchema.parse({ type: "IJAZAH", name: "Sarjana Teknik", issuer: "UI", degree: "S1", graduationDate: "2020-08-01", fileKey: ijazah.fileKey })),
     ).resolves.toMatchObject({ notifications: [] });
   });
 
   it("hapus sertifikat yang masih menunggu → soft delete + verifikasi dibatalkan (keluar dari antrian)", async () => {
-    const certificate = await addCertificate(testDb, actors.andi, actors.andi.employeeId!, input());
+    const certificate = await addCert(actors.andi, actors.andi.employeeId!, input());
     await deleteCertificate(testDb, actors.andi, certificate.id);
     expect((await testDb.certificate.findUniqueOrThrow({ where: { id: certificate.id } })).deletedAt).not.toBeNull();
     expect(await getEmployeeCertificates(testDb, actors.andi.employeeId!)).toEqual([]);
@@ -141,7 +145,7 @@ describe("verifikasi sertifikat (2026-10-12): Ci Ika", () => {
   });
 
   it("file yang sudah dipakai dokumen lain tidak bisa diklaim", async () => {
-    const sintaDoc = await addDocument(testDb, actors.sinta, {
+    const sintaDoc = await addDoc(actors.sinta, {
       employeeId: actors.sinta.employeeId!,
       docType: "KTP",
       fileKey: `${randomUUID()}.pdf`,
@@ -149,6 +153,6 @@ describe("verifikasi sertifikat (2026-10-12): Ci Ika", () => {
       mimeType: "application/pdf",
       sizeBytes: 10,
     });
-    await expect(addCertificate(testDb, actors.andi, actors.andi.employeeId!, input({ fileKey: sintaDoc.fileKey }))).rejects.toThrow("File sudah dipakai");
+    await expect(addCert(actors.andi, actors.andi.employeeId!, input({ fileKey: sintaDoc.fileKey }))).rejects.toThrow("File sudah dipakai");
   });
 });

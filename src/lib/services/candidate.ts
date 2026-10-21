@@ -55,7 +55,7 @@ export async function addCandidateDocument(db: PrismaClient, actorId: string, in
     if (!candidate || candidate.deletedAt) throw new ServiceError("Kandidat tidak ditemukan");
     if (candidate.convertedEmployeeId) throw new ServiceError("Kandidat sudah menjadi karyawan; kelola dokumen di data karyawan");
     if (!CANDIDATE_DOCUMENT_TYPES.has(input.docType)) throw new ServiceError("Jenis dokumen tidak berlaku untuk kandidat");
-    await assertFileKeyAvailable(tx, input.fileKey);
+    await assertFileKeyAvailable(tx, input.fileKey, actorId);
 
     const document = await tx.document.create({
       data: { ownerType: "CANDIDATE", ...input, uploadedById: actorId },

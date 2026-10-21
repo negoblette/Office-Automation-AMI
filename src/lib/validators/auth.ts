@@ -13,6 +13,8 @@ export const loginSchema = z.object({
     .string({ error: "Password wajib diisi" })
     .min(1, { error: "Password wajib diisi" })
     .max(PASSWORD_MAX_LENGTH, { error: `Password maksimal ${PASSWORD_MAX_LENGTH} karakter` }),
+  /** Langkah kedua (MFA, hardening Tahap 5): kode 6 digit authenticator atau kode cadangan. Kosong di langkah pertama. */
+  code: z.string().trim().max(20, { error: "Kode tidak valid" }).optional(),
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;

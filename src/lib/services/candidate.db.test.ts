@@ -9,6 +9,7 @@ import { candidateSchema, convertCandidateSchema } from "@/lib/validators/candid
 import { employeeSelfSchema } from "@/lib/validators/employee";
 import { testDb } from "@/test/db";
 import { resetAndSeed } from "@/test/seed";
+import { asUploadedBy } from "@/test/uploads";
 
 let u: Record<string, string>;
 
@@ -42,11 +43,17 @@ const doc = (candidateId: string, docType = "KTP") => ({
   sizeBytes: 10,
 });
 
+/** Dokumen kandidat dengan file yang di-upload aktor sendiri (hardening Tahap 7). */
+const addDoc = async (actorId: string, input: ReturnType<typeof doc>) => {
+  await asUploadedBy(actorId, input.fileKey);
+  return addCandidateDocument(testDb, actorId, input);
+};
+
 describe("kandidat (CAN-01..03)", () => {
   it("konversi Diterima → karyawan: data disalin, dokumen pindah, akun bisa login, kandidat terkunci", async () => {
     const c = await saveCandidate(testDb, u.yosep, null, candidate());
-    await addCandidateDocument(testDb, u.yosep, doc(c.id, "KTP"));
-    await addCandidateDocument(testDb, u.yosep, doc(c.id, "IJAZAH_TRANSKRIP"));
+    await addDoc(u.yosep, doc(c.id, "KTP"));
+    await addDoc(u.yosep, doc(c.id, "IJAZAH_TRANSKRIP"));
 
     await expect(convertCandidate(testDb, u.yosep, c.id, convert())).rejects.toThrow("Hanya kandidat berstatus Diterima");
     await saveCandidate(testDb, u.yosep, c.id, candidate({ status: "ACCEPTED" }));
@@ -80,7 +87,7 @@ describe("kandidat (CAN-01..03)", () => {
     await resignEmployee(testDb, u.yosep, andi.employeeId!, "2026-09-30");
 
     const c = await saveCandidate(testDb, u.yosep, null, candidate({ status: "ACCEPTED" }));
-    await addCandidateDocument(testDb, u.yosep, doc(c.id));
+    await addDoc(u.yosep, doc(c.id));
     await expect(convertCandidate(testDb, u.yosep, c.id, convert())).rejects.toThrow('Gunakan "Aktifkan kembali" di Arsip Karyawan');
     // Tidak ada karyawan baru & dokumen tetap milik kandidat.
     expect(await testDb.employee.count({ where: { email: "rian@test.local" } })).toBe(0);
@@ -104,8 +111,8 @@ describe("kandidat (CAN-01..03)", () => {
 
   it("hapus kandidat = soft delete beserta dokumennya; dokumen keluarga tidak berlaku untuk kandidat", async () => {
     const c = await saveCandidate(testDb, u.yosep, null, candidate());
-    const d = await addCandidateDocument(testDb, u.yosep, doc(c.id));
-    await expect(addCandidateDocument(testDb, u.yosep, doc(c.id, "KTP_PASANGAN"))).rejects.toThrow("tidak berlaku untuk kandidat");
+    const d = await addDoc(u.yosep, doc(c.id));
+    await expect(addDoc(u.yosep, doc(c.id, "KTP_PASANGAN"))).rejects.toThrow("tidak berlaku untuk kandidat");
     await deleteCandidate(testDb, u.yosep, c.id);
     // Data tidak dihapus permanen (NFR v1.14), hanya ditandai terhapus.
     expect(await testDb.document.count({ where: { id: d.id, deletedAt: { not: null } } })).toBe(1);

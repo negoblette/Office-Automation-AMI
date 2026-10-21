@@ -31,7 +31,7 @@ function certificateData(input: CertificateInput) {
 export async function addCertificate(db: PrismaClient, actor: Actor, employeeId: string, input: CertificateInput) {
   return db.$transaction(async (tx) => {
     await getManageableEmployee(tx, actor, employeeId);
-    if (input.fileKey) await assertFileKeyAvailable(tx, input.fileKey);
+    if (input.fileKey) await assertFileKeyAvailable(tx, input.fileKey, actor.id);
 
     if (input.type !== "PROFESSIONAL") {
       const saved = await tx.certificate.create({ data: { employeeId, ...certificateData(input), status: "APPROVED" } });
@@ -77,7 +77,7 @@ export async function updateCertificate(
       throw new ServiceError("Sertifikat sudah terverifikasi; perubahan hanya oleh Admin. Tambahkan sertifikat baru bila diperpanjang.");
     }
     const fileChanged = input.fileKey !== before.fileKey;
-    if (input.fileKey && fileChanged) await assertFileKeyAvailable(tx, input.fileKey);
+    if (input.fileKey && fileChanged) await assertFileKeyAvailable(tx, input.fileKey, actor.id);
 
     const resubmit = before.status === "REJECTED";
     const after = await tx.certificate.update({

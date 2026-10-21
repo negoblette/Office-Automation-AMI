@@ -14,10 +14,18 @@ import { leaveRequestSchema } from "@/lib/validators/leave";
 import { reimbursementSchema } from "@/lib/validators/reimbursement";
 import { testDb } from "@/test/db";
 import { resetAndSeed } from "@/test/seed";
+import { asUploadedBy, withUpload } from "@/test/uploads";
 
 let u: Record<string, string>;
 /** Surat keterangan sakit (wajib untuk appeal Sakit, 2026-10-14). */
-const sickNote = () => ({ fileKey: `${randomUUID()}.pdf`, fileName: "surat-dokter.pdf" });
+/** Surat sakit yang di-upload pemohon sendiri (hardening Tahap 7). */
+const sickNote = async (uploaderId: string) => {
+  const fileKey = `${randomUUID()}.pdf`;
+  await asUploadedBy(uploaderId, fileKey);
+  return { fileKey, fileName: "surat-dokter.pdf" };
+};
+const addCert = withUpload(addCertificate);
+const updateCert = withUpload(updateCertificate);
 const actors: Record<string, Actor> = {};
 
 beforeEach(async () => {
@@ -101,16 +109,16 @@ describe("tolak & revisi (2026-10-12, OI-05)", () => {
 
     const certInput = (name: string) =>
       certificateSchema.parse({ type: "PROFESSIONAL", name, level: "1", startDate: "2024-01-01", endDate: "2027-01-01", fileKey: `${randomUUID()}.pdf` });
-    const cert = await addCertificate(testDb, actors.andi, actors.andi.employeeId!, certInput("CCNA"));
+    const cert = await addCert(actors.andi, actors.andi.employeeId!, certInput("CCNA"));
     const certRequest = await requestOf("CERTIFICATE", cert.id);
     await rejectRequest(testDb, { requestId: certRequest.id, actorId: certRequest.steps[0].approverIds[0], reason: "File buram" });
-    const updated = await updateCertificate(testDb, actors.andi, cert.id, certInput("Cisco CCNA"));
+    const updated = await updateCert(actors.andi, cert.id, certInput("Cisco CCNA"));
     expect(updated.notifications[0]).toMatchObject({ template: "approval-requested" });
     expect((await testDb.certificate.findUniqueOrThrow({ where: { id: cert.id } })).status).toBe("PENDING");
 
-    const appeal = await submitAppeal(testDb, actors.andi, { date: "2026-10-12", reason: "SICK", note: "Demam", ...sickNote() }, "2026-10-14");
+    const appeal = await submitAppeal(testDb, actors.andi, { date: "2026-10-12", reason: "SICK", note: "Demam", ...(await sickNote(actors.andi.id)) }, "2026-10-14");
     await rejectRequest(testDb, { requestId: (await requestOf("ATTENDANCE_APPEAL", appeal.appealId)).id, actorId: u.ika, reason: "Lampirkan keterangan dokter" });
-    const again = await submitAppeal(testDb, actors.andi, { date: "2026-10-12", reason: "SICK", note: "Demam, surat dokter menyusul", ...sickNote() }, "2026-10-15");
+    const again = await submitAppeal(testDb, actors.andi, { date: "2026-10-12", reason: "SICK", note: "Demam, surat dokter menyusul", ...(await sickNote(actors.andi.id)) }, "2026-10-15");
     expect(again).toMatchObject({ number: appeal.number, status: "PENDING" });
   });
 });

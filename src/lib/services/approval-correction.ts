@@ -6,6 +6,7 @@
 import type { ApprovalModule, Prisma, PrismaClient } from "@/generated/prisma/client";
 import { formatDate, formatRupiah, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL, projectLabel } from "@/lib/labels";
+import type { RequestMeta } from "@/lib/request-meta";
 import { canApprove } from "@/lib/roles";
 import { NEW_ACQUISITION, reimbursementTotals } from "@/lib/validators/reimbursement";
 import { logAudit } from "./audit";
@@ -201,7 +202,7 @@ function toData(module: ApprovalModule, changed: Record<string, CorrectionValue>
   return data;
 }
 
-export async function correctRequest(db: PrismaClient, actorId: string, requestId: string, changes: CorrectionChange[]) {
+export async function correctRequest(db: PrismaClient, actorId: string, requestId: string, changes: CorrectionChange[], meta?: RequestMeta) {
   return db.$transaction(async (tx) => {
     const { request, level } = await assertCurrentApprover(tx, requestId, actorId);
     const targets = new Map((await loadTargets(tx, request.module, request.entityId)).map((t) => [t.targetId, t]));
@@ -267,6 +268,7 @@ export async function correctRequest(db: PrismaClient, actorId: string, requestI
       entity: "ApprovalRequest",
       entityId: requestId,
       after: { correction: records.map((r) => ({ label: r.label, field: r.field, before: r.before, after: r.after })) },
+      ...meta,
     });
     return records.length;
   });

@@ -102,7 +102,7 @@ export async function submitAppeal(db: PrismaClient, actor: Actor, input: Appeal
     // Bukti sakit WAJIB untuk alasan Sakit (2026-10-14); file harus belum dipakai data lain.
     if (input.reason === "SICK" && !input.fileKey) throw new ServiceError("Surat keterangan sakit wajib diupload", "fileKey");
     const file = input.reason === "SICK" && input.fileKey ? { fileKey: input.fileKey, fileName: input.fileName ?? "surat-sakit.pdf" } : { fileKey: null, fileName: null };
-    if (file.fileKey && file.fileKey !== existing?.fileKey) await assertFileKeyAvailable(tx, file.fileKey);
+    if (file.fileKey && file.fileKey !== existing?.fileKey) await assertFileKeyAvailable(tx, file.fileKey, actor.id);
 
     const number = existing ? existing.number : await nextDocumentNumber(tx, "APL");
     const appeal = existing

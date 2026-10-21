@@ -56,7 +56,9 @@ Keputusan pemilik project:
 | **Engineer / IT** | Tidak melihat data pribadi dari database, karena kolomnya terenkripsi. Data asli hanya bisa dibuka lewat aplikasi (dengan akun yang berhak) atau lewat alat `data:lihat` / `data:cari-nik` di server. Alat ini wajib diisi alasan dan nama, dan pemakaiannya tercatat di audit log. |
 
 Karena Admin bisa melihat semua data, akun Admin menjadi target utama penyerang. Pengamannya adalah MFA untuk Admin
-(Tahap 5) dan alarm untuk akses besar-besaran (Tahap 6), bukan pembatasan akses Admin.
+(Tahap 5, sudah dibuat 2026-10-20 — juga untuk Approver, lihat Tech Spec §9) dan alarm untuk akses besar-besaran (Tahap 6,
+sudah dibuat 2026-10-21; salinan backup ke NAS/cloud masih ditunda),
+bukan pembatasan akses Admin.
 
 ## 4. Kunci dan pemegang kunci
 

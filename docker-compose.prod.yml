@@ -111,7 +111,8 @@ services:
       - uploads:/app/storage/uploads
     networks: [db_net, edge]
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      # /api/health (hardening Tahap 6): aplikasi hidup DAN database bisa dihubungi.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3

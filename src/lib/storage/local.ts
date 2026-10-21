@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { decryptFile, encryptFile } from "@/lib/crypto/file-encryption";
 import type { FileExtension } from "./validate";
@@ -10,6 +10,8 @@ export interface Storage {
   /** Baca file; error jika key tidak valid atau file tidak ada. */
   get(key: string): Promise<Uint8Array>;
   delete(key: string): Promise<void>;
+  /** Semua file beserta waktu terakhir diubah — untuk job file yatim (hardening Tahap 7). */
+  list(): Promise<{ key: string; modifiedAt: Date }[]>;
 }
 
 const KEY_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(pdf|jpg|png)$/;
@@ -59,5 +61,17 @@ export class LocalStorage implements Storage {
 
   async delete(key: string): Promise<void> {
     await rm(this.pathOf(key), { force: true });
+  }
+
+  async list(): Promise<{ key: string; modifiedAt: Date }[]> {
+    let names: string[];
+    try {
+      names = await readdir(this.dir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
+    const keys = names.filter(isValidFileKey);
+    return Promise.all(keys.map(async (key) => ({ key, modifiedAt: (await stat(this.pathOf(key))).mtime })));
   }
 }

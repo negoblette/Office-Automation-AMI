@@ -1,4 +1,4 @@
-import { KeyRound, LogOut } from "lucide-react";
+import { KeyRound, LogOut, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { PersonAvatar } from "@/components/shared/person-cell";
@@ -47,6 +47,11 @@ export function AppTopbar({ user, badges, notifications = [] }: AppTopbarProps) 
             </div>
           </div>
 
+          {user.role !== "STAFF" && (
+            <Link href="/mfa" className={buttonVariants({ variant: "ghost", size: "icon" })} aria-label="Keamanan akun (MFA)" title="Keamanan akun (MFA)">
+              <ShieldCheck className="size-5" />
+            </Link>
+          )}
           <Link href="/ganti-password" className={buttonVariants({ variant: "ghost", size: "icon" })} aria-label="Ganti password" title="Ganti password">
             <KeyRound className="size-5" />
           </Link>

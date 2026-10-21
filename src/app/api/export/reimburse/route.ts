@@ -1,6 +1,9 @@
-import { getCurrentUser } from "@/lib/auth/guards";
+import { getReadyUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { toJakartaIsoDate } from "@/lib/format";
+import { enqueueSecurityAlert } from "@/lib/mail/security-emails";
+import { requestMeta } from "@/lib/request-meta";
+import { recordDataAccess } from "@/lib/services/security-monitor";
 import { buildReimburseWorkbook, listReimburseExportRows } from "@/lib/services/reimburse-export";
 
 function text(message: string, status: number) {
@@ -12,7 +15,7 @@ function text(message: string, status: number) {
  * Admin: satu karyawan atau semua; selain Admin hanya miliknya sendiri.
  */
 export async function GET(request: Request) {
-  const user = await getCurrentUser();
+  const user = await getReadyUser();
   if (!user) return text("Silakan login terlebih dahulu", 401);
 
   const params = new URL(request.url).searchParams;
@@ -27,6 +30,20 @@ export async function GET(request: Request) {
   if (employeeId && !employee) return text("Karyawan tidak ditemukan", 404);
 
   const rows = await listReimburseExportRows(prisma, yearMonth, employeeId);
+  // Jejak export (hardening Tahap 6) + alarm akses besar-besaran.
+  const alert = await recordDataAccess(
+    prisma,
+    {
+      actorId: user.id,
+      actorName: user.name,
+      action: "EXPORT",
+      entity: "Reimbursement",
+      entityId: `${yearMonth}:${employeeId ?? "semua"}`,
+      after: { format: "xlsx", bulan: yearMonth, karyawan: employee?.fullName ?? "Semua karyawan", baris: rows.length },
+    },
+    requestMeta(request.headers),
+  );
+  await enqueueSecurityAlert(prisma, alert);
   const monthLabel = new Intl.DateTimeFormat("id-ID", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${yearMonth}-01T00:00:00Z`));
   const who = employee?.fullName ?? "Semua karyawan";
   const data = await buildReimburseWorkbook(rows, `Rekap Reimburse ${monthLabel} — ${who}`);

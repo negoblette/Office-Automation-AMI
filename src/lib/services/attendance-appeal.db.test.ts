@@ -11,10 +11,16 @@ import { getCurrentBalances } from "@/lib/services/leave-queries";
 import { appealSchema } from "@/lib/validators/attendance";
 import { testDb } from "@/test/db";
 import { resetAndSeed } from "@/test/seed";
+import { asUploadedBy } from "@/test/uploads";
 
 let u: Record<string, string>;
 /** Surat keterangan sakit (wajib untuk appeal Sakit, 2026-10-14). */
-const sickNote = () => ({ fileKey: `${randomUUID()}.pdf`, fileName: "surat-dokter.pdf" });
+/** Surat sakit yang di-upload pemohon sendiri (hardening Tahap 7). */
+const sickNote = async (uploaderId: string) => {
+  const fileKey = `${randomUUID()}.pdf`;
+  await asUploadedBy(uploaderId, fileKey);
+  return { fileKey, fileName: "surat-dokter.pdf" };
+};
 const actors: Record<string, Actor> = {};
 const TODAY = "2026-10-14"; // Rabu
 
@@ -32,7 +38,7 @@ afterAll(async () => {
 
 describe("appeal tidak hadir (Fase 14)", () => {
   it("appeal Sakit → Bu Ika menyetujui → hari itu tampil Sakit", async () => {
-    const result = await submitAppeal(testDb, actors.andi, { date: "2026-10-12", reason: "SICK", note: "Demam", ...sickNote() }, TODAY);
+    const result = await submitAppeal(testDb, actors.andi, { date: "2026-10-12", reason: "SICK", note: "Demam", ...(await sickNote(actors.andi.id)) }, TODAY);
     expect(result.number).toMatch(/^APL\//);
     expect(result.notifications[0].recipientIds).toEqual([u.ika]);
 
@@ -49,6 +55,7 @@ describe("appeal tidak hadir (Fase 14)", () => {
     await expect(submitAppeal(testDb, actors.andi, { date: "2026-10-12", reason: "SICK", note: "Demam" }, TODAY)).rejects.toThrow("Surat keterangan sakit wajib diupload");
     expect(appealSchema.safeParse({ date: "2026-10-12", reason: "SICK", note: "Demam", fileKey: "" }).error?.issues[0]).toMatchObject({ path: ["fileKey"] });
     const fileKey = `${randomUUID()}.pdf`;
+    await asUploadedBy(actors.andi.id, fileKey);
     const sick = await submitAppeal(testDb, actors.andi, { date: "2026-10-12", reason: "SICK", note: "Demam", fileKey, fileName: "surat-dokter.pdf" }, TODAY);
     expect(await testDb.attendanceAppeal.findUniqueOrThrow({ where: { id: sick.appealId } })).toMatchObject({ fileKey, fileName: "surat-dokter.pdf" });
     const owner = await prismaFileAccessRepository(testDb).findFileOwner(fileKey);
@@ -65,7 +72,7 @@ describe("appeal tidak hadir (Fase 14)", () => {
   });
 
   it("validasi: hanya hari lalu ≤ 7 hari, hari kerja, tidak sudah absen, tidak dobel", async () => {
-    const appeal = (date: string) => submitAppeal(testDb, actors.andi, { date, reason: "SICK", note: "x x x", ...sickNote() }, TODAY);
+    const appeal = async (date: string) => submitAppeal(testDb, actors.andi, { date, reason: "SICK", note: "x x x", ...(await sickNote(actors.andi.id)) }, TODAY);
     await expect(appeal(TODAY)).rejects.toThrow("sudah lewat");
     await expect(appeal("2026-10-06")).rejects.toThrow("Batas appeal");
     await expect(appeal("2026-10-11")).rejects.toThrow("bukan hari kerja"); // Minggu
@@ -79,7 +86,7 @@ describe("appeal tidak hadir (Fase 14)", () => {
 describe("appeal rentang tanggal (2026-10-14)", () => {
   it("satu appeal Jumat–Selasa: akhir pekan dilewati, satu approval, semua hari kerja jadi Sakit setelah disetujui", async () => {
     const today = "2026-10-15"; // Kamis
-    const result = await submitAppeal(testDb, actors.andi, { date: "2026-10-09", endDate: "2026-10-13", reason: "SICK", note: "Tipes", ...sickNote() }, today);
+    const result = await submitAppeal(testDb, actors.andi, { date: "2026-10-09", endDate: "2026-10-13", reason: "SICK", note: "Tipes", ...(await sickNote(actors.andi.id)) }, today);
     expect(await testDb.approvalRequest.count({ where: { module: "ATTENDANCE_APPEAL" } })).toBe(1);
 
     let days = await listMonthDays(testDb, actors.andi.employeeId!, "2026-10", today);
@@ -124,7 +131,7 @@ describe("potong cuti otomatis", () => {
     }
     // Sinta: 1 Okt hadir, 2 Okt tidak hadir (tanpa appeal), 5 Okt appeal (masih menunggu).
     await testDb.attendance.create({ data: { employeeId: sinta, date: new Date("2026-10-01T00:00:00Z"), clockIn: jakartaDateTime("2026-10-01", "08:00") } });
-    await submitAppeal(testDb, actors.sinta, { date: "2026-10-05", reason: "SICK", note: "Sakit", ...sickNote() }, "2026-10-06");
+    await submitAppeal(testDb, actors.sinta, { date: "2026-10-05", reason: "SICK", note: "Sakit", ...(await sickNote(actors.sinta.id)) }, "2026-10-06");
 
     const before = (await getCurrentBalances(testDb, [sinta]))[0].remaining;
     // 13 Okt: batas 2 Okt (9 Okt) & 5 Okt (12 Okt) sudah lewat; 6–5 Okt… hari setelah 5 Okt belum lewat 7 hari.

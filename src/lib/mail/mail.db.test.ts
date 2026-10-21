@@ -100,6 +100,35 @@ describe("renderEmail", () => {
     expect(text).toContain("Halo Yosep");
     expect(text.toLowerCase()).toContain("pengajuan menunggu persetujuan anda");
   });
+
+  it("security-notice (hardening Tahap 5): judul, waktu, IP, dan peringatan bila bukan pemilik akun", async () => {
+    const { text } = await renderEmail("security-notice", {
+      recipientName: "Ika",
+      title: "MFA akun Anda di-reset Admin",
+      message: "MFA akun Anda di-reset oleh Leonard.",
+      when: "20 Okt 2026, 09:00 WIB",
+      ip: "10.0.0.5",
+      url: "http://localhost:3000/mfa",
+    });
+    expect(text.toLowerCase()).toContain("mfa akun anda di-reset admin");
+    expect(text).toContain("Alamat IP: 10.0.0.5");
+    expect(text).toContain("Bukan Anda yang melakukannya?");
+  });
+
+  it("security-alert (hardening Tahap 6): rincian alarm & saran tindakan untuk Admin", async () => {
+    const { text } = await renderEmail("security-alert", {
+      recipientName: "Rudy",
+      title: "Akses data besar-besaran oleh Yosep",
+      message: "Sistem mendeteksi aktivitas yang perlu diperiksa:",
+      when: "21 Okt 2026, 09:00 WIB",
+      ip: null,
+      url: "http://localhost:3000/setting/user",
+      details: ["52 unduhan file / export / buka data pribadi dalam 1 jam terakhir.", "IP: 10.1.2.3"],
+    });
+    expect(text).toContain("52 unduhan file");
+    expect(text).toContain("IP: 10.1.2.3");
+    expect(text).toContain("Periksa aktivitas ini di audit log");
+  });
 });
 
 describe("processEmailJob", () => {

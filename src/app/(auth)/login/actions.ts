@@ -4,7 +4,8 @@ import { AuthError, CredentialsSignin } from "next-auth";
 import { signIn } from "@/lib/auth";
 import { loginSchema } from "@/lib/validators/auth";
 
-export type LoginResult = { error?: string };
+/** `mfa` = password benar, form perlu menampilkan kolom kode MFA (langkah kedua). */
+export type LoginResult = { error?: string; mfa?: boolean };
 
 /** Hanya path internal (`/…`, bukan `//…`) yang boleh dipakai sebagai tujuan setelah login. */
 function safeRedirectPath(value: unknown): string {
@@ -24,6 +25,7 @@ export async function loginAction(input: unknown, callbackUrl?: string): Promise
     await signIn("credentials", {
       email: parsed.data.email,
       password: parsed.data.password,
+      code: parsed.data.code ?? "",
       redirectTo: safeRedirectPath(callbackUrl),
     });
   } catch (error) {
@@ -31,6 +33,8 @@ export async function loginAction(input: unknown, callbackUrl?: string): Promise
       if (error.type === "CredentialsSignin") {
         const code = error instanceof CredentialsSignin ? error.code : undefined;
         if (code === "inactive") return { error: "Akun Anda nonaktif. Hubungi Admin." };
+        if (code === "mfa_required") return { mfa: true };
+        if (code === "mfa_invalid") return { mfa: true, error: "Kode verifikasi salah atau sudah dipakai. Coba kode berikutnya." };
         if (code === "rate_limited") return { error: "Terlalu banyak percobaan login gagal. Coba lagi dalam 15 menit." };
         return { error: "Email atau password salah" };
       }

@@ -11,6 +11,7 @@ import {
 } from "@/lib/services/document";
 import { createTestEmployee, resetDb, testDb } from "@/test/db";
 import { familyMemberSchema } from "@/lib/validators/family";
+import { withUpload } from "@/test/uploads";
 
 let admin: Actor;
 let andi: Actor;
@@ -31,6 +32,8 @@ afterAll(async () => {
 });
 
 const newKey = () => `${randomUUID()}.pdf`;
+/** addDocument dengan file yang di-upload aktor sendiri (hardening Tahap 7). */
+const addDoc = withUpload(addDocument);
 const doc = (owner: Actor, overrides: Partial<NewDocument> = {}): NewDocument => ({
   employeeId: owner.employeeId!,
   docType: "KTP",
@@ -46,19 +49,19 @@ const setMarital = (actor: Actor, maritalStatus: "SINGLE" | "MARRIED" | "DIVORCE
 
 describe("hak akses", () => {
   it("staf boleh menambah dokumen miliknya; Admin boleh untuk siapa pun", async () => {
-    await expect(addDocument(testDb, andi, doc(andi))).resolves.toMatchObject({ ownerType: "EMPLOYEE", uploadedById: andi.id });
-    await expect(addDocument(testDb, admin, doc(andi, { docType: "KK" }))).resolves.toMatchObject({ uploadedById: admin.id });
+    await expect(addDoc(andi, doc(andi))).resolves.toMatchObject({ ownerType: "EMPLOYEE", uploadedById: andi.id });
+    await expect(addDoc(admin, doc(andi, { docType: "KK" }))).resolves.toMatchObject({ uploadedById: admin.id });
   });
 
   it("staf tidak boleh menambah/menghapus dokumen karyawan lain", async () => {
-    await expect(addDocument(testDb, sinta, doc(andi))).rejects.toThrow("Anda tidak berhak mengubah data karyawan ini");
-    const document = await addDocument(testDb, andi, doc(andi));
+    await expect(addDoc(sinta, doc(andi))).rejects.toThrow("Anda tidak berhak mengubah data karyawan ini");
+    const document = await addDoc(andi, doc(andi));
     await expect(deleteDocument(testDb, sinta, document.id)).rejects.toThrow("Anda tidak berhak");
   });
 
   it("key file yang sudah dipakai data lain tidak bisa diklaim", async () => {
-    const sintaDoc = await addDocument(testDb, sinta, doc(sinta));
-    await expect(addDocument(testDb, andi, doc(andi, { fileKey: sintaDoc.fileKey }))).rejects.toThrow(
+    const sintaDoc = await addDoc(sinta, doc(sinta));
+    await expect(addDoc(andi, doc(andi, { fileKey: sintaDoc.fileKey }))).rejects.toThrow(
       "File sudah dipakai, silakan upload ulang",
     );
   });
@@ -69,7 +72,7 @@ describe("aturan dokumen keluarga (DOC-02)", () => {
     await expect(addFamilyMember(testDb, andi, andi.employeeId!, member("CHILD", "Budi"))).rejects.toThrow(
       "Ubah status pernikahan di Data Diri terlebih dahulu",
     );
-    await expect(addDocument(testDb, andi, doc(andi, { docType: "SURAT_NIKAH_CERAI" }))).rejects.toThrow(
+    await expect(addDoc(andi, doc(andi, { docType: "SURAT_NIKAH_CERAI" }))).rejects.toThrow(
       "Surat nikah/cerai hanya untuk status selain Belum menikah",
     );
   });
@@ -84,12 +87,12 @@ describe("aturan dokumen keluarga (DOC-02)", () => {
     const child = await addFamilyMember(testDb, andi, andi.employeeId!, member("CHILD", "Budi"));
 
     await expect(
-      addDocument(testDb, andi, doc(andi, { docType: "KTP_PASANGAN", familyMemberId: spouse.id })),
+      addDoc(andi, doc(andi, { docType: "KTP_PASANGAN", familyMemberId: spouse.id })),
     ).resolves.toMatchObject({ ownerType: "FAMILY", employeeId: andi.employeeId, familyMemberId: spouse.id });
     await expect(
-      addDocument(testDb, andi, doc(andi, { docType: "KTP_PASANGAN", familyMemberId: child.id })),
+      addDoc(andi, doc(andi, { docType: "KTP_PASANGAN", familyMemberId: child.id })),
     ).rejects.toThrow("Jenis dokumen tidak sesuai dengan anggota keluarga");
-    await expect(addDocument(testDb, andi, doc(andi, { docType: "AKTE_KELAHIRAN_ANAK" }))).rejects.toThrow(
+    await expect(addDoc(andi, doc(andi, { docType: "AKTE_KELAHIRAN_ANAK" }))).rejects.toThrow(
       "Dokumen ini harus ditautkan ke anggota keluarga",
     );
   });
@@ -130,14 +133,14 @@ describe("aturan dokumen keluarga (DOC-02)", () => {
     const sintaChild = await addFamilyMember(testDb, sinta, sinta.employeeId!, member("CHILD", "Tono"));
     await setMarital(andi, "MARRIED");
     await expect(
-      addDocument(testDb, andi, doc(andi, { docType: "AKTE_KELAHIRAN_ANAK", familyMemberId: sintaChild.id })),
+      addDoc(andi, doc(andi, { docType: "AKTE_KELAHIRAN_ANAK", familyMemberId: sintaChild.id })),
     ).rejects.toThrow("Data keluarga tidak ditemukan");
   });
 });
 
 describe("hapus", () => {
   it("hapus dokumen = soft delete & tercatat di audit", async () => {
-    const document = await addDocument(testDb, andi, doc(andi));
+    const document = await addDoc(andi, doc(andi));
     await deleteDocument(testDb, andi, document.id);
     expect(await testDb.document.count({ where: { deletedAt: null } })).toBe(0);
     expect(await testDb.document.count()).toBe(1);
@@ -148,7 +151,7 @@ describe("hapus", () => {
   it("hapus anggota keluarga ikut menghapus dokumennya", async () => {
     await setMarital(andi, "MARRIED");
     const child = await addFamilyMember(testDb, andi, andi.employeeId!, member("CHILD", "Budi"));
-    const akte = await addDocument(testDb, andi, doc(andi, { docType: "AKTE_KELAHIRAN_ANAK", familyMemberId: child.id }));
+    const akte = await addDoc(andi, doc(andi, { docType: "AKTE_KELAHIRAN_ANAK", familyMemberId: child.id }));
 
     await deleteFamilyMember(testDb, andi, child.id);
     expect(await testDb.familyMember.count({ where: { deletedAt: null } })).toBe(0);

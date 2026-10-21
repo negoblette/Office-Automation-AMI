@@ -182,6 +182,12 @@ model User {
   sessionVersion     Int       @default(0)
   mustChangePassword Boolean   @default(false)
   passwordChangedAt  DateTime?
+  // MFA / verifikasi dua langkah (hardening Tahap 5): kode 6 digit TOTP (Google/Microsoft Authenticator).
+  // Wajib untuk Admin & Approver. Rahasia base32 disimpan terenkripsi (encryptText).
+  mfaSecret          String? // aktif; null = MFA belum aktif
+  mfaPendingSecret   String? // sedang didaftarkan, belum dikonfirmasi dengan kode
+  mfaEnabledAt       DateTime?
+  mfaLastStep        Int? // time-step TOTP terakhir yang diterima — kode yang sama tidak bisa dipakai dua kali
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -193,6 +199,32 @@ model User {
   attendanceFixes  Attendance[]           @relation("AttendanceCorrector")
   corrections      ApprovalCorrection[]   @relation("CorrectionEditor")
   leaveAdjustments LeaveAdjustment[]      @relation("LeaveAdjuster")
+  mfaBackupCodes   MfaBackupCode[]
+  uploads          UploadedFile[]
+}
+
+/// File yang di-upload lewat aplikasi (hardening Tahap 7): pengunggahnya — hanya dia yang boleh menautkan file ke data —
+/// dan ukurannya untuk kuota upload. Baris tetap ada walau file yatimnya dihapus job `storage.orphan-purge`.
+model UploadedFile {
+  key        String   @id // nama file di storage (<uuid>.pdf)
+  uploaderId String
+  uploader   User     @relation(fields: [uploaderId], references: [id])
+  sizeBytes  Int
+  createdAt  DateTime @default(now())
+
+  @@index([uploaderId, createdAt])
+}
+
+/// Kode cadangan MFA sekali pakai (hardening Tahap 5), untuk HP hilang. Hanya hash yang disimpan.
+model MfaBackupCode {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String // SHA-256(userId:kode) — kode acak ±50 bit, tidak perlu hash lambat
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 // ---------------------------------------------------------------------

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth/guards";
+import { getCurrentUser, homePathFor } from "@/lib/auth/guards";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = { title: "Masuk" };
@@ -20,7 +20,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   // Sudah login (dan akun masih aktif) → langsung ke dashboard.
   // Dicek di sini, bukan di proxy, supaya akun nonaktif dengan token lama tidak berputar-putar.
   const user = await getCurrentUser();
-  if (user) redirect(user.mustChangePassword ? "/ganti-password" : "/dashboard");
+  if (user) redirect(homePathFor(user));
 
   const { callbackUrl, pesan } = await searchParams;
 

@@ -8,6 +8,9 @@ import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { APPROVER_ROLES, canApprove } from "@/lib/roles";
 import { divisionLabels } from "./division";
+import type { RequestMeta } from "@/lib/request-meta";
+import { lockedLoginEmails } from "./login-throttle";
+import { roleChangedAlert, type SecurityAlert } from "./security-monitor";
 
 type Tx = Prisma.TransactionClient;
 
@@ -68,6 +71,10 @@ export type UserRow = {
   role: Role;
   isActive: boolean;
   lastLoginAt: string | null;
+  /** MFA sudah aktif (hardening Tahap 5). */
+  mfaEnabled: boolean;
+  /** Login sedang ditahan karena gagal berulang (hardening Tahap 6) → Admin bisa membuka blokir. */
+  loginLocked: boolean;
 };
 
 export async function listUsers(db: PrismaClient): Promise<UserRow[]> {
@@ -75,6 +82,7 @@ export async function listUsers(db: PrismaClient): Promise<UserRow[]> {
     include: { employee: { select: { id: true, fullName: true, division: true, position: true, status: true } } },
     orderBy: [{ isActive: "desc" }, { email: "asc" }],
   });
+  const locked = await lockedLoginEmails(db, users.map((u) => u.email));
   return users.map((u) => ({
     id: u.id,
     email: u.email,
@@ -86,6 +94,8 @@ export async function listUsers(db: PrismaClient): Promise<UserRow[]> {
     role: u.role,
     isActive: u.isActive,
     lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
+    mfaEnabled: u.mfaSecret !== null,
+    loginLocked: locked.has(u.email.toLowerCase()),
   }));
 }
 
@@ -95,18 +105,21 @@ async function getUserOrThrow(tx: Tx, userId: string) {
   return { ...user, displayName: user.employee?.fullName ?? user.email };
 }
 
-export async function setUserRole(db: PrismaClient, actorId: string, userId: string, role: Role) {
+/** Ubah role. Mengembalikan alarm untuk semua Admin (hardening Tahap 6) — kirim SETELAH commit; null = tidak berubah. */
+export async function setUserRole(db: PrismaClient, actorId: string, userId: string, role: Role, meta?: RequestMeta): Promise<SecurityAlert | null> {
   return db.$transaction(async (tx) => {
     const user = await getUserOrThrow(tx, userId);
     if (user.id === actorId) throw new ServiceError("Anda tidak bisa mengubah role akun Anda sendiri");
-    if (user.role === role) return;
+    if (user.role === role) return null;
     if (canApprove(user.role) && !canApprove(role)) await assertCanLoseApproverRights(tx, userId, user.displayName);
     await tx.user.update({ where: { id: userId }, data: { role } });
-    await logAudit(tx, { actorId, action: "UPDATE", entity: "User", entityId: userId, before: { role: user.role }, after: { role } });
+    await logAudit(tx, { actorId, action: "UPDATE", entity: "User", entityId: userId, before: { role: user.role }, after: { role }, ...meta });
+    const actor = await getUserOrThrow(tx, actorId);
+    return roleChangedAlert(tx, { userId, userName: user.displayName, from: user.role, to: role, actorName: actor.displayName }, meta);
   });
 }
 
-export async function setUserActive(db: PrismaClient, actorId: string, userId: string, isActive: boolean) {
+export async function setUserActive(db: PrismaClient, actorId: string, userId: string, isActive: boolean, meta?: RequestMeta) {
   return db.$transaction(async (tx) => {
     const user = await getUserOrThrow(tx, userId);
     if (user.id === actorId) throw new ServiceError("Anda tidak bisa menonaktifkan akun Anda sendiri");
@@ -116,7 +129,7 @@ export async function setUserActive(db: PrismaClient, actorId: string, userId: s
     }
     if (!isActive && canApprove(user.role)) await assertCanLoseApproverRights(tx, userId, user.displayName);
     await tx.user.update({ where: { id: userId }, data: { isActive } });
-    await logAudit(tx, { actorId, action: "UPDATE", entity: "User", entityId: userId, before: { isActive: user.isActive }, after: { isActive } });
+    await logAudit(tx, { actorId, action: "UPDATE", entity: "User", entityId: userId, before: { isActive: user.isActive }, after: { isActive }, ...meta });
   });
 }
 
@@ -124,7 +137,7 @@ export async function setUserActive(db: PrismaClient, actorId: string, userId: s
  * Admin mengetik password sementara; user wajib menggantinya saat login berikutnya dan semua
  * sesinya yang masih aktif berakhir (hardening 2026-10). Password tidak masuk audit.
  */
-export async function resetUserPassword(db: PrismaClient, actorId: string, userId: string, password: string) {
+export async function resetUserPassword(db: PrismaClient, actorId: string, userId: string, password: string, meta?: RequestMeta) {
   const passwordHash = await argon2.hash(password);
   return db.$transaction(async (tx) => {
     await getUserOrThrow(tx, userId);
@@ -132,6 +145,6 @@ export async function resetUserPassword(db: PrismaClient, actorId: string, userI
       where: { id: userId },
       data: { passwordHash, mustChangePassword: true, sessionVersion: { increment: 1 } },
     });
-    await logAudit(tx, { actorId, action: "UPDATE", entity: "User", entityId: userId, after: { passwordReset: true } });
+    await logAudit(tx, { actorId, action: "UPDATE", entity: "User", entityId: userId, after: { passwordReset: true }, ...meta });
   });
 }

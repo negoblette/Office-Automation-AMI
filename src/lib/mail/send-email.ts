@@ -6,15 +6,27 @@ import { renderEmail } from "./render";
 
 export type MailTransport = Pick<Transporter, "sendMail">;
 
+/**
+ * Opsi SMTP dari env. Produksi (atau `SMTP_REQUIRE_TLS=true`) WAJIB terenkripsi (hardening Tahap 6): port 465 = TLS
+ * langsung, port lain wajib STARTTLS (`requireTLS`) — server tanpa TLS ditolak, bukan dikirim terbuka. Minimal TLS 1.2,
+ * sertifikat server wajib valid. Dev (Mailpit localhost:1025) tanpa TLS & tanpa auth.
+ */
+export function smtpTransportOptions(env: Record<string, string | undefined> = process.env) {
+  const port = Number(env.SMTP_PORT ?? 1025);
+  const secure = port === 465;
+  const enforceTls = env.NODE_ENV === "production" || env.SMTP_REQUIRE_TLS === "true";
+  return {
+    host: env.SMTP_HOST ?? "localhost",
+    port,
+    secure,
+    ...(enforceTls ? { requireTLS: !secure, tls: { minVersion: "TLSv1.2" as const, rejectUnauthorized: true } } : {}),
+    auth: env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASS } : undefined,
+  };
+}
+
 /** Transport SMTP dari env (dev: Mailpit localhost:1025 tanpa auth). */
 export function createSmtpTransport(): Transporter {
-  const port = Number(process.env.SMTP_PORT ?? 1025);
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST ?? "localhost",
-    port,
-    secure: port === 465,
-    auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
-  });
+  return nodemailer.createTransport(smtpTransportOptions());
 }
 
 /**

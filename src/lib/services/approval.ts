@@ -7,6 +7,7 @@ import type { ApprovalModule, Prisma, PrismaClient } from "@/generated/prisma/cl
 import { FINAL_EFFECTS, type FinalEffectOptions, REJECT_EFFECTS, REVERT_EFFECTS } from "./approval-effects";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
+import type { RequestMeta } from "@/lib/request-meta";
 import { canApprove } from "@/lib/roles";
 
 type Tx = Prisma.TransactionClient;
@@ -190,6 +191,8 @@ export async function approveRequest(
     note?: string | null;
     /** Klaim kesehatan: nominal disetujui approver final (default = nominal diajukan). */
     approvedAmount?: number | null;
+    /** IP & perangkat approver untuk audit (hardening Tahap 6). */
+    meta?: RequestMeta;
   },
 ): Promise<ApproveResult> {
   return db.$transaction(async (tx) => {
@@ -223,6 +226,7 @@ export async function approveRequest(
       entity: "ApprovalRequest",
       entityId: request.id,
       after: { module: request.module, entityNumber: request.entityNumber, level: current.level, note: input.note ?? null },
+      ...input.meta,
     });
 
     // 3. Ada step WAITING berikutnya → PENDING; email ke approver-nya + info ke pemohon.
@@ -287,7 +291,7 @@ export function canRevoke(viewer: { id: string; role: string }, request: Pick<Re
  * Jika pengajuan sudah final, efek modul dibatalkan (saldo cuti dikembalikan, payout klaim dihapus
  * bila belum dibayar, dst.). Tercatat di riwayat koreksi (terlihat pemohon) + audit.
  */
-export async function revokeApproval(db: PrismaClient, input: { requestId: string; actorId: string; reason: string }): Promise<ApproveResult> {
+export async function revokeApproval(db: PrismaClient, input: { requestId: string; actorId: string; reason: string; meta?: RequestMeta }): Promise<ApproveResult> {
   const reason = input.reason.trim();
   if (reason.length < 3) throw new ServiceError("Alasan pembatalan minimal 3 karakter", "reason");
   return db.$transaction(async (tx) => {
@@ -338,6 +342,7 @@ export async function revokeApproval(db: PrismaClient, input: { requestId: strin
       entityId: request.id,
       before: { status: request.status, level: step.level, approvedBy: step.actedById },
       after: { status: "PENDING", currentLevel: step.level, reason, wasFinal },
+      ...input.meta,
     });
 
     // Approver level itu (selain yang membatalkan) diberi tahu bahwa pengajuan menunggu lagi.
@@ -357,7 +362,7 @@ export async function revokeApproval(db: PrismaClient, input: { requestId: strin
  * Tolak pengajuan: approver step PENDING menolak dengan alasan wajib. Step → REJECTED (alasan di
  * `note`), level berikutnya batal, pengajuan & entitas modul → REJECTED. Email ke pemohon.
  */
-export async function rejectRequest(db: PrismaClient, input: { requestId: string; actorId: string; reason: string }): Promise<ApproveResult> {
+export async function rejectRequest(db: PrismaClient, input: { requestId: string; actorId: string; reason: string; meta?: RequestMeta }): Promise<ApproveResult> {
   const reason = input.reason.trim();
   if (reason.length < 3) throw new ServiceError("Alasan penolakan minimal 3 karakter", "reason");
   return db.$transaction(async (tx) => {
@@ -385,6 +390,7 @@ export async function rejectRequest(db: PrismaClient, input: { requestId: string
       entity: "ApprovalRequest",
       entityId: request.id,
       after: { module: request.module, entityNumber: request.entityNumber, level: current.level, reason },
+      ...input.meta,
     });
     return { status: "REJECTED", notifications: [{ template: "approval-rejected", recipientIds: [request.requesterId], requestId: request.id }] };
   });
