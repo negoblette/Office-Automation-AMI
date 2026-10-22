@@ -21,7 +21,7 @@ export const ALERT_RULES = {
   dataAccessPerHour: 50,
 } as const;
 
-export type SecurityAlertKind = "LOGIN_FAILURES" | "ROLE_CHANGED" | "MASS_ACCESS";
+export type SecurityAlertKind = "LOGIN_FAILURES" | "ROLE_CHANGED" | "MASS_ACCESS" | "RECOVERY_KEY_CHANGED";
 
 export type SecurityAlert = {
   kind: SecurityAlertKind;
@@ -94,6 +94,29 @@ export async function roleChangedAlert(
       kind: "ROLE_CHANGED",
       title: `Role ${input.userName} diubah: ${ROLE_LABEL[input.from]} → ${ROLE_LABEL[input.to]}`,
       details: [`Diubah oleh: ${input.actorName}`, ...where(meta)],
+    },
+    0,
+    meta,
+  );
+}
+
+/** Kunci pemulihan dibuat / diganti (services/recovery-key.ts) — selalu dilaporkan ke semua Admin, termasuk pemegang lain. */
+export async function recoveryKeyChangedAlert(
+  db: Db,
+  input: { userId: string; userName: string; replaced: boolean },
+  meta?: RequestMeta,
+): Promise<SecurityAlert | null> {
+  return raiseAlert(
+    db,
+    input.userId,
+    {
+      kind: "RECOVERY_KEY_CHANGED",
+      title: `Kunci pemulihan ${input.userName} ${input.replaced ? "diganti" : "dibuat"}`,
+      details: [
+        "Kunci pemulihan dipakai untuk membuka backup & titipan kunci data bila server rusak.",
+        ...where(meta),
+        "Bila bukan pemilik akun yang melakukannya, segera periksa akun tersebut dan buat ulang kunci pemulihannya.",
+      ],
     },
     0,
     meta,

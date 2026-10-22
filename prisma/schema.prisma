@@ -201,6 +201,7 @@ model User {
   leaveAdjustments LeaveAdjustment[]      @relation("LeaveAdjuster")
   mfaBackupCodes   MfaBackupCode[]
   uploads          UploadedFile[]
+  recoveryKeys     RecoveryKey[]
 }
 
 /// File yang di-upload lewat aplikasi (hardening Tahap 7): pengunggahnya — hanya dia yang boleh menautkan file ke data —
@@ -223,6 +224,21 @@ model MfaBackupCode {
   codeHash  String // SHA-256(userId:kode) — kode acak ±50 bit, tidak perlu hash lambat
   usedAt    DateTime?
   createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// Kunci pemulihan pemegang kunci (Pak Rudy & Pak Leonard; daftar di env RECOVERY_KEY_HOLDERS) — docs/08-INVENTARIS-DATA.md
+// §4–5. Kunci age pribadinya dikunci kata sandi pemulihan dan disimpan sebagai FILE di RECOVERY_DIR (ikut backup,
+// sengaja tidak di database); di sini hanya kunci publiknya ("gembok" backup & titipan kunci data) dan riwayatnya.
+model RecoveryKey {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  recipient  String // kunci publik age (age1…)
+  createdAt  DateTime  @default(now())
+  verifiedAt DateTime? // terakhir kata sandi pemulihan berhasil diuji
+  revokedAt  DateTime? // diganti kunci baru → tidak dipakai lagi untuk backup baru
 
   @@index([userId])
 }

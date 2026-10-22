@@ -38,4 +38,5 @@ approval flow pengajuan tersebut.
 | └ Plafon Kesehatan | `/setting/kesehatan` | ✔ | — |
 | └ Jam Kerja & Absensi | `/setting/absensi` | ✔ | — |
 | └ Master Data (tipe reimburse, kategori klaim) | `/setting/master` | ✔ | — |
+| └ Kunci Pemulihan (kartu di halaman Setting) | `/setting/kunci-pemulihan` | Hanya pemegang kunci (`RECOVERY_KEY_HOLDERS`: Pak Rudy & Pak Leonard) | — |
 | Laporan | — | *(menyusul)* | — |

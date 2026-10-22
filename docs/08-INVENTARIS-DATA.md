@@ -17,6 +17,7 @@ untuk UU No. 27 Tahun 2022 tentang Pelindungan Data Pribadi.
 | Sidik jari NIK (HMAC-SHA256) | NIK harus tetap bisa dicek unik tanpa disimpan terbuka | `Employee.nikHash` |
 | Enkripsi file upload | Volume/disk berisi scan KTP, KK, ijazah, dan surat sakit tersalin | `src/lib/crypto/file-encryption.ts`, `src/lib/storage/local.ts` |
 | Backup terenkripsi `age` | File backup dicuri | `scripts/backup.sh`, `deploy/backup/` |
+| Kunci pemulihan pemegang kunci | Kunci data hilang bersama server; backup dibuka orang yang tidak berhak | `src/lib/services/recovery-key.ts`, Setting → Kunci Pemulihan |
 | Role database minimum | Aplikasi yang dibobol tidak bisa mengubah atau menghapus struktur database | `deploy/postgres/init-roles.sh` |
 | Jaringan database internal + `pg_hba` | Database dijangkau dari luar atau dari container yang tidak berhak | `docker-compose.prod.yml`, `deploy/postgres/pg_hba.conf` |
 | Hardening container | Membatasi dampak bila satu container dibobol | `docker-compose.prod.yml`, `Dockerfile` |
@@ -39,7 +40,8 @@ untuk UU No. 27 Tahun 2022 tentang Pelindungan Data Pribadi.
 | `AuditLog.before/after` | Salinan data saat diubah | Kolom pribadi tersimpan dalam bentuk sandi. Baris audit sebelum Tahap 4 tidak diubah, karena audit tidak boleh diedit. Di dev tidak ada data pribadi di baris lama; produksi belum berjalan. |
 | `User` | Email, password | Password disimpan sebagai hash argon2 |
 | `EmailLog` | Alamat email tujuan, subjek | Tidak dienkripsi |
-| Backup (`backups/*.age`) | Semua data di atas | **Terenkripsi** `age`, untuk kunci publik pemegang kunci |
+| Backup (`backups/*.age`) | Semua data di atas | **Terenkripsi** `age`, untuk gembok (kunci publik) para pemegang kunci |
+| Folder kunci pemulihan (volume `recovery`, `backups/kunci_*.tar`) | Kunci pribadi pemegang kunci & titipan kunci data | **Terkunci** kata sandi pemulihan masing-masing pemegang kunci; kata sandinya tidak disimpan di mana pun |
 | Log Postgres | User database, IP, waktu login, perintah DDL | Tidak memuat isi data |
 | Terminal `npm run dev` | — | Argumen Server Action (password, NIK, dan sejenisnya) tidak dicetak (`logging.serverFunctions: false`) |
 
@@ -57,74 +59,89 @@ Keputusan pemilik project:
 
 Karena Admin bisa melihat semua data, akun Admin menjadi target utama penyerang. Pengamannya adalah MFA untuk Admin
 (Tahap 5, sudah dibuat 2026-10-20 — juga untuk Approver, lihat Tech Spec §9) dan alarm untuk akses besar-besaran (Tahap 6,
-sudah dibuat 2026-10-21; salinan backup ke NAS/cloud masih ditunda),
+sudah dibuat 2026-10-21; salinan backup ke luar server: skrip & panduan sudah ada di `docs/07-DEPLOYMENT.md` §7,
+tujuannya — NAS atau cloud — menunggu keputusan manajemen),
 bukan pembatasan akses Admin.
 
 ## 4. Kunci dan pemegang kunci
 
-| Kunci | Fungsi | Tempat simpan | Pemegang salinan |
+**Pemegang kunci: Pak Rudy dan Pak Leonard** (Direktur), ditetapkan di `RECOVERY_KEY_HOLDERS` pada `.env.production`.
+Mereka **tidak menjalankan perintah teknis apa pun** (keputusan 2026-10-21): cukup membuat **kata sandi pemulihan** di
+aplikasi (Setting → Kunci Pemulihan) dan mengetiknya lagi bila server harus dipulihkan. Semua langkah teknis dikerjakan
+petugas IT / admin server.
+
+| Kunci | Fungsi | Tempat simpan | Siapa yang bisa membuka |
 |---|---|---|---|
-| `DATA_ENCRYPTION_KEYS` | Mengunci dan membuka kolom data pribadi dan file upload | `.env.production` di server (`chmod 600`) | **Pak Rudy dan Pak Leonard**, lewat file `kunci-data-YYYYMMDD.age` hasil `scripts/keys-escrow.sh` |
-| `DATA_INDEX_KEY` | Sidik jari NIK | Sama | Sama |
-| Kunci **pribadi** `age` (`nama.agekey`) | Membuka backup dan file titipan kunci | **Tidak pernah di server.** Disimpan di USB/brankas dan pengelola password milik pemegangnya. | Pak Rudy memegang miliknya sendiri, Pak Leonard memegang miliknya sendiri |
-| Kunci **publik** `age` (`age1…`) | Mengunci backup | `BACKUP_AGE_RECIPIENTS` di `.env.production` | Tidak rahasia |
+| `DATA_ENCRYPTION_KEYS`, `DATA_INDEX_KEY` (kunci data) | Mengunci & membuka kolom data pribadi dan file upload; sidik jari NIK | `.env.production` di server (`chmod 600`) | Server. Salinannya (`kunci-data.age`, titipan) dikunci untuk kunci pemulihan para pemegang kunci |
+| Kunci pemulihan (kunci pribadi `age`, satu per pemegang kunci) | Membuka backup & titipan kunci data | File `kunci-pemulihan-<email>.age` di volume `recovery`, ikut setiap backup (`kunci_*.tar`) | Hanya pemiliknya, dengan **kata sandi pemulihan** yang ia buat sendiri. Kata sandi ini tidak disimpan di mana pun |
+| Gembok (kunci publik `age`, `age1…`) | Mengunci backup & titipan | Tabel `RecoveryKey` dan `penerima.txt` (dibuat aplikasi) | Tidak rahasia |
 | Password database (`oa`, `oa_app`, `oa_backup`), `AUTH_SECRET` | Akses database dan tanda tangan sesi login | `.env.production` | Admin server |
 
-> **Divisi IT sebagai pemegang kunci: belum diputuskan** (catatan pemilik project, 2026-10-20). Kalau nanti
-> diputuskan ikut memegang:
-> 1. tambahkan kunci publik `age` milik IT ke `BACKUP_AGE_RECIPIENTS`;
-> 2. jalankan ulang `scripts/keys-escrow.sh`;
-> 3. backup berikutnya otomatis ikut bisa dibuka IT.
+Cara kerjanya:
+- Saat pemegang kunci menyimpan kata sandi pemulihan, aplikasi membuat kunci `age` khusus untuknya dan mengunci kunci
+  itu dengan kata sandi tersebut (scrypt, format `age`). Aplikasi juga menulis ulang `penerima.txt` (gembok semua pemegang)
+  dan titipan kunci data `kunci-data.age`. Semua Admin menerima email alarm setiap kali kunci pemulihan dibuat/diganti.
+- Service `migrate` memperbarui titipan di setiap deploy, jadi rotasi kunci data atau perubahan daftar pemegang kunci
+  langsung ikut. Pemegang kunci tidak perlu melakukan apa pun.
+- File kunci pemulihan **sengaja tidak disimpan di database**: database yang bocor (mis. SQL injection) tidak memberi
+  bahan untuk menebak kata sandi pemulihan.
+- Backup & titipan dikunci untuk **semua** pemegang kunci. Masing-masing bisa membukanya sendiri. `scripts/backup.sh`
+  menolak jalan bila pemegang yang sudah membuat kunci pemulihan kurang dari 2.
+- Kata sandi pemulihan minimal 15 karakter dan berbeda dari password login. Uji kata sandi 5 kali salah dalam 15 menit →
+  ditahan sementara. Dashboard mengingatkan pemegang kunci bila kuncinya belum dibuat atau > 3 bulan belum diuji.
+- `RECOVERY_KEY_HOLDERS` harus sama persis dengan email login akun pemegang kunci. Nama file kunci memakai email itu:
+  bila email akun pemegang kunci diganti, perbarui `RECOVERY_KEY_HOLDERS`, jalankan `dc up -d`, lalu pemegang kunci
+  membuat ulang kata sandi pemulihan (halamannya akan menampilkan "File hilang — buat ulang").
 
-Backup dan file titipan kunci dikunci untuk **semua** kunci publik di `BACKUP_AGE_RECIPIENTS`. Masing-masing Direktur
-bisa membukanya sendiri tanpa butuh Direktur lain. `scripts/backup.sh` menolak jalan bila penerimanya kurang dari 2.
+> **Divisi IT sebagai pemegang kunci: belum diputuskan** (catatan pemilik project, 2026-10-20). Petugas IT saat ini
+> hanya **pelaksana**: menjalankan langkah teknis, tetapi tidak bisa membuka backup sendirian. Kalau nanti diputuskan
+> ikut memegang kunci: tambahkan email akun IT ke `RECOVERY_KEY_HOLDERS`, jalankan `dc up -d`, lalu orang IT itu membuat
+> kata sandi pemulihan di Setting → Kunci Pemulihan (halaman Setting hanya untuk akun Admin).
 
-**Kunci hilang berarti data terenkripsi hilang.** Tidak ada fitur "lupa password" untuk enkripsi. Karena itulah kunci
-disimpan di dua orang.
+**Kunci hilang berarti data terenkripsi hilang.** Tidak ada fitur "lupa password" untuk enkripsi. Bila semua pemegang
+kunci lupa kata sandi pemulihannya *dan* server rusak, data pribadi terenkripsi tidak bisa dipulihkan. Karena itu ada
+dua pemegang kunci dan pengingat uji setiap 3 bulan.
 
 ## 5. Prosedur
 
 Perintah `docker compose` di bawah dijalankan di folder project di server, dengan awalan
 `docker compose -f docker-compose.prod.yml --env-file .env.production` (ditulis `dc` di bawah).
 
-> **Status 2026-10-20:**
-> - Sudah dibuat dan divalidasi (`docker compose config`): file produksi `docker-compose.prod.yml`, `deploy/`,
->   `scripts/backup.sh`, `scripts/restore.sh`, dan `scripts/keys-escrow.sh`.
-> - **Belum** dijalankan penuh dalam gladi resik (ditunda atas keputusan pemilik project).
-> - Jalankan gladi resik di server percobaan sebelum go-live. Perhatikan terutama:
->   - database dengan root filesystem read-only;
->   - nginx dengan tmpfs;
->   - service `migrate` yang berjalan sebagai user `node`;
->   - backup `age`;
->   - `restore.sh`.
+> **Status 2026-10-22:**
+> - Sudah dibuat: file produksi `docker-compose.prod.yml`, `deploy/`, `scripts/backup.sh`, `scripts/restore.sh`, dan
+>   kunci pemulihan lewat aplikasi (menggantikan `scripts/keys-escrow.sh` yang dihapus).
+> - Sudah diuji di dev: `backup.sh` sungguhan terhadap database dev (ditolak bila pemegang < 2; berhasil dengan 2), dan
+>   file kunci buatan aplikasi dibuka dengan `age` 1.2.1 di image backup (kata sandi, titipan, dump, arsip upload).
+> - **Gladi resik emulasi 2026-10-22: 18/18 uji lulus** (`docs/07-DEPLOYMENT.md` §13.6). Hasilnya:
+>   - seluruh susunan produksi berjalan dalam mode terkunci (database, nginx, `migrate`, backup);
+>   - backup `age` dan salinan ke NAS berhasil;
+>   - `restore.sh` memulihkan server kosong dalam 64 detik dengan kata sandi pemulihan Direktur.
+> - Gladi singkat tetap dijalankan di server Ubuntu sungguhan sebelum go-live, untuk SSH, DNS & sertifikat kantor,
+>   SMTP & NAS asli, cron, dan mati listrik fisik.
 
 ### 5.1 Persiapan sebelum go-live
-1. **Pak Rudy dan Pak Leonard masing-masing membuat kunci `age` sendiri**, di laptop masing-masing:
-   - jalankan `age-keygen -o nama.agekey` (age tersedia untuk Windows, macOS, dan Linux);
-   - simpan file `nama.agekey` di USB atau brankas, ditambah pengelola password;
-   - kirim hanya baris `public key: age1…` ke admin server.
-2. **Admin server membuat kunci data.** Pakai `npm run keys:generate`, atau tanpa Node: `openssl rand -base64 32`,
-   sekali untuk `DATA_ENCRYPTION_KEYS="v1:<hasil>"` dan sekali untuk `DATA_INDEX_KEY`.
-3. **Isi `.env.production`:**
-   - kunci data;
-   - password database `POSTGRES_*`;
-   - `BACKUP_AGE_RECIPIENTS="age1…rudy,age1…leonard"`.
-
-   Lalu jalankan `chmod 600 .env.production`.
-4. **Jalankan aplikasi:** `dc up -d --build`. Service `migrate` menjalankan migrasi lalu `data:encrypt`. Kalau kunci
-   salah, `migrate` gagal dan aplikasi tidak start.
-5. **Titipkan kunci:** jalankan `scripts/keys-escrow.sh`. Serahkan `kunci-data-YYYYMMDD.age` ke Pak Rudy dan
-   Pak Leonard, lalu hapus file itu dari server.
-6. **Uji restore** sesuai 5.4 sebelum go-live.
+Langkah lengkap ada di `docs/07-DEPLOYMENT.md`. Ringkasnya:
+1. **Petugas IT membuat kunci data** dengan `npm run keys:generate` (atau tanpa Node: `openssl rand -base64 32`, sekali
+   untuk `DATA_ENCRYPTION_KEYS="v1:<hasil>"` dan sekali untuk `DATA_INDEX_KEY`).
+2. **Isi `.env.production`:** kunci data, password database `POSTGRES_*`, dan
+   `RECOVERY_KEY_HOLDERS="<email akun Pak Rudy>,<email akun Pak Leonard>"`. Lalu `chmod 600 .env.production`.
+3. **Jalankan aplikasi:** `dc up -d --build`. Service `migrate` menjalankan migrasi, `data:encrypt`, lalu
+   `recovery:refresh`. Kalau kunci salah, `migrate` gagal dan aplikasi tidak start.
+4. **Pak Rudy dan Pak Leonard** masing-masing login, membuka **Setting → Kunci Pemulihan**, lalu membuat kata sandi
+   pemulihan. Hanya itu yang perlu mereka lakukan. Status di halaman itu berubah menjadi "Backup berjalan" setelah
+   keduanya selesai.
+5. **Jalankan backup pertama** (`dc exec backup /bin/bash /scripts/backup.sh --now`) dan pastikan folder backup tersalin
+   ke luar server (NAS/cloud, `docs/07-DEPLOYMENT.md`).
+6. **Uji restore** sesuai 5.4 sebelum go-live, dengan salah satu Direktur hadir untuk mengetik kata sandi pemulihannya.
 
 ### 5.2 Rotasi kunci data
 Rotasi dilakukan berkala, atau segera bila kunci dicurigai bocor.
 
 1. Jalankan `node scripts/keys-generate.mjs --rotasi v2`. Taruh hasilnya **di depan**:
    `DATA_ENCRYPTION_KEYS="v2:…,v1:…"`.
-2. Jalankan `dc up -d`. Service `migrate` berjalan lagi dan `data:encrypt` mengunci ulang semua data dan file dengan `v2`.
-3. Jalankan `scripts/keys-escrow.sh` lagi dan serahkan hasilnya ke kedua Direktur.
-4. **Kunci `v1` jangan dihapus**, karena audit log dan backup lama masih memakainya.
+2. Jalankan `dc up -d`. Service `migrate` berjalan lagi: `data:encrypt` mengunci ulang semua data dan file dengan `v2`,
+   lalu `recovery:refresh` memperbarui titipan kunci data. Pemegang kunci tidak perlu melakukan apa pun.
+3. **Kunci `v1` jangan dihapus**, karena audit log dan backup lama masih memakainya.
 
 Rotasi `DATA_INDEX_KEY`:
 1. `dc stop app worker`;
@@ -145,25 +162,31 @@ dc run --rm migrate npx tsx scripts/data-find-nik.ts <NIK> --alasan "<alasan/tik
 - Kunci produksi jangan pernah disalin ke laptop. Membuka data asli hanya dilakukan di server.
 
 ### 5.4 Backup & restore
-- **Backup otomatis** berjalan setiap hari pukul `BACKUP_TIME` ke `./backups/` (`db_*.dump.age`,
-  `uploads_*.tar.gz.age`), disimpan `BACKUP_KEEP_DAYS` hari. Backup manual: `dc exec backup /bin/bash /scripts/backup.sh --now`.
-- **Salin folder `backups/` ke tempat lain** (disk atau NAS lain). Filenya sudah terenkripsi, jadi aman disalin.
-- **Restore:** salah satu Direktur membawa file kunci pribadinya, lalu jalankan
+- **Backup otomatis** berjalan setiap hari pukul `BACKUP_TIME` ke `./backups/`, disimpan `BACKUP_KEEP_DAYS` hari. Isinya
+  per waktu backup: `db_*.dump.age`, `uploads_*.tar.gz.age`, dan `kunci_*.tar` (salinan folder kunci pemulihan saat itu).
+  Backup manual: `dc exec backup /bin/bash /scripts/backup.sh --now`.
+- **Salin folder `backups/` ke luar server** (NAS / cloud) setiap hari. Filenya sudah terkunci, jadi aman disalin.
+  Caranya: `docs/07-DEPLOYMENT.md`.
+- **Restore** (petugas IT menjalankan, salah satu Direktur hadir):
   ```bash
-  scripts/restore.sh --kunci /media/usb/rudy.agekey --db backups/db_YYYYMMDD_HHMM.dump.age \
-                     --uploads backups/uploads_YYYYMMDD_HHMM.tar.gz.age
+  bash scripts/restore.sh --db backups/db_YYYYMMDD_HHMM.dump.age --uploads backups/uploads_YYYYMMDD_HHMM.tar.gz.age
   ```
-  - Skrip meminta konfirmasi `PULIHKAN`, lalu menghentikan app dan worker, memulihkan database, memasang ulang role,
-    memulihkan file, memeriksa kunci data, dan menjalankan lagi app dan worker.
-  - `.env.production` harus memuat kunci data yang sama dengan saat backup dibuat, termasuk kunci lama.
+  - Skrip meminta konfirmasi `PULIHKAN`, menampilkan daftar pemegang kunci di backup itu, lalu Direktur yang hadir
+    **mengetik kata sandi pemulihannya** (tidak tampil di layar; maksimal 3 kali).
+  - Skrip membuka titipan kunci data dan mengisi `.env.production` bila kunci datanya belum ada (server baru), lalu
+    menghentikan app & worker, memulihkan database, memasang ulang role, memulihkan file upload & folder kunci
+    pemulihan, memeriksa kunci data, dan menjalankan semua service.
+  - Kunci pribadi yang sudah terbuka hanya disimpan sementara di memori (`/dev/shm`) dan dihapus saat skrip selesai.
 - **Uji restore** minimal setiap 3 bulan ke server percobaan.
 
 ### 5.5 Bila kunci hilang
 | Yang hilang | Akibat dan langkah |
 |---|---|
-| Kunci `age` salah satu Direktur | Backup masih bisa dibuka dengan kunci Direktur lain. Buat kunci baru, ganti kunci publiknya di `BACKUP_AGE_RECIPIENTS`, lalu escrow ulang. |
-| `.env.production` / server rusak | Ambil `DATA_ENCRYPTION_KEYS` dan `DATA_INDEX_KEY` dari file titipan: `age -d -i nama.agekey kunci-data-….age` |
-| Semua salinan kunci data | Data terenkripsi **tidak bisa dipulihkan** |
+| Satu pemegang kunci lupa kata sandi pemulihan | Backup masih bisa dibuka pemegang kunci lain. Yang lupa membuat kata sandi baru di Setting → Kunci Pemulihan ("Ganti"). Backup lama hanya bisa dibuka pemegang lain. |
+| Kata sandi pemulihan dicurigai diketahui orang lain | Pemiliknya segera mengganti kata sandi di Setting → Kunci Pemulihan. Backup lama yang sudah tersalin tetap terkunci kata sandi lama — bila perlu, rotasi kunci data (5.2) |
+| `.env.production` / server rusak | Pulihkan dengan `scripts/restore.sh` (5.4). Kunci data diambil otomatis dari titipan di backup |
+| Semua pemegang kunci lupa kata sandi, server masih hidup | Aplikasi tetap berjalan. **Segera** buat kata sandi baru (Ganti) dan jalankan backup baru |
+| Semua pemegang kunci lupa kata sandi **dan** server rusak | Data terenkripsi **tidak bisa dipulihkan** |
 
 ## 6. Aturan dev (higiene)
 - **Dilarang** memakai data karyawan asli atau backup produksi di dev maupun laptop.

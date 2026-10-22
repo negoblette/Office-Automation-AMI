@@ -1,11 +1,12 @@
 # Compose PRODUKSI (Tahap 10.5, hardening Tahap 3 & 4). Dev tetap memakai docker-compose.yml (Postgres + Mailpit).
 #
-#   cp .env.production.example .env.production   # lalu isi password DB, kunci data, kunci publik backup, SMTP
+#   cp .env.production.example .env.production   # lalu isi password DB, kunci data, pemegang kunci, SMTP
 #   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 #   docker compose -f docker-compose.prod.yml --env-file .env.production run --rm migrate npx prisma db seed   # sekali, deploy pertama
+# Panduan lengkap (termasuk menyalin backup ke luar server): docs/07-DEPLOYMENT.md.
 #
-# Alur start: db sehat → migrate (prisma migrate deploy + data:encrypt) selesai → app, worker, backup jalan → proxy
-# setelah app sehat.
+# Alur start: db sehat → migrate (prisma migrate deploy + data:encrypt + recovery:refresh) selesai → app, worker, backup
+# jalan → proxy setelah app sehat.
 # Hardening Tahap 4 (docs/08-INVENTARIS-DATA.md):
 #   - Tiap service hanya menerima env yang dibutuhkannya (tidak ada lagi env_file bersama). App & worker memakai role
 #     oa_app, backup memakai oa_backup; hanya migrate yang memegang password pemilik database. Worker tidak memegang
@@ -69,18 +70,21 @@ services:
     build: { context: ., target: migrate }
     restart: "no"
     # Tidak read-only: npx/tsx menulis cache di HOME & /tmp. Setelah migrasi, data:encrypt mengenkripsi data lama &
-    # memeriksa kunci — kunci salah → gagal → app tidak start.
-    command: ["sh", "-c", "npx prisma migrate deploy && npx tsx scripts/data-encrypt.ts"]
+    # memeriksa kunci — kunci salah → gagal → app tidak start. recovery:refresh memperbarui titipan kunci data untuk
+    # para pemegang kunci (rotasi kunci / RECOVERY_KEY_HOLDERS berubah ikut otomatis).
+    command: ["sh", "-c", "npx prisma migrate deploy && npx tsx scripts/data-encrypt.ts && npx tsx scripts/recovery-refresh.ts"]
     environment:
       MIGRATE_DATABASE_URL: postgresql://${POSTGRES_USER:-oa}:${POSTGRES_PASSWORD:?isi POSTGRES_PASSWORD di .env.production}@db:5432/${POSTGRES_DB:-office_automation}?schema=public
       DATABASE_URL: postgresql://oa_app:${POSTGRES_APP_PASSWORD:?isi POSTGRES_APP_PASSWORD di .env.production}@db:5432/${POSTGRES_DB:-office_automation}?schema=public
       DATA_ENCRYPTION_KEYS: ${DATA_ENCRYPTION_KEYS:?isi DATA_ENCRYPTION_KEYS di .env.production (npm run keys:generate)}
       DATA_INDEX_KEY: ${DATA_INDEX_KEY:?isi DATA_INDEX_KEY di .env.production (npm run keys:generate)}
+      RECOVERY_KEY_HOLDERS: ${RECOVERY_KEY_HOLDERS:?isi email pemegang kunci (Pak Rudy & Pak Leonard) di .env.production}
       SEED_PASSWORD: ${SEED_PASSWORD:-}
       SEED_MUST_CHANGE_PASSWORD: ${SEED_MUST_CHANGE_PASSWORD:-true}
       TZ: Asia/Jakarta
     volumes:
       - uploads:/app/storage/uploads
+      - recovery:/app/storage/recovery
     networks: [db_net]
     depends_on:
       db: { condition: service_healthy }
@@ -105,10 +109,13 @@ services:
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-5}
       DATA_ENCRYPTION_KEYS: ${DATA_ENCRYPTION_KEYS:?isi DATA_ENCRYPTION_KEYS di .env.production (npm run keys:generate)}
       DATA_INDEX_KEY: ${DATA_INDEX_KEY:?isi DATA_INDEX_KEY di .env.production (npm run keys:generate)}
+      # Pemegang kunci pemulihan (Setting → Kunci Pemulihan); ditetapkan di sini, tidak bisa diubah dari aplikasi.
+      RECOVERY_KEY_HOLDERS: ${RECOVERY_KEY_HOLDERS:?isi email pemegang kunci (Pak Rudy & Pak Leonard) di .env.production}
       TZ: Asia/Jakarta
     # Tidak dipublikasikan ke host: hanya reverse proxy (service "proxy") yang boleh mengakses app:3000.
     volumes:
       - uploads:/app/storage/uploads
+      - recovery:/app/storage/recovery
     networks: [db_net, edge]
     healthcheck:
       # /api/health (hardening Tahap 6): aplikasi hidup DAN database bisa dihubungi.
@@ -183,7 +190,9 @@ services:
         limits: { cpus: "0.5", memory: 128m, pids: 128 }
 
   # Backup harian terenkripsi (NF-06, hardening Tahap 4): pg_dump (role oa_backup) + arsip file upload, dikunci age
-  # untuk Pak Rudy & Pak Leonard, disimpan di ./backups, retensi BACKUP_KEEP_DAYS. Pulihkan: scripts/restore.sh.
+  # untuk gembok para pemegang kunci (volume recovery/penerima.txt, ditulis aplikasi), plus salinan folder kunci
+  # pemulihan. Disimpan di ./backups, retensi BACKUP_KEEP_DAYS — salin ke luar server (docs/07-DEPLOYMENT.md).
+  # Pulihkan: scripts/restore.sh.
   backup:
     <<: *hardening
     build: { context: ./deploy/backup }
@@ -200,12 +209,12 @@ services:
       PGDATABASE: ${POSTGRES_DB:-office_automation}
       BACKUP_TIME: ${BACKUP_TIME:-01:00}
       BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
-      BACKUP_AGE_RECIPIENTS: ${BACKUP_AGE_RECIPIENTS:?isi kunci publik age para pemegang kunci di .env.production}
       TZ: Asia/Jakarta
     volumes:
       - ./scripts/backup.sh:/scripts/backup.sh:ro
       - ./backups:/backups
       - uploads:/uploads:ro
+      - recovery:/recovery:ro
     networks: [db_net]
     depends_on:
       migrate: { condition: service_completed_successfully }
@@ -225,3 +234,5 @@ networks:
 volumes:
   pgdata:
   uploads:
+  # Kunci pemulihan para pemegang kunci (src/lib/services/recovery-key.ts): ditulis app & migrate, dibaca backup.
+  recovery:

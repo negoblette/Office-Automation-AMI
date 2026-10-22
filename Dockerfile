@@ -48,11 +48,13 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
     TZ=Asia/Jakarta \
-    UPLOAD_DIR=/app/storage/uploads
+    UPLOAD_DIR=/app/storage/uploads \
+    RECOVERY_DIR=/app/storage/recovery
 COPY --from=build --chown=node:node /app/.next/standalone ./
 COPY --from=build --chown=node:node /app/.next/static ./.next/static
 COPY --from=build --chown=node:node /app/public ./public
-RUN mkdir -p /app/storage/uploads && chown -R node:node /app/storage
+# Folder upload & kunci pemulihan milik node: volume baru mewarisi kepemilikan ini.
+RUN mkdir -p /app/storage/uploads /app/storage/recovery && chown -R node:node /app/storage
 USER node
 EXPOSE 3000
 CMD ["node", "server.js"]
@@ -71,7 +73,8 @@ USER node
 CMD ["node", "worker.mjs"]
 
 # ---------------------------------------------------------------------
-# Migrasi, seed, & alat data (data:encrypt / data:lihat / data:cari-nik) memakai toolchain lengkap (prisma CLI, tsx).
+# Migrasi, seed, & alat data (data:encrypt / data:lihat / data:cari-nik / recovery:refresh) memakai toolchain lengkap
+# (prisma CLI, tsx).
 FROM deps AS migrate
 WORKDIR /app
 COPY src ./src
@@ -80,8 +83,9 @@ COPY tsconfig.json ./
 COPY scripts ./scripts
 ENV TZ=Asia/Jakarta \
     UPLOAD_DIR=/app/storage/uploads \
+    RECOVERY_DIR=/app/storage/recovery \
     CHECKPOINT_DISABLE=1 \
     NPM_CONFIG_UPDATE_NOTIFIER=false
-RUN mkdir -p /app/storage/uploads && chown -R node:node /app/storage
+RUN mkdir -p /app/storage/uploads /app/storage/recovery && chown -R node:node /app/storage
 USER node
 CMD ["npx", "prisma", "migrate", "deploy"]

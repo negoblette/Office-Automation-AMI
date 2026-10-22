@@ -23,7 +23,10 @@ export type AuditAction =
   /** Admin membuka blokir login suatu email (pengganti menghapus catatan LOGIN_FAILED; audit log permanen). */
   | "LOGIN_UNLOCK"
   /** Alarm keamanan yang sudah dikirim ke Admin (juga dipakai untuk mencegah email ganda). */
-  | "SECURITY_ALERT";
+  | "SECURITY_ALERT"
+  /** Pemegang kunci berhasil / gagal menguji kata sandi pemulihan (services/recovery-key.ts). */
+  | "RECOVERY_KEY_TESTED"
+  | "RECOVERY_KEY_TEST_FAILED";
 
 export type AuditEntry = {
   /** User pelaku; null untuk aksi sistem (mis. job worker). */

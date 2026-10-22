@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import styles from "./dashboard.module.css";
 import { DashboardHeader } from "./dashboard-header";
 import { IntroScope, PaperTray } from "./dashboard-motion";
+import { RecoveryKeyReminder } from "./recovery-key-reminder";
 import {
   DashboardCard,
   ExpiringCard,
@@ -66,6 +67,7 @@ async function AdminDashboard({ user, calendar }: { user: CurrentUser; calendar:
       />
 
       <ExpiryAlert items={data.alerts} forAdmin />
+      <RecoveryKeyReminder email={user.email} />
 
       <AttendanceHero today={today} className={styles.rise} style={riseStyle(3)} />
 

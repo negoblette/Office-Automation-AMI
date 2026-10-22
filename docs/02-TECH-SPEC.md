@@ -222,7 +222,9 @@ Route `/api/files/[key]` (key, bukan id, karena file tersimpan sebagai `fileKey`
   - **SMTP wajib TLS di produksi** (`smtpTransportOptions`): 465 TLS langsung, port lain wajib STARTTLS, minimal TLS 1.2,
     sertifikat valid. Dev Mailpit tanpa TLS (`SMTP_REQUIRE_TLS=true` untuk memaksa).
   - **`GET /api/health`** (tanpa login): `{status, database}` 200 / 503, tanpa detail; dipakai healthcheck Docker app.
-  - Belum: salinan backup otomatis ke NAS/cloud (ditunda sampai tujuan penyimpanan ditentukan).
+  - Salinan backup ke luar server: `scripts/backup-offsite.sh` (cron di host, rsync ke NAS ber-penanda `.oa-offsite` dan/atau
+    `rclone` ke cloud; cek backup terbaru lengkap & < 26 jam, cek salinan, retensi `OFFSITE_KEEP_DAYS`, ping monitor
+    opsional) — panduan `docs/07-DEPLOYMENT.md` §7. Tujuan (NAS / cloud) menunggu keputusan manajemen.
 - **Upload & file (hardening Tahap 7, 2026-10-21):**
   - Setiap upload dicatat di `UploadedFile` (pengunggah, ukuran). File **hanya bisa ditautkan ke data oleh pengunggahnya**
     (`assertFileKeyAvailable(tx, key, actorId, …)` → `assertUploadedBy`); key tanpa catatan upload ditolak. Pengecualian:
@@ -260,6 +262,15 @@ Route `/api/files/[key]` (key, bukan id, karena file tersimpan sebagai `fileKey`
   miliknya (worker tanpa `AUTH_SECRET` & kunci data). Container: no-new-privileges, cap_drop ALL, read-only + tmpfs,
   batas memori/CPU/proses, rotasi log, versi image dikunci.
 - Backup harian terenkripsi `age` (`scripts/backup.sh`, role `oa_backup`) untuk minimal 2 pemegang kunci (Pak Rudy &
-  Pak Leonard); pulihkan dengan `scripts/restore.sh`, titip kunci data dengan `scripts/keys-escrow.sh`.
+  Pak Leonard, env `RECOVERY_KEY_HOLDERS`); pulihkan dengan `scripts/restore.sh`. Folder `backups/` wajib disalin ke
+  luar server (`docs/07-DEPLOYMENT.md`).
+- Kunci pemulihan (2026-10-21, `services/recovery-key.ts`, tabel `RecoveryKey`): pemegang kunci membuat **kata sandi
+  pemulihan** di Setting → Kunci Pemulihan (hanya untuk mereka; konfirmasi password login; min. 15 karakter, beda dari
+  password login) — tanpa perintah teknis. Aplikasi membuat kunci `age` X25519 per pemegang, menguncinya dengan kata
+  sandi itu (scrypt), dan menyimpannya sebagai file di `RECOVERY_DIR` (volume `recovery`, bukan database), lalu menulis
+  `penerima.txt` (gembok backup) & `kunci-data.age` (titipan `DATA_ENCRYPTION_KEYS`/`DATA_INDEX_KEY`). Service `migrate`
+  memperbarui titipan di setiap deploy (`recovery:refresh`). Setiap backup ikut menyalin folder itu (`kunci_*.tar`);
+  `restore.sh` meminta pemegang kunci yang hadir mengetik kata sandinya. Buat/ganti kunci → audit + alarm email ke semua
+  Admin; uji kata sandi (5 salah / 15 menit → ditahan) dan pengingat dashboard bila belum dibuat / > 90 hari belum diuji.
 - Dev: data karyawan asli dilarang; data contoh `npm run dev:data-palsu`; `npm run lint` menolak `$queryRawUnsafe` /
   `$executeRawUnsafe`; terminal dev tidak mencetak argumen Server Action (`logging.serverFunctions: false`).

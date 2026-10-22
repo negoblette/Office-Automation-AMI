@@ -1,7 +1,8 @@
 // Kunci enkripsi data pribadi baru (hardening Tahap 4, docs/08-INVENTARIS-DATA.md).
 //   npm run keys:generate                 → kunci awal: DATA_ENCRYPTION_KEYS ("v1:…") + DATA_INDEX_KEY
 //   npm run keys:generate -- --rotasi v2  → kunci baru untuk rotasi (taruh di DEPAN daftar, kunci lama tetap disimpan)
-// Selalu acak & baru: kunci dev dan produksi WAJIB berbeda. Kunci produksi dititipkan ke Pak Rudy & Pak Leonard.
+// Selalu acak & baru: kunci dev dan produksi WAJIB berbeda. Salinan kunci produksi dititipkan otomatis (terkunci kata
+// sandi pemulihan Pak Rudy & Pak Leonard) oleh service migrate — lihat src/lib/services/recovery-key.ts.
 import { randomBytes } from "node:crypto";
 import { parseArgs } from "node:util";
 
@@ -16,13 +17,15 @@ if (values.rotasi !== undefined) {
   console.log(`${values.rotasi}:${newKey()}`);
   console.error(
     `\nTambahkan entri di atas di DEPAN DATA_ENCRYPTION_KEYS, mis. DATA_ENCRYPTION_KEYS="${values.rotasi}:…,v1:…",` +
-      "\nrestart aplikasi, lalu jalankan `npm run data:encrypt`. Kunci lama JANGAN dihapus (audit log & backup lama memakainya).",
+      "\nrestart aplikasi (produksi: `up -d` → migrate mengunci ulang data & memperbarui titipan kunci; dev: `npm run data:encrypt`)." +
+      "\nKunci lama JANGAN dihapus (audit log & backup lama memakainya).",
   );
 } else {
   console.log(`DATA_ENCRYPTION_KEYS="v1:${newKey()}"`);
   console.log(`DATA_INDEX_KEY="${newKey()}"`);
   console.error(
     "\nSalin ke .env (dev) atau .env.production (server). Kunci dev dan produksi harus berbeda." +
-      "\nKunci produksi: titipkan salinannya ke Pak Rudy & Pak Leonard (scripts/keys-escrow.sh). Kunci hilang = data terenkripsi hilang.",
+      "\nKunci produksi dititipkan otomatis setelah Pak Rudy & Pak Leonard membuat kata sandi pemulihan (Setting → Kunci Pemulihan)." +
+      "\nKunci hilang tanpa titipan = data terenkripsi hilang.",
   );
 }

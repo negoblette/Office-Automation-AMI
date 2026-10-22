@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CalendarCog, ChevronRight, Clock, Database, GitBranch, HeartPulse, UserCog, type LucideIcon } from "lucide-react";
+import { CalendarCog, ChevronRight, Clock, Database, GitBranch, HeartPulse, KeyRound, UserCog, type LucideIcon } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { requireAdmin } from "@/lib/auth/guards";
+import { isRecoveryKeyHolder } from "@/lib/services/recovery-key";
 
 export const metadata: Metadata = { title: "Setting" };
 
@@ -45,8 +46,17 @@ const SETTING_SECTIONS: { title: string; description: string; href: string; icon
   },
 ];
 
+/** Hanya untuk pemegang kunci (env RECOVERY_KEY_HOLDERS). */
+const RECOVERY_KEY_SECTION = {
+  title: "Kunci Pemulihan",
+  description: "Kata sandi darurat untuk membuka backup bila server rusak.",
+  href: "/setting/kunci-pemulihan",
+  icon: KeyRound,
+};
+
 export default async function SettingPage() {
-  await requireAdmin();
+  const user = await requireAdmin();
+  const sections = isRecoveryKeyHolder(user.email) ? [...SETTING_SECTIONS, RECOVERY_KEY_SECTION] : SETTING_SECTIONS;
 
   return (
     <div className="space-y-6">
@@ -56,7 +66,7 @@ export default async function SettingPage() {
         breadcrumbs={[{ label: "Kontrol & Sistem" }, { label: "Setting" }]}
       />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {SETTING_SECTIONS.map(({ title, description, href, icon: Icon }) => (
+        {sections.map(({ title, description, href, icon: Icon }) => (
           <Link
             key={href}
             href={href}

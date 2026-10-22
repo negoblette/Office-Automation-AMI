@@ -16,6 +16,7 @@
     "data:encrypt": "tsx scripts/data-encrypt.ts",
     "data:lihat": "tsx scripts/data-view.ts",
     "data:cari-nik": "tsx scripts/data-find-nik.ts",
+    "recovery:refresh": "tsx scripts/recovery-refresh.ts",
     "dev:data-palsu": "tsx scripts/dev-fake-data.ts",
     "db:roles": "docker compose exec -T db bash /docker-entrypoint-initdb.d/10-roles.sh"
   },
@@ -26,6 +27,7 @@
     "@prisma/client": "^7.10.1",
     "@react-email/components": "^1.0.12",
     "@tanstack/react-table": "^9.2.4",
+    "age-encryption": "^0.3.1",
     "argon2": "^0.45.1",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",
