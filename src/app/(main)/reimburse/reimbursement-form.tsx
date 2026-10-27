@@ -8,10 +8,12 @@ import { Controller, FormProvider, useFieldArray, useForm, useFormContext, useWa
 import type { z } from "zod";
 import { DateInputField, SelectInputField, TextareaField, TextInputField } from "@/components/form/fields";
 import { FormAlert } from "@/components/form/form-actions";
-import { FormField } from "@/components/form/form-field";
+import { fieldDescriptionId, FormField } from "@/components/form/form-field";
 import { RupiahInput } from "@/components/form/rupiah-input";
 import { SelectField } from "@/components/form/select-field";
+import { DraftNotice, useFormDraft, useUnsavedChangesGuard } from "@/components/form/unsaved-changes";
 import { useActionSubmit } from "@/components/form/use-action-submit";
+import { useFeedback } from "@/components/shared/feedback";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatRupiah, toJakartaIsoDate } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL, toOptions } from "@/lib/labels";
@@ -36,15 +38,23 @@ export function ReimbursementForm({
   reimbursementId,
   defaultValues,
   options,
+  draftKey,
 }: {
   reimbursementId: string | null;
   defaultValues: Input;
   options: ReimbursementFormOptions;
+  /** Kunci draft sementara (sessionStorage), unik per user + pengajuan. */
+  draftKey: string;
 }) {
   const router = useRouter();
   const form = useForm<Input, unknown, Output>({ resolver: zodResolver(reimbursementFormSchema), defaultValues });
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "visits" });
   const { serverError, pending, submit } = useActionSubmit(form);
+  // Audit UI 2026-10-27: form panjang — tanya sebelum ditinggal, dan isian tersimpan sementara di tab ini.
+  // Pindah halaman setelah simpan memakai router.push (bukan klik link), jadi tidak ikut ditahan.
+  useUnsavedChangesGuard(form.formState.isDirty);
+  const draft = useFormDraft(form, draftKey);
+  const { notify } = useFeedback();
 
   const visits = useWatch({ control: form.control, name: "visits" }) ?? [];
   const lines = visits.flatMap((visit) => (visit.lines ?? []).map((line) => ({ ...line, date: String(visit.date ?? "") })));
@@ -57,13 +67,18 @@ export function ReimbursementForm({
     form.handleSubmit((values) =>
       submit(
         () => saveReimbursementAction(reimbursementId, values, andSubmit),
-        (data) => router.push(`/reimburse/${data.reimbursementId}`),
+        (data) => {
+          draft.clear();
+          notify(andSubmit ? "Reimburse diajukan" : "Draft reimburse tersimpan");
+          router.push(`/reimburse/${data.reimbursementId}`);
+        },
       ),
     );
 
   return (
     <FormProvider {...form}>
       <form onSubmit={save(true)} noValidate className="flex flex-col gap-6">
+        {draft.pendingDraft && <DraftNotice savedAt={draft.pendingDraft.savedAt} onRestore={draft.restore} onDiscard={draft.discard} />}
         <FormAlert message={serverError ?? visitsError ?? null} />
         {options.types.length === 0 && <FormAlert message="Belum ada tipe reimburse untuk divisi Anda. Hubungi Admin." />}
         
@@ -174,7 +189,9 @@ function VisitCard({
                   options={options.customers}
                   value={field.value || null}
                   placeholder="Pilih company…"
+                  aria-required
                   aria-invalid={errors?.customerId ? true : undefined}
+                  aria-describedby={fieldDescriptionId(`visits.${index}.customerId`)}
                   onChange={(value) => {
                     // Ganti company → pilihan project direset (project lama milik company lain).
                     if ((value ?? "") !== field.value) form.setValue(`visits.${index}.project`, "");
@@ -300,7 +317,15 @@ function LineRow({
             control={form.control}
             name={`${base}.amount`}
             render={({ field }) => (
-              <RupiahInput id={name("amount")} value={field.value as number | null} onChange={field.onChange} onBlur={field.onBlur} aria-invalid={errors?.amount ? true : undefined} />
+              <RupiahInput
+                id={name("amount")}
+                value={field.value as number | null}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                aria-required
+                aria-invalid={errors?.amount ? true : undefined}
+                aria-describedby={fieldDescriptionId(name("amount"))}
+              />
             )}
           />
         </FormField>

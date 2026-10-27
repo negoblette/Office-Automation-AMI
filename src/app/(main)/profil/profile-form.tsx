@@ -10,6 +10,7 @@ import type { z } from "zod";
 import { EmployeePersonalSections } from "@/components/employee/employee-fields";
 import { FormSection, ReadOnlyList } from "@/components/form/fields";
 import { FormAlert } from "@/components/form/form-actions";
+import { useUnsavedChangesGuard } from "@/components/form/unsaved-changes";
 import { useActionSubmit } from "@/components/form/use-action-submit";
 import { Button } from "@/components/ui/button";
 import { riseStyle } from "@/lib/motion";
@@ -43,12 +44,17 @@ export function ProfileForm({
   const [saved, setSaved] = useState(false);
   const form = useForm<Input, unknown, Output>({ resolver: zodResolver(employeeSelfSchema), defaultValues });
   const { serverError, pending, submit } = useActionSubmit(form);
+  // Tanya sebelum meninggalkan halaman bila ada perubahan belum disimpan. Tanpa draft di browser:
+  // isinya data pribadi (NIK, KK, dst.) yang tidak boleh tertinggal di penyimpanan browser.
+  useUnsavedChangesGuard(form.formState.isDirty);
 
   const onSubmit = form.handleSubmit((values) => {
     setSaved(false);
     submit(
       () => updateProfileAction(values),
       () => {
+        // Isian sekarang jadi patokan baru → form tidak lagi dianggap berubah.
+        form.reset(form.getValues());
         setSaved(true);
         router.refresh();
       },

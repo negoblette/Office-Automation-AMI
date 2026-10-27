@@ -1,6 +1,7 @@
 "use client";
 
 import { Eye } from "lucide-react";
+import { TableScroll } from "@/components/shared/table-scroll";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { type ChangePreview, parseChangeLines } from "@/lib/profile-change-lines";
@@ -16,7 +17,7 @@ export function ChangeTable({ preview, className }: { preview: ChangePreview; cl
         </p>
       ))}
       {preview.rows.length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-border">
+        <TableScroll label="Perubahan data" className="rounded-xl border border-border">
           <table className="w-full text-sm">
             <thead className="bg-muted/60 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
               <tr>
@@ -35,7 +36,7 @@ export function ChangeTable({ preview, className }: { preview: ChangePreview; cl
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
     </div>
   );

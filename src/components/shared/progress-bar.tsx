@@ -15,12 +15,14 @@ type ProgressBarProps = {
   value: number;
   /** Warna bar. Default biru (info). */
   tone?: ProgressTone;
-  /** Label untuk pembaca layar. */
-  label?: string;
+  /** Nama bar untuk pembaca layar — wajib (WCAG 4.1.2; audit UI 2026-10-27). */
+  label: string;
+  /** Nilai yang dibacakan, mis. "8 dari 12 hari terpakai". Default: persen. */
+  valueText?: string;
   className?: string;
 };
 
-export function ProgressBar({ value, tone = "info", label, className }: ProgressBarProps) {
+export function ProgressBar({ value, tone = "info", label, valueText, className }: ProgressBarProps) {
   const clamped = Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0;
   return (
     <div
@@ -29,6 +31,7 @@ export function ProgressBar({ value, tone = "info", label, className }: Progress
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(clamped)}
+      aria-valuetext={valueText}
       className={cn("h-2 w-full overflow-hidden rounded-[4px] bg-line", className)}
     >
       <div

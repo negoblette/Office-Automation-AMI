@@ -3,6 +3,7 @@
 import { Check, Loader2, Undo2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
+import { useFeedback } from "@/components/shared/feedback";
 import { Button } from "@/components/ui/button";
 import { setPayoutPaidAction } from "../actions";
 
@@ -10,6 +11,7 @@ import { setPayoutPaidAction } from "../actions";
 export function PaidToggle({ payoutId, paid }: { payoutId: string; paid: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const { notify } = useFeedback();
   return (
     <Button
       size="sm"
@@ -18,8 +20,10 @@ export function PaidToggle({ payoutId, paid }: { payoutId: string; paid: boolean
       onClick={() =>
         startTransition(async () => {
           const result = await setPayoutPaidAction(payoutId, !paid);
-          if (result.ok) router.refresh();
-          else window.alert(result.error);
+          if (result.ok) {
+            notify(paid ? "Tanda dibayar dibatalkan" : "Ditandai sudah dibayar");
+            router.refresh();
+          } else notify(result.error, "danger");
         })
       }
     >

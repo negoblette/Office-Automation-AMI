@@ -6,6 +6,7 @@ import { useTransition } from "react";
 import { DocumentSlot } from "@/components/employee/document-slot";
 import { DateInputField, SelectInputField, TextareaField, TextInputField } from "@/components/form/fields";
 import { FormDialog } from "@/components/form/form-dialog";
+import { useFeedback } from "@/components/shared/feedback";
 import { Button } from "@/components/ui/button";
 import { PERSONAL_DOCUMENT_TYPES } from "@/lib/employee-documents";
 import { toJakartaIsoDate } from "@/lib/format";
@@ -71,17 +72,21 @@ export function CandidateDialog({ candidate }: { candidate?: CandidateDetail }) 
 export function DeleteCandidateButton({ candidate }: { candidate: CandidateDetail }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const { confirm, notify } = useFeedback();
   return (
     <Button
       variant="destructive"
       size="lg"
       disabled={pending}
-      onClick={() => {
-        if (!window.confirm(`Hapus kandidat ${candidate.fullName} beserta dokumennya?`)) return;
+      onClick={async () => {
+        const ok = await confirm({ title: `Hapus kandidat ${candidate.fullName}?`, description: "Dokumen kandidat ikut terhapus.", confirmLabel: "Hapus", tone: "danger" });
+        if (!ok) return;
         startTransition(async () => {
           const result = await deleteCandidateAction(candidate.id);
-          if (result.ok) router.push("/kandidat");
-          else window.alert(result.error);
+          if (result.ok) {
+            notify("Kandidat dihapus");
+            router.push("/kandidat");
+          } else notify(result.error, "danger");
         });
       }}
     >
@@ -106,6 +111,7 @@ export function ConvertCandidateDialog({ candidate }: { candidate: CandidateDeta
       schema={convertCandidateSchema}
       defaults={{ division: "" as never, position: candidate.appliedPosition, startDate: toJakartaIsoDate(), role: "STAFF", password: "" }}
       submitLabel="Jadikan Karyawan"
+      successMessage={`${candidate.fullName} sekarang karyawan`}
       action={async (values) => {
         const result = await convertCandidateAction(candidate.id, values);
         if (result.ok) router.push(`/karyawan/${result.data.employeeId}`);

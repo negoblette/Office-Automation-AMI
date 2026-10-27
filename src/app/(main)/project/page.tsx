@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { TableScroll } from "@/components/shared/table-scroll";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
@@ -110,7 +111,7 @@ export default async function ProjectPage({ searchParams }: { searchParams: Prom
           description={canAdd ? "Tambahkan lewat tombol Tambah Project / Tambah Customer." : undefined}
         />
       ) : (
-        <section className="overflow-x-auto rounded-2xl bg-card shadow-card">
+        <TableScroll as="section" label="Daftar project" className="rounded-2xl bg-card shadow-card">
           <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-muted/60 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
               <tr>
@@ -118,7 +119,9 @@ export default async function ProjectPage({ searchParams }: { searchParams: Prom
                 <th className="px-4 py-3">Jenis</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Total Biaya</th>
-                <th className="px-4 py-3" />
+                <th className="px-4 py-3">
+                  <span className="sr-only">Aksi</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -136,15 +139,15 @@ export default async function ProjectPage({ searchParams }: { searchParams: Prom
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">{formatRupiah(row.totals.expense)}</td>
                   <td className="px-4 py-3 text-right">
-                    <Link href={`/project/${row.id}`} className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label="Buka detail">
-                      <ChevronRight />
+                    <Link href={`/project/${row.id}`} className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label={`Buka detail ${projectLabel(row)}`}>
+                      <ChevronRight aria-hidden />
                     </Link>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </section>
+        </TableScroll>
       )}
     </div>
   );

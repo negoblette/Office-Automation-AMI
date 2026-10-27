@@ -120,7 +120,13 @@ export function LeaveBalanceCard({ balance, title = "Saldo Cuti Saya" }: { balan
           <span className="ml-1 text-base font-medium text-muted-foreground">/ {total} hari</span>
         </p>
       </div>
-      <ProgressBar className="mt-4" value={usedPercent} tone={balance.remaining <= 0 ? "danger" : "info"} />
+      <ProgressBar
+        className="mt-4"
+        value={usedPercent}
+        tone={balance.remaining <= 0 ? "danger" : "info"}
+        label="Cuti terpakai"
+        valueText={`${balance.used + balance.pending} dari ${total} hari terpakai atau menunggu approval, sisa ${balance.remaining} hari`}
+      />
       <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
         {[
           ["Jatah", balance.entitlement],

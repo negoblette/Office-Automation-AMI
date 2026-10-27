@@ -40,7 +40,13 @@ export function HealthSummaryCard({ summary }: { summary: HealthSummary }) {
           <span className="ml-1 text-sm font-medium text-muted-foreground">tersisa dari {formatRupiah(summary.annual)}</span>
         </p>
       </div>
-      <ProgressBar className="mt-4" value={usedPercent} tone={summary.remaining <= 0 ? "danger" : "success"} />
+      <ProgressBar
+        className="mt-4"
+        value={usedPercent}
+        tone={summary.remaining <= 0 ? "danger" : "success"}
+        label="Plafon kesehatan terpakai"
+        valueText={`${Math.round(usedPercent)}% terpakai, sisa ${formatRupiah(summary.remaining)}`}
+      />
       <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
         {[
           ["Disetujui", summary.approved],

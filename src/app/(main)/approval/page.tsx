@@ -2,7 +2,7 @@ import { CheckCheck, Clock, Inbox } from "lucide-react";
 import type { Metadata } from "next";
 import { LinkTabs } from "@/components/shared/link-tabs";
 import { PageHeader } from "@/components/shared/page-header";
-import { StatCard } from "@/components/shared/stat-card";
+import { STAT_GRID, StatCard } from "@/components/shared/stat-card";
 import { requireApprover } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { toJakartaIsoDate } from "@/lib/format";
@@ -30,7 +30,7 @@ export default async function ApprovalPage({ searchParams }: { searchParams: Pro
         breadcrumbs={[{ label: "Kontrol & Sistem" }, { label: "Approval" }]}
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className={`${STAT_GRID} sm:grid-cols-3`}>
         <StatCard label="Menunggu Anda" value={queue.length} unit="pengajuan" icon={Inbox} tone={queue.length ? "danger" : "success"} footer="Butuh tindakan Anda" />
         <StatCard label="Menunggu (semua)" value={pendingAll} unit="pengajuan" icon={Clock} tone="warning" footer="Di semua approver" />
         <StatCard label="Disetujui bulan ini" value={approvedThisMonth} unit="pengajuan" icon={CheckCheck} tone="success" footer="Termasuk yang otomatis" />

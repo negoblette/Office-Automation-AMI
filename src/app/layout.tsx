@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import { connection } from "next/server";
+import { FeedbackProvider } from "@/components/shared/feedback";
 import "./globals.css";
 
 // Font tampilan baru (docs/design/prototipe-dashboard-oa.html): Plus Jakarta Sans untuk antarmuka,
@@ -37,7 +38,10 @@ export default async function RootLayout({
       lang="id"
       className={`${jakartaSans.variable} ${plexMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {/* Dialog konfirmasi & notifikasi aplikasi (useFeedback) — audit UI 2026-10-27. */}
+        <FeedbackProvider>{children}</FeedbackProvider>
+      </body>
     </html>
   );
 }

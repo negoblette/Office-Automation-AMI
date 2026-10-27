@@ -8,6 +8,7 @@ import { CheckboxField, DateInputField, SelectInputField, TextInputField } from 
 import { FormDialog } from "@/components/form/form-dialog";
 import { FormField } from "@/components/form/form-field";
 import { RupiahInput } from "@/components/form/rupiah-input";
+import { useFeedback } from "@/components/shared/feedback";
 import { Button } from "@/components/ui/button";
 import { toJakartaIsoDate } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL, PROJECT_TYPE_LABEL, toOptions } from "@/lib/labels";
@@ -58,6 +59,7 @@ export function CustomerDialog({
 export function DeleteCustomerButton({ customer }: { customer: CustomerWithProjects }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const { confirm, notify } = useFeedback();
   if (customer.projects.length || customer.reimburseCount) return null;
   return (
     <Button
@@ -65,16 +67,19 @@ export function DeleteCustomerButton({ customer }: { customer: CustomerWithProje
       size="icon-sm"
       aria-label={`Hapus ${customer.name}`}
       disabled={pending}
-      onClick={() => {
-        if (!window.confirm(`Hapus customer "${customer.name}"?`)) return;
+      onClick={async () => {
+        const ok = await confirm({ title: `Hapus customer "${customer.name}"?`, confirmLabel: "Hapus", tone: "danger" });
+        if (!ok) return;
         startTransition(async () => {
           const result = await deleteCustomerAction(customer.id);
-          if (result.ok) router.refresh();
-          else window.alert(result.error);
+          if (result.ok) {
+            notify("Customer dihapus");
+            router.refresh();
+          } else notify(result.error, "danger");
         });
       }}
     >
-      {pending ? <Loader2 className="animate-spin" /> : <Trash2 />}
+      {pending ? <Loader2 className="animate-spin" aria-hidden /> : <Trash2 />}
     </Button>
   );
 }
@@ -141,7 +146,17 @@ function AmountField() {
       <Controller
         control={control}
         name="amount"
-        render={({ field }) => <RupiahInput id="entry-amount" value={field.value as number | null} onChange={field.onChange} onBlur={field.onBlur} />}
+        render={({ field }) => (
+          <RupiahInput
+            id="entry-amount"
+            value={field.value as number | null}
+            onChange={field.onChange}
+            onBlur={field.onBlur}
+            aria-required
+            aria-invalid={formState.errors.amount ? true : undefined}
+            aria-describedby="entry-amount-description"
+          />
+        )}
       />
     </FormField>
   );
@@ -178,6 +193,7 @@ export function ExpenseDialog({
           : { date: toJakartaIsoDate(), description: "", paymentMethod: "PERSONAL", amount: null as unknown as number }
       }
       submitLabel={revise ? "Ajukan Ulang" : "Ajukan"}
+      successMessage={revise ? "Expense diajukan ulang" : "Expense diajukan"}
       action={(values) => submitProjectExpenseAction(projectId, values, revise?.id ?? null)}
     >
       <div className="grid gap-4 sm:grid-cols-2">

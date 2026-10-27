@@ -15,6 +15,7 @@ import { DateInputField, TextInputField } from "@/components/form/fields";
 import { FormAlert } from "@/components/form/form-actions";
 import { useActionSubmit } from "@/components/form/use-action-submit";
 import { EmptyState } from "@/components/shared/empty-state";
+import { useFeedback } from "@/components/shared/feedback";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -109,6 +110,7 @@ function MemberCard({ member, employeeId, canEdit }: { member: FamilyMemberView;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const { confirm, notify } = useFeedback();
   const docType = member.relation === "SPOUSE" ? "KTP_PASANGAN" : "AKTE_KELAHIRAN_ANAK";
 
   return (
@@ -130,13 +132,16 @@ function MemberCard({ member, employeeId, canEdit }: { member: FamilyMemberView;
               size="icon-sm"
               disabled={pending}
               aria-label={`Hapus ${member.fullName}`}
-              onClick={() => {
-                if (!window.confirm(`Hapus data ${member.fullName} beserta dokumennya?`)) return;
+              onClick={async () => {
+                const ok = await confirm({ title: `Hapus data ${member.fullName}?`, description: "Dokumen milik anggota keluarga ini ikut terhapus.", confirmLabel: "Hapus", tone: "danger" });
+                if (!ok) return;
                 setError(null);
                 startTransition(async () => {
                   const result = await deleteFamilyMemberAction(member.id);
-                  if (result.ok) router.refresh();
-                  else setError(result.error);
+                  if (result.ok) {
+                    notify(`Data ${member.fullName} dihapus`);
+                    router.refresh();
+                  } else setError(result.error);
                 });
               }}
             >

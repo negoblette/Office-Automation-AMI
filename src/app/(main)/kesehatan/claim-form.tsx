@@ -86,7 +86,7 @@ export function HealthClaimDialog({
           <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
             <DialogHeader>
               <DialogTitle>{revise ? `Revisi Klaim ${revise.number}` : "Ajukan Klaim Kesehatan"}</DialogTitle>
-              <DialogDescription>Sisa plafon tahun ini {formatRupiah(remaining)}. Klaim di atas plafon bulanan dibayar bertahap.</DialogDescription>
+              <DialogDescription>Sisa plafon tahun ini {formatRupiah(remaining)}. Klaim melebihi sisa plafon tidak bisa diajukan.</DialogDescription>
             </DialogHeader>
             <FormAlert message={serverError} />
             <div className="grid gap-4 sm:grid-cols-2">
@@ -97,7 +97,17 @@ export function HealthClaimDialog({
               <Controller
                 control={form.control}
                 name="amount"
-                render={({ field }) => <RupiahInput id="claim-amount" value={field.value as number | null} onChange={field.onChange} onBlur={field.onBlur} />}
+                render={({ field }) => (
+                  <RupiahInput
+                    id="claim-amount"
+                    value={field.value as number | null}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    aria-required
+                    aria-invalid={errors.amount ? true : undefined}
+                    aria-describedby="claim-amount-description"
+                  />
+                )}
               />
             </FormField>
             <TextareaField name="note" label="Catatan (opsional)" />

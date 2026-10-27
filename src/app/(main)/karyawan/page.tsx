@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/shared/page-header";
 import { ProgressBar } from "@/components/shared/progress-bar";
-import { StatCard } from "@/components/shared/stat-card";
+import { STAT_GRID, StatCard } from "@/components/shared/stat-card";
 import { buttonVariants } from "@/components/ui/button";
 import { requireAdmin } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
@@ -43,7 +43,7 @@ export default async function KaryawanPage() {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className={`${STAT_GRID} xl:grid-cols-4`}>
         <StatCard
           label="Karyawan Aktif"
           value={rows.length}
@@ -56,7 +56,14 @@ export default async function KaryawanPage() {
           unit={`/ ${rows.length}`}
           icon={ClipboardCheck}
           tone="success"
-          footer={<ProgressBar value={rows.length ? (complete / rows.length) * 100 : 0} tone="success" />}
+          footer={
+            <ProgressBar
+              value={rows.length ? (complete / rows.length) * 100 : 0}
+              tone="success"
+              label="Karyawan dengan data lengkap"
+              valueText={`${complete} dari ${rows.length} karyawan`}
+            />
+          }
         />
         <StatCard
           label="Belum Lengkap"

@@ -9,9 +9,11 @@ import { DateInputField, SelectInputField, TextareaField, TextInputField } from 
 import { FileUpload } from "@/components/form/file-upload";
 import { FormDialog } from "@/components/form/form-dialog";
 import { FormField } from "@/components/form/form-field";
+import { CLOCK_OUT_CONFIRM } from "@/components/attendance/clock-out-confirm";
+import { useFeedback } from "@/components/shared/feedback";
 import { FileChip } from "@/components/shared/file-chip";
 import { StatusBadge, type StatusVariant } from "@/components/shared/status-badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { APPEAL_REASON_LABEL, DAY_STATUS_LABEL, type DayStatus, formatDuration } from "@/lib/attendance";
 import { formatDate, toJakartaIsoDate } from "@/lib/format";
@@ -65,6 +67,7 @@ export function ClockCard({ today, className }: { today: TodayAttendance | null;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const { confirm } = useFeedback();
 
   const run = (action: () => Promise<{ ok: boolean; error?: string }>) => {
     setError(null);
@@ -123,8 +126,8 @@ export function ClockCard({ today, className }: { today: TodayAttendance | null;
           size="lg"
           variant="outline"
           disabled={pending}
-          onClick={() => {
-            if (window.confirm("Clock out sekarang? Jam pulang tidak bisa diubah lagi (kecuali dikoreksi Admin).")) run(clockOutAction);
+          onClick={async () => {
+            if (await confirm(CLOCK_OUT_CONFIRM)) run(clockOutAction);
           }}
         >
           {pending ? <Loader2 className="animate-spin" aria-hidden /> : <LogOut aria-hidden />} Clock Out
@@ -147,19 +150,23 @@ export function MonthNav({ yearMonth, baseHref, maxMonth }: { yearMonth: string;
   const label = new Intl.DateTimeFormat("id-ID", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${yearMonth}-01T00:00:00Z`));
   const next = shift(1);
   return (
-    <div className="flex items-center gap-2">
-      <Link href={`${baseHref}${sep}bulan=${shift(-1)}`} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">
+    <nav aria-label="Pilih bulan" className="flex items-center gap-2">
+      <Link href={`${baseHref}${sep}bulan=${shift(-1)}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
         ‹ Sebelumnya
       </Link>
-      <span className="min-w-36 text-center text-sm font-semibold">{label}</span>
+      <span className="min-w-32 text-center text-sm font-semibold" aria-live="polite">
+        {label}
+      </span>
       {next <= maxMonth ? (
-        <Link href={`${baseHref}${sep}bulan=${next}`} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">
+        <Link href={`${baseHref}${sep}bulan=${next}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
           Berikutnya ›
         </Link>
       ) : (
-        <span className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground opacity-50">Berikutnya ›</span>
+        <span aria-disabled className={buttonVariants({ variant: "outline", size: "sm", className: "pointer-events-none text-mute shadow-[inset_0_0_0_1px_var(--line)]" })}>
+          Berikutnya ›
+        </span>
       )}
-    </div>
+    </nav>
   );
 }
 
@@ -182,6 +189,7 @@ function CorrectionDialog({ employeeId, day, defaultDate }: { employeeId: string
       schema={attendanceCorrectionSchema}
       defaults={{ date: day?.date ?? defaultDate ?? "", clockIn: day?.clockIn ?? "", clockOut: day?.clockOut ?? "", note: "" }}
       submitLabel="Simpan Koreksi"
+      successMessage="Koreksi absensi tersimpan"
       action={(values) => correctAttendanceAction(employeeId, values)}
     >
       <div className="grid gap-4 sm:grid-cols-3">
@@ -216,6 +224,7 @@ function AppealDialog({ day }: { day: AttendanceDay }) {
           : { date: day.date, endDate: "", reason: "" as never, note: "", fileKey: "", fileName: "" }
       }
       submitLabel="Ajukan Appeal"
+      successMessage="Appeal diajukan"
       action={submitAppealAction}
     >
       <DateInputField
@@ -256,6 +265,9 @@ function SickNoteField() {
         render={({ field }) => (
           <FileUpload
             id="appeal-sick-note"
+            aria-required
+            aria-invalid={errors.fileKey ? true : undefined}
+            aria-describedby="appeal-sick-note-description"
             value={field.value && fileName ? { key: String(field.value), fileName: String(fileName), mimeType: "application/pdf", sizeBytes: 0 } : null}
             onChange={(file) => {
               field.onChange(file?.key ?? "");

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertCircle, Loader2 } from "lucide-react";
+import { PasswordInput } from "@/components/form/password-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -65,7 +66,8 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
             autoComplete="one-time-code"
             inputMode="text"
             placeholder="000000"
-            className="h-10 bg-background px-3 text-center font-mono tracking-widest"
+            aria-required
+            className="h-11 bg-background px-3 text-center font-mono tracking-widest"
             {...register("code")}
           />
           <p className="text-xs text-muted-foreground">
@@ -81,9 +83,10 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
           type="email"
           autoComplete="email"
           placeholder="Email kantor Anda"
+          aria-required
           aria-invalid={errors.email ? true : undefined}
           aria-describedby={errors.email ? "email-error" : undefined}
-          className="h-10 bg-background px-3"
+          className="h-11 bg-background px-3"
           {...register("email")}
         />
         {errors.email && (
@@ -95,14 +98,14 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
 
       <div className={mfaStep ? "hidden" : "flex flex-col gap-2"}>
         <Label htmlFor="password">Password</Label>
-        <Input
+        <PasswordInput
           id="password"
-          type="password"
           autoComplete="current-password"
           placeholder="Password"
+          aria-required
           aria-invalid={errors.password ? true : undefined}
           aria-describedby={errors.password ? "password-error" : undefined}
-          className="h-10 bg-background px-3"
+          className="h-11 bg-background px-3 pr-12"
           {...register("password")}
         />
         {errors.password && (
@@ -112,14 +115,14 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
         )}
       </div>
 
-      <Button type="submit" size="lg" disabled={isPending} className="mt-1 h-10 w-full font-semibold">
+      <Button type="submit" size="lg" disabled={isPending} className="mt-1 w-full font-semibold">
         {isPending && <Loader2 className="size-4 animate-spin" aria-hidden />}
         {isPending ? "Memproses…" : mfaStep ? "Verifikasi" : "Masuk"}
       </Button>
       {mfaStep && (
         <button
           type="button"
-          className="text-sm text-muted-foreground hover:underline"
+          className="-mt-2 min-h-11 cursor-pointer rounded-lg text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ink"
           onClick={() => {
             setMfaStep(false);
             setServerError(null);

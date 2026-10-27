@@ -2,22 +2,23 @@
 
 import * as React from "react"
 import { cn } from "cn"
+import { TableScroll } from "@/components/shared/table-scroll"
 
 // Versi tenang (.tbl): pita kepala, baris tanpa garis, sorot membulat saat disentuh.
 // Ukuran sama dengan tabel antrian Dashboard: kepala 44px, sel 68px.
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+function Table({ className, scrollLabel = "Tabel", ...props }: React.ComponentProps<"table"> & {
+  /** Nama wilayah gulir saat tabel lebih lebar dari layar (pembaca layar). */
+  scrollLabel?: string
+}) {
   return (
-    <div
-      data-slot="table-container"
-      className="relative w-full overflow-x-auto"
-    >
+    <TableScroll label={scrollLabel} shade={false} className="relative w-full">
       <table
         data-slot="table"
         className={cn("w-full caption-bottom border-separate border-spacing-0 text-sm", className)}
         {...props}
       />
-    </div>
+    </TableScroll>
   )
 }
 

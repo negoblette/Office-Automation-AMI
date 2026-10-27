@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { FormAlert } from "@/components/form/form-actions";
+import { useFeedback } from "@/components/shared/feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { deleteReimbursementAction, submitReimbursementAction } from "../actions";
 
@@ -14,6 +15,7 @@ export function DraftActions({ reimbursementId, rejected = false }: { reimbursem
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const { confirm, notify } = useFeedback();
 
   return (
     <div className="flex flex-col items-end gap-2">
@@ -26,12 +28,16 @@ export function DraftActions({ reimbursementId, rejected = false }: { reimbursem
             variant="destructive"
             size="lg"
             disabled={pending}
-            onClick={() => {
-              if (!window.confirm("Hapus draft reimburse ini?")) return;
+            onClick={async () => {
+              const ok = await confirm({ title: "Hapus draft reimburse ini?", description: "Draft yang dihapus tidak tampil lagi di daftar.", confirmLabel: "Hapus", tone: "danger" });
+              if (!ok) return;
+              setError(null);
               startTransition(async () => {
                 const result = await deleteReimbursementAction(reimbursementId);
-                if (result.ok) router.push("/reimburse");
-                else setError(result.error);
+                if (result.ok) {
+                  notify("Draft reimburse dihapus");
+                  router.push("/reimburse");
+                } else setError(result.error);
               });
             }}
           >
@@ -45,8 +51,10 @@ export function DraftActions({ reimbursementId, rejected = false }: { reimbursem
             setError(null);
             startTransition(async () => {
               const result = await submitReimbursementAction(reimbursementId);
-              if (result.ok) router.refresh();
-              else setError(result.error);
+              if (result.ok) {
+                notify(rejected ? "Reimburse diajukan ulang" : "Reimburse diajukan");
+                router.refresh();
+              } else setError(result.error);
             });
           }}
         >

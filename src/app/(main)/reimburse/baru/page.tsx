@@ -26,6 +26,7 @@ export default async function ReimburseBaruPage() {
       {employee?.status === "ACTIVE" ? (
         <ReimbursementForm
           reimbursementId={null}
+          draftKey={`reimburse:${user.id}:baru`}
           defaultValues={{ note: "", visits: [emptyVisit()] }}
           options={await getReimbursementFormOptions(prisma, employee.division, await canAddCustomerProject(prisma, user))}
         />

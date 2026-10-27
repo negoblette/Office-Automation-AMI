@@ -13,6 +13,7 @@ import { FormAlert } from "@/components/form/form-actions";
 import { FormField } from "@/components/form/form-field";
 import { useActionSubmit } from "@/components/form/use-action-submit";
 import { EmptyState } from "@/components/shared/empty-state";
+import { useFeedback } from "@/components/shared/feedback";
 import { FileChip } from "@/components/shared/file-chip";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
@@ -80,6 +81,7 @@ function CertificateRow({ employeeId, certificate, canEdit }: { employeeId: stri
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const { confirm, notify } = useFeedback();
   const badge = CERTIFICATE_STATUS_BADGE[certificate.status];
 
   return (
@@ -142,13 +144,16 @@ function CertificateRow({ employeeId, certificate, canEdit }: { employeeId: stri
               size="icon-sm"
               disabled={pending}
               aria-label={`Hapus ${certificate.name}`}
-              onClick={() => {
-                if (!window.confirm(`Hapus sertifikat "${certificate.name}"?`)) return;
+              onClick={async () => {
+                const ok = await confirm({ title: `Hapus sertifikat "${certificate.name}"?`, confirmLabel: "Hapus", tone: "danger" });
+                if (!ok) return;
                 setError(null);
                 startTransition(async () => {
                   const result = await deleteCertificateAction(certificate.id);
-                  if (result.ok) router.refresh();
-                  else setError(result.error);
+                  if (result.ok) {
+                    notify("Sertifikat dihapus");
+                    router.refresh();
+                  } else setError(result.error);
                 });
               }}
             >

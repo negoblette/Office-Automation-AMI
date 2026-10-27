@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { TableScroll } from "@/components/shared/table-scroll";
 import { requireAdmin } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { listDivisions } from "@/lib/services/division";
@@ -27,7 +28,7 @@ export default async function DivisionSettingPage() {
         breadcrumbs={[{ label: "Kontrol & Sistem" }, { label: "Setting", href: "/setting" }, { label: "Divisi" }]}
         actions={<DivisionDialog />}
       />
-      <section className="overflow-x-auto rounded-2xl bg-card shadow-card">
+      <TableScroll as="section" label="Daftar divisi" className="rounded-2xl bg-card shadow-card">
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-muted/60 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
             <tr>
@@ -35,7 +36,9 @@ export default async function DivisionSettingPage() {
               <th className="px-4 py-3">Alur approval</th>
               <th className="px-4 py-3 text-right">Karyawan aktif</th>
               <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3" />
+              <th className="px-4 py-3">
+                <span className="sr-only">Aksi</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -59,7 +62,7 @@ export default async function DivisionSettingPage() {
             ))}
           </tbody>
         </table>
-      </section>
+      </TableScroll>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { MonitorSmartphone } from "lucide-react";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { TableScroll } from "@/components/shared/table-scroll";
 import { formatDate } from "@/lib/format";
 import { ASSET_CATEGORY_LABEL } from "@/lib/labels";
 import type { AssignmentRow } from "@/lib/services/asset-queries";
@@ -21,7 +22,7 @@ export function AssignmentHistory({ rows, mode }: { rows: AssignmentRow[]; mode:
     );
   }
   return (
-    <section className="overflow-x-auto rounded-2xl bg-card shadow-card">
+    <TableScroll as="section" label="Riwayat serah terima perangkat" className="rounded-2xl bg-card shadow-card">
       <table className="w-full min-w-[640px] text-sm">
         <thead className="bg-muted/60 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
           <tr>
@@ -55,6 +56,6 @@ export function AssignmentHistory({ rows, mode }: { rows: AssignmentRow[]; mode:
           ))}
         </tbody>
       </table>
-    </section>
+    </TableScroll>
   );
 }

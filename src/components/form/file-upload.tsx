@@ -20,6 +20,7 @@ type FileUploadProps = {
   compact?: boolean;
   "aria-invalid"?: boolean;
   "aria-describedby"?: string;
+  "aria-required"?: boolean;
   className?: string;
 };
 

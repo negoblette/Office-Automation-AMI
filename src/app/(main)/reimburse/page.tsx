@@ -65,7 +65,8 @@ export default async function ReimbursePage() {
         </button>
       </form>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      {/* HP: kartu Rupiah selebar penuh, dua kartu jumlah berdampingan. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 max-sm:[&>:first-child]:col-span-2">
         <StatCard
           label="Diajukan bulan ini"
           value={formatRupiah(submittedThisMonth.reduce((sum, row) => sum + row.total, 0))}

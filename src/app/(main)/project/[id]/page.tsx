@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { TableScroll } from "@/components/shared/table-scroll";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { formatDate, formatRupiah, toJakartaIsoDate } from "@/lib/format";
@@ -38,7 +39,7 @@ function Section({ title, action, children }: { title: string; action?: React.Re
 function CostTable({ rows, showPerson, canRevise = false, projectId }: { rows: ProjectCostRow[]; showPerson: boolean; canRevise?: boolean; projectId?: string }) {
   if (!rows.length) return <EmptyState title="Belum ada biaya untuk project ini" className="py-8" />;
   return (
-    <div className="overflow-x-auto rounded-2xl bg-card shadow-card">
+    <TableScroll label="Rincian biaya project" className="rounded-2xl bg-card shadow-card">
       <table className="w-full min-w-[760px] text-sm">
         <thead className="bg-muted/60 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
           <tr>
@@ -87,7 +88,7 @@ function CostTable({ rows, showPerson, canRevise = false, projectId }: { rows: P
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

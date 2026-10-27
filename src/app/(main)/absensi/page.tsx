@@ -4,7 +4,8 @@ import Link from "next/link";
 import { LinkTabs } from "@/components/shared/link-tabs";
 import { PageHeader } from "@/components/shared/page-header";
 import { PersonCell } from "@/components/shared/person-cell";
-import { StatCard } from "@/components/shared/stat-card";
+import { STAT_GRID, StatCard } from "@/components/shared/stat-card";
+import { TableScroll } from "@/components/shared/table-scroll";
 import { formatDuration } from "@/lib/attendance";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
@@ -60,7 +61,7 @@ async function Mine({ employeeId, yearMonth, thisMonth }: { employeeId: string |
         <h2 className="text-base font-semibold">Riwayat Absensi</h2>
         <MonthNav yearMonth={yearMonth} baseHref="/absensi" maxMonth={thisMonth} />
       </div>
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className={`${STAT_GRID} sm:grid-cols-3`}>
         <StatCard label="Hadir" value={days.filter((d) => d.clockIn).length} unit="hari" icon={UserCheck} tone="success" />
         <StatCard
           label="Terlambat"
@@ -86,7 +87,7 @@ async function Recap({ yearMonth, thisMonth, todayIso }: { yearMonth: string; th
   return (
     <>
       {isCurrent && (
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className={`${STAT_GRID} sm:grid-cols-3`}>
           <StatCard label="Sudah clock in hari ini" value={clockedToday} unit={`/ ${rows.length} karyawan`} icon={UserCheck} tone="success" />
           <StatCard label="Terlambat hari ini" value={lateToday} icon={AlarmClock} tone={lateToday ? "warning" : "success"} />
           <StatCard label="Cuti hari ini" value={rows.filter((r) => r.today?.status === "LEAVE").length} icon={Clock} tone="info" />
@@ -96,7 +97,7 @@ async function Recap({ yearMonth, thisMonth, todayIso }: { yearMonth: string; th
         <h2 className="text-base font-semibold">Rekap per Karyawan</h2>
         <MonthNav yearMonth={yearMonth} baseHref="/absensi?tab=rekap" maxMonth={thisMonth} />
       </div>
-      <div className="overflow-x-auto rounded-2xl bg-card shadow-card">
+      <TableScroll label="Rekap absensi per karyawan" className="rounded-2xl bg-card shadow-card">
         <table className="w-full min-w-[900px] text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs tracking-wider text-muted-foreground uppercase">
@@ -150,7 +151,7 @@ async function Recap({ yearMonth, thisMonth, todayIso }: { yearMonth: string; th
             ))}
           </tbody>
         </table>
-      </div>
+      </TableScroll>
     </>
   );
 }

@@ -4,6 +4,8 @@ import { Check, Loader2, LogIn, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { clockInAction, clockOutAction } from "@/app/(main)/absensi/actions";
+import { CLOCK_OUT_CONFIRM } from "@/components/attendance/clock-out-confirm";
+import { useFeedback } from "@/components/shared/feedback";
 import { useJakartaClock } from "@/components/shared/use-jakarta-clock";
 import { formatDuration } from "@/lib/attendance";
 import { formatDate } from "@/lib/format";
@@ -29,6 +31,7 @@ export function AttendanceHero({ today, className, style }: { today: TodayAttend
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const { confirm } = useFeedback();
   const clock = useJakartaClock();
   const state: HeroState | null = !today ? null : today.canClockIn ? "in" : today.canClockOut ? "out" : "done";
 
@@ -95,9 +98,9 @@ export function AttendanceHero({ today, className, style }: { today: TodayAttend
             <button
               type="button"
               disabled={pending}
-              onClick={() => {
+              onClick={async () => {
                 if (state === "in") run(clockInAction);
-                else if (window.confirm("Clock out sekarang? Jam pulang tidak bisa diubah lagi (kecuali dikoreksi Admin).")) run(clockOutAction);
+                else if (await confirm(CLOCK_OUT_CONFIRM)) run(clockOutAction);
               }}
               className={cn(styles.cta, state === "in" ? styles.ctaIn : styles.ctaOut, swaps > 0 && styles.swap)}
             >

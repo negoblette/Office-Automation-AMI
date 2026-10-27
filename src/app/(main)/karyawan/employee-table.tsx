@@ -62,9 +62,10 @@ const columns = col.columns([
       const { profilePercent: percent, profileMissing: missing } = row.original;
       const variant = percent === 100 ? "success" : percent >= 50 ? "warning" : "danger";
       return (
-        <span title={missing.length ? `Belum diisi: ${missing.join(", ")}` : "Data diri lengkap"}>
+        <div className="flex flex-col items-start gap-1" title={missing.length ? `Belum diisi: ${missing.join(", ")}` : "Data diri lengkap"}>
           <StatusBadge variant={variant}>{percent === 100 ? "Lengkap" : `${percent}%`}</StatusBadge>
-        </span>
+          <MissingNote missing={missing} verb="belum diisi" />
+        </div>
       );
     },
   }),
@@ -75,12 +76,18 @@ const columns = col.columns([
       const { documentPercent: percent, documentMissing: missing } = row.original;
       const variant = percent === 100 ? "success" : percent >= 50 ? "warning" : "danger";
       return (
-        <Link
-          href={`/karyawan/${row.original.id}?tab=dokumen`}
-          title={missing.length ? `Belum ada: ${missing.join(", ")}` : "Dokumen lengkap"}
-        >
-          <StatusBadge variant={variant}>{percent === 100 ? "Lengkap" : `${percent}%`}</StatusBadge>
-        </Link>
+        <div className="flex flex-col items-start gap-1">
+          {/* min-h-11 + padding negatif: area sentuh ≥ 44 px tanpa mengubah letak badge. */}
+          <Link
+            href={`/karyawan/${row.original.id}?tab=dokumen`}
+            title={missing.length ? `Belum ada: ${missing.join(", ")}` : "Dokumen lengkap"}
+            aria-label={`Dokumen ${row.original.fullName}: ${percent === 100 ? "lengkap" : `${percent}%`}`}
+            className="-my-3 -ml-1.5 inline-flex min-h-11 items-center rounded-full px-1.5 hover:[&>span]:underline focus-visible:outline-2 focus-visible:outline-ink"
+          >
+            <StatusBadge variant={variant}>{percent === 100 ? "Lengkap" : `${percent}%`}</StatusBadge>
+          </Link>
+          <MissingNote missing={missing} verb="belum ada" />
+        </div>
       );
     },
   }),
@@ -94,11 +101,25 @@ const columns = col.columns([
         aria-label={`Edit ${row.original.fullName}`}
         title="Edit"
       >
-        <Pencil />
+        <Pencil aria-hidden />
       </Link>
     ),
   }),
 ]);
+
+/**
+ * Jumlah item yang belum ada, ditulis (bukan hanya tooltip `title` — tidak terbaca di layar sentuh & oleh
+ * sebagian pembaca layar). Daftar lengkapnya dibacakan pembaca layar; pengguna mouse tetap bisa hover.
+ */
+function MissingNote({ missing, verb }: { missing: string[]; verb: string }) {
+  if (missing.length === 0) return null;
+  return (
+    <span className="text-xs whitespace-nowrap text-ink-3">
+      {missing.length} {verb}
+      <span className="sr-only">: {missing.join(", ")}</span>
+    </span>
+  );
+}
 
 
 export function EmployeeTable({ rows }: { rows: EmployeeListRow[] }) {

@@ -121,24 +121,26 @@
   --secondary: #eef2f8;
   --secondary-foreground: #0f172a;
   --muted: #f1f4f9;
-  --muted-foreground: #64748b;
+  /* Teks redup ≥ 4,5:1 di semua latar terang (WCAG 1.4.3; audit UI 2026-10-27: #64748b hanya 4,3–4,5:1 di panel). */
+  --muted-foreground: #5b6b84;
   --accent: #eef3fd;
   --accent-foreground: #0f172a;
-  --destructive: #dc2626;
+  --destructive: #c81e1e;
   --border: #e5e9f0;
   --input: #dbe1ea;
   --ring: #1d5fe0;
   --navy: #0f172a;
   --navy-foreground: #ffffff;
-  --success: #15803d;
+  /* Warna status digelapkan sedikit supaya teks di atas latar *-soft-nya ≥ 4,5:1 (audit UI 2026-10-27). */
+  --success: #147a3a;
   --success-soft: #e7f7ed;
   --info: #1d5fe0;
   --info-soft: #e8effd;
   --warning: #b45309;
   --warning-soft: #fdf3e2;
-  --danger: #dc2626;
+  --danger: #c81e1e;
   --danger-soft: #fdecec;
-  --neutral: #64748b;
+  --neutral: #5b6b84;
   --neutral-soft: #eef1f5;
   --chart-1: #1d5fe0;
   --chart-2: #0f172a;
@@ -342,6 +344,17 @@
   border-radius: 22px;
   background-color: var(--panel);
   box-shadow: inset 0 0 0 1px rgb(var(--shade) / 0.05);
+}
+
+/* Tabel lebar di layar sempit (TableScroll): bayangan tipis di tepi yang masih bisa digeser, hilang sendiri
+   saat sudah di ujung (penutup `local` ikut bergulir, bayangan `scroll` diam). Latar = --card. */
+@utility scroll-shade-x {
+  background:
+    linear-gradient(to right, var(--card) 30%, transparent) left center / 28px 100% no-repeat local,
+    linear-gradient(to left, var(--card) 30%, transparent) right center / 28px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgb(var(--shade) / 0.16), transparent) left center / 14px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgb(var(--shade) / 0.16), transparent) right center / 14px 100% no-repeat scroll,
+    var(--card);
 }
 
 /* Halaman kerja: isi naik sedikit saat dibuka, jeda 30 ms per blok (`--i`, lihat riseStyle). */

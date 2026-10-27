@@ -7,6 +7,7 @@ import { deleteEmployeeAssetAction, saveEmployeeAssetAction } from "@/app/(main)
 import { DateInputField, TextareaField, TextInputField } from "@/components/form/fields";
 import { FormDialog } from "@/components/form/form-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
+import { useFeedback } from "@/components/shared/feedback";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { formatDate, toJakartaIsoDate } from "@/lib/format";
@@ -56,6 +57,7 @@ function DeleteAssetButton({ asset }: { asset: EmployeeAssetView }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const { confirm, notify } = useFeedback();
   return (
     <>
       <Button
@@ -63,18 +65,26 @@ function DeleteAssetButton({ asset }: { asset: EmployeeAssetView }) {
         size="icon-sm"
         disabled={pending}
         aria-label={`Hapus ${asset.name}`}
-        onClick={() => {
-          if (!window.confirm(`Hapus aset "${asset.name}"?`)) return;
+        onClick={async () => {
+          const ok = await confirm({ title: `Hapus aset "${asset.name}"?`, confirmLabel: "Hapus", tone: "danger" });
+          if (!ok) return;
+          setError(null);
           startTransition(async () => {
             const result = await deleteEmployeeAssetAction(asset.id);
-            if (result.ok) router.refresh();
-            else setError(result.error);
+            if (result.ok) {
+              notify("Aset dihapus");
+              router.refresh();
+            } else setError(result.error);
           });
         }}
       >
         <Trash2 />
       </Button>
-      {error && <span className="text-xs text-danger">{error}</span>}
+      {error && (
+        <span role="alert" className="text-xs text-danger">
+          {error}
+        </span>
+      )}
     </>
   );
 }

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/shared/page-header";
 import { PersonCell } from "@/components/shared/person-cell";
+import { TableScroll } from "@/components/shared/table-scroll";
 import { buttonVariants } from "@/components/ui/button";
 import { requireAdmin } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
@@ -22,7 +23,7 @@ export default async function SettingKesehatanPage({ searchParams }: { searchPar
     <div className="flex flex-col gap-6">
       <PageHeader
         title={`Plafon Kesehatan ${year}`}
-        description="Plafon tahunan per karyawan (HC-01). Plafon bulanan = tahunan ÷ 12 dibulatkan ke bawah per Rp 10.000; sisanya masuk Desember."
+        description="Plafon tahunan per karyawan (HC-01). Klaim di atas sisa plafon tahunan ditolak saat diajukan; klaim yang disetujui dibayar penuh."
         breadcrumbs={[{ label: "Kontrol & Sistem" }, { label: "Setting", href: "/setting" }, { label: "Plafon Kesehatan" }]}
         actions={
           <nav aria-label="Pilih tahun" className="flex gap-1">
@@ -34,7 +35,7 @@ export default async function SettingKesehatanPage({ searchParams }: { searchPar
           </nav>
         }
       />
-      <section className="overflow-x-auto rounded-2xl bg-card shadow-card">
+      <TableScroll as="section" label={`Plafon kesehatan ${year}`} className="rounded-2xl bg-card shadow-card">
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-muted/60 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
             <tr>
@@ -55,7 +56,7 @@ export default async function SettingKesehatanPage({ searchParams }: { searchPar
             ))}
           </tbody>
         </table>
-      </section>
+      </TableScroll>
     </div>
   );
 }

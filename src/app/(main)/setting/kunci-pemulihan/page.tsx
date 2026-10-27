@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { TableScroll } from "@/components/shared/table-scroll";
 import { requireAdmin } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { formatDate } from "@/lib/format";
@@ -53,7 +54,7 @@ export default async function RecoveryKeyPage() {
         </ul>
       </section>
 
-      <section className="max-w-3xl overflow-x-auto rounded-2xl bg-card shadow-card">
+      <TableScroll as="section" label="Pemegang kunci pemulihan" className="max-w-3xl rounded-2xl bg-card shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-5 sm:px-6">
           <h2 className="text-base font-semibold">Pemegang kunci</h2>
           <StatusBadge variant={backupReady ? "success" : "warning"}>
@@ -85,7 +86,7 @@ export default async function RecoveryKeyPage() {
             ))}
           </tbody>
         </table>
-      </section>
+      </TableScroll>
 
       <div className="grid max-w-5xl gap-6 lg:grid-cols-2">
         {hasKey && (

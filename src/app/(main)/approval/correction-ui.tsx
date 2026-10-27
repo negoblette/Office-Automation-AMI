@@ -218,6 +218,7 @@ export function RevokeButton({ requestId, label, final }: { requestId: string; l
       schema={revokeFormSchema}
       defaults={{ reason: "" }}
       submitLabel="Batalkan Approval"
+      successMessage="Approval dibatalkan"
       action={(values) => revokeApprovalAction({ requestId, reason: values.reason })}
     >
       <TextareaField name="reason" label="Alasan" required />
@@ -263,6 +264,7 @@ export function RejectButton({ requestId, label }: { requestId: string; label: s
       schema={revokeFormSchema}
       defaults={{ reason: "" }}
       submitLabel="Tolak Pengajuan"
+      successMessage="Pengajuan ditolak"
       action={(values) => rejectAction({ requestId, reason: values.reason })}
     >
       <TextareaField name="reason" label="Alasan penolakan" required />

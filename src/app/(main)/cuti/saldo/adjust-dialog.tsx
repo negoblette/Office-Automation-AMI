@@ -21,6 +21,7 @@ export function AdjustLeaveDialog({ employeeId, employeeName }: { employeeId: st
       schema={leaveAdjustmentSchema}
       defaults={{ days: "" as never, reason: "" }}
       submitLabel="Simpan Penyesuaian"
+      successMessage="Penyesuaian saldo cuti tersimpan"
       action={(values) => adjustLeaveBalanceAction(employeeId, values)}
     >
       <TextInputField name="days" label="Jumlah hari (+/−)" type="number" inputMode="numeric" required placeholder="mis. 2 atau -1" />

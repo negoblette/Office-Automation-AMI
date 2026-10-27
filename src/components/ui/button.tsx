@@ -4,6 +4,11 @@ import { cn } from "cn"
 
 // Versi tenang (docs/design/prototipe-halaman-oa.html §4): semua tombol berbentuk pil.
 // default = .btn-blue, outline = .btn-line, secondary = .btn-tint, ghost = .ghost, link = .linkish.
+
+// Ukuran kecil (32–36 px) di layar sentuh: area sentuh diperluas tak terlihat sampai ±44 px
+// (audit UI 2026-10-27, target sentuh minimum). Tampilan tidak berubah. Kelas ditulis utuh agar terbaca Tailwind.
+const touch36 = "relative pointer-coarse:after:absolute pointer-coarse:after:-inset-1"
+const touch32 = "relative pointer-coarse:after:absolute pointer-coarse:after:-inset-1.5"
 const buttonVariants = cva(
   "group/button inline-flex shrink-0 items-center justify-center gap-2 rounded-full border-0 text-sm font-bold whitespace-nowrap transition-[background-color,color,box-shadow,transform] duration-300 ease-smooth outline-none select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink focus-visible:outline-solid active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 aria-invalid:shadow-[inset_0_0_0_2px_var(--red)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4.5",
   {
@@ -20,12 +25,12 @@ const buttonVariants = cva(
       },
       size: {
         default: "h-11 px-4",
-        xs: "h-8 gap-1 px-3 text-xs [&_svg:not([class*='size-'])]:size-3.5",
-        sm: "h-9 gap-1.5 px-3.5 text-[13.5px] [&_svg:not([class*='size-'])]:size-4",
+        xs: `h-8 gap-1 px-3 text-xs [&_svg:not([class*='size-'])]:size-3.5 ${touch32}`,
+        sm: `h-9 gap-1.5 px-3.5 text-[13.5px] [&_svg:not([class*='size-'])]:size-4 ${touch36}`,
         lg: "h-11 px-4",
         icon: "size-11 rounded-[14px]",
-        "icon-xs": "size-8 rounded-[10px] [&_svg:not([class*='size-'])]:size-3.5",
-        "icon-sm": "size-9 rounded-[12px] [&_svg:not([class*='size-'])]:size-4",
+        "icon-xs": `size-8 rounded-[10px] [&_svg:not([class*='size-'])]:size-3.5 ${touch32}`,
+        "icon-sm": `size-9 rounded-[12px] [&_svg:not([class*='size-'])]:size-4 ${touch36}`,
         "icon-lg": "size-11 rounded-[14px]",
       },
     },

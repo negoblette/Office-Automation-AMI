@@ -26,6 +26,7 @@ export default async function EditReimbursePage({ params }: { params: Promise<{ 
       />
       <ReimbursementForm
         reimbursementId={id}
+        draftKey={`reimburse:${user.id}:${id}`}
         options={await getReimbursementFormOptions(prisma, detail.division, await canAddCustomerProject(prisma, user))}
         defaultValues={{
           note: detail.note ?? "",

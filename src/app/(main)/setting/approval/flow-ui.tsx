@@ -7,6 +7,7 @@ import { type FieldValues, useFieldArray, useFormContext, useWatch } from "react
 import { CheckboxField, CheckboxGroupField, SelectInputField } from "@/components/form/fields";
 import { FormDialog } from "@/components/form/form-dialog";
 import type { SelectOption } from "@/components/form/select-field";
+import { type ConfirmOptions, useFeedback } from "@/components/shared/feedback";
 import { Button } from "@/components/ui/button";
 import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
 import type { ActionResult } from "@/lib/actions";
@@ -147,13 +148,16 @@ function useFlowAction() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const run = (confirmText: string, action: () => Promise<ActionResult>) => {
-    if (!window.confirm(confirmText)) return;
+  const { confirm, notify } = useFeedback();
+  const run = async (question: ConfirmOptions, success: string, action: () => Promise<ActionResult>) => {
+    if (!(await confirm(question))) return;
     setError(null);
     startTransition(async () => {
       const result = await action();
-      if (result.ok) router.refresh();
-      else setError(result.error);
+      if (result.ok) {
+        notify(success);
+        router.refresh();
+      } else setError(result.error);
     });
   };
   return { pending, error, run };
@@ -172,8 +176,14 @@ export function FlowActions({ flow }: { flow: FlowView }) {
           onClick={() =>
             run(
               flow.isActive
-                ? `Nonaktifkan ${flow.label}? Pengajuan baru modul ini akan memakai flow "Semua divisi" (jika ada) atau ditolak.`
-                : `Aktifkan ${flow.label}?`,
+                ? {
+                    title: `Nonaktifkan ${flow.label}?`,
+                    description: `Pengajuan baru modul ini akan memakai flow "Semua divisi" (jika ada) atau ditolak.`,
+                    confirmLabel: "Nonaktifkan",
+                    tone: "danger",
+                  }
+                : { title: `Aktifkan ${flow.label}?`, confirmLabel: "Aktifkan" },
+              flow.isActive ? "Flow dinonaktifkan" : "Flow diaktifkan",
               () => setFlowActiveAction(flow.id, !flow.isActive),
             )
           }
@@ -186,7 +196,13 @@ export function FlowActions({ flow }: { flow: FlowView }) {
           size="icon-sm"
           aria-label={`Hapus ${flow.label}`}
           disabled={pending}
-          onClick={() => run(`Hapus ${flow.label}? Pengajuan yang sudah berjalan tidak terpengaruh.`, () => deleteFlowAction(flow.id))}
+          onClick={() =>
+            run(
+              { title: `Hapus ${flow.label}?`, description: "Pengajuan yang sudah berjalan tidak terpengaruh.", confirmLabel: "Hapus", tone: "danger" },
+              "Flow dihapus",
+              () => deleteFlowAction(flow.id),
+            )
+          }
         >
           <Trash2 />
         </Button>

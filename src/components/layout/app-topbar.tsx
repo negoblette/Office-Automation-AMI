@@ -2,6 +2,7 @@ import { KeyRound, LogOut, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { PersonAvatar } from "@/components/shared/person-cell";
+import { AccountMenu } from "./account-menu";
 import { logoutAction } from "./actions";
 import { Greeting } from "./greeting";
 import { MobileNav } from "./mobile-nav";
@@ -37,28 +38,37 @@ export function AppTopbar({ user, badges, notifications = [] }: AppTopbarProps) 
           <SubmitRequestMenu />
           <NotificationBell items={notifications} />
 
+          {/* HP (< 640 px): avatar membuka menu akun berisi MFA, Ganti password, Keluar (audit UI 2026-10-27). */}
+          <div className="sm:hidden">
+            <AccountMenu name={user.name} roleLabel={ROLE_LABELS[user.role]} showMfa={user.role !== "STAFF"} />
+          </div>
+
           <div className="hidden h-7 w-px bg-line sm:block" aria-hidden />
 
-          <div className="flex items-center gap-2.5">
+          <div className="hidden items-center gap-2.5 sm:flex">
             <PersonAvatar name={user.name} className="size-10 bg-brand-tint text-sm" />
-            <div className="hidden leading-tight sm:block">
+            <div className="leading-tight">
               <p className="max-w-[180px] truncate text-sm font-bold text-ink">{user.name}</p>
               <p className="text-xs text-ink-3">{ROLE_LABELS[user.role]}</p>
             </div>
           </div>
 
-          {user.role !== "STAFF" && (
-            <Link href="/mfa" className={buttonVariants({ variant: "ghost", size: "icon" })} aria-label="Keamanan akun (MFA)" title="Keamanan akun (MFA)">
-              <ShieldCheck className="size-5" />
+          <div className="hidden items-center gap-1 sm:flex">
+            {user.role !== "STAFF" && (
+              <Link href="/mfa" className={buttonVariants({ variant: "ghost", size: "icon" })} aria-label="Keamanan akun (MFA)" title="Keamanan akun (MFA)">
+                <ShieldCheck className="size-5" aria-hidden />
+              </Link>
+            )}
+            <Link href="/ganti-password" className={buttonVariants({ variant: "ghost", size: "icon" })} aria-label="Ganti password" title="Ganti password">
+              <KeyRound className="size-5" aria-hidden />
             </Link>
-          )}
-          <Link href="/ganti-password" className={buttonVariants({ variant: "ghost", size: "icon" })} aria-label="Ganti password" title="Ganti password">
-            <KeyRound className="size-5" />
-          </Link>
+          </div>
 
-          <form action={logoutAction}>
-            <Button type="submit" variant="ghost" size="icon" aria-label="Keluar" title="Keluar">
-              <LogOut className="size-5" />
+          {/* Keluar dipisah garis dari ikon lain supaya tidak tertekan tanpa sengaja. */}
+          <div className="hidden h-7 w-px bg-line sm:block" aria-hidden />
+          <form action={logoutAction} className="hidden sm:block">
+            <Button type="submit" variant="ghost" size="icon" aria-label="Keluar" title="Keluar" className="hover:bg-red-soft hover:text-red-ink">
+              <LogOut className="size-5" aria-hidden />
             </Button>
           </form>
         </div>

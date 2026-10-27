@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { PersonCell } from "@/components/shared/person-cell";
 import { StatCard } from "@/components/shared/stat-card";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { TableScroll } from "@/components/shared/table-scroll";
 import { buttonVariants } from "@/components/ui/button";
 import { requireAdmin } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
@@ -35,7 +36,7 @@ export default async function PembayaranPage({ searchParams }: { searchParams: P
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Jadwal Pembayaran Kesehatan"
-        description="Pembayaran klaim per bulan untuk Finance. Klaim di atas plafon bulanan otomatis dibagi ke bulan berikutnya."
+        description="Pembayaran klaim per bulan untuk Finance. Klaim yang disetujui dibayar penuh di bulan approval."
         breadcrumbs={[{ label: "Pengajuan & Keuangan" }, { label: "Kesehatan & Plafon", href: "/kesehatan" }, { label: "Jadwal Pembayaran" }]}
         actions={
           <nav aria-label="Pilih bulan" className="flex items-center gap-2">
@@ -60,7 +61,7 @@ export default async function PembayaranPage({ searchParams }: { searchParams: P
       {rows.length === 0 ? (
         <EmptyState icon={Banknote} title={`Tidak ada pembayaran di ${label}`} />
       ) : (
-        <section className="overflow-x-auto rounded-2xl bg-card shadow-card">
+        <TableScroll as="section" label={`Pembayaran kesehatan ${label}`} className="rounded-2xl bg-card shadow-card">
           <table className="w-full min-w-[820px] text-sm">
             <thead className="bg-muted/60 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
               <tr>
@@ -69,7 +70,9 @@ export default async function PembayaranPage({ searchParams }: { searchParams: P
                 <th className="px-4 py-3 text-right">Nilai klaim</th>
                 <th className="px-4 py-3 text-right">Dibayar bulan ini</th>
                 <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3" />
+                <th className="px-4 py-3">
+                  <span className="sr-only">Aksi</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -86,9 +89,11 @@ export default async function PembayaranPage({ searchParams }: { searchParams: P
                   <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatRupiah(row.amount)}</td>
                   <td className="px-4 py-3">
                     {row.paidAt ? (
-                      <span title={formatDateTime(row.paidAt)}>
+                      // Waktu bayar ditulis, bukan hanya tooltip (tooltip tidak terbaca di layar sentuh).
+                      <div className="flex flex-col items-start gap-0.5">
                         <StatusBadge variant="success">Dibayar</StatusBadge>
-                      </span>
+                        <span className="text-xs text-muted-foreground">{formatDateTime(row.paidAt)}</span>
+                      </div>
                     ) : (
                       <StatusBadge variant="warning">Belum dibayar</StatusBadge>
                     )}
@@ -100,7 +105,7 @@ export default async function PembayaranPage({ searchParams }: { searchParams: P
               ))}
             </tbody>
           </table>
-        </section>
+        </TableScroll>
       )}
     </div>
   );

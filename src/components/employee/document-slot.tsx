@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { addDocumentAction, deleteDocumentAction } from "@/app/(main)/dokumen-actions";
 import { FileUpload } from "@/components/form/file-upload";
+import { useFeedback } from "@/components/shared/feedback";
 import { FileChip } from "@/components/shared/file-chip";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
@@ -32,13 +33,16 @@ export function DocumentSlot({ label, required = true, documents, canEdit, targe
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const { confirm, notify } = useFeedback();
 
-  function run(action: () => Promise<ActionResult>) {
+  function run(action: () => Promise<ActionResult>, success: string) {
     setError(null);
     startTransition(async () => {
       const result = await action();
-      if (result.ok) router.refresh();
-      else setError(result.error);
+      if (result.ok) {
+        notify(success);
+        router.refresh();
+      } else setError(result.error);
     });
   }
 
@@ -73,8 +77,9 @@ export function DocumentSlot({ label, required = true, documents, canEdit, targe
                   size="icon-sm"
                   disabled={pending}
                   aria-label={`Hapus ${doc.fileName}`}
-                  onClick={() => {
-                    if (window.confirm(`Hapus file "${doc.fileName}"?`)) run(() => (onDelete ?? deleteDocumentAction)(doc.id));
+                  onClick={async () => {
+                    const ok = await confirm({ title: `Hapus file "${doc.fileName}"?`, confirmLabel: "Hapus", tone: "danger" });
+                    if (ok) run(() => (onDelete ?? deleteDocumentAction)(doc.id), "File dihapus");
                   }}
                 >
                   <Trash2 />
@@ -108,10 +113,12 @@ export function DocumentSlot({ label, required = true, documents, canEdit, targe
               value={null}
               onChange={(file) => {
                 if (file)
-                  run(() =>
-                    onAdd
-                      ? onAdd({ key: file.key, fileName: file.fileName })
-                      : addDocumentAction({ ...target, fileKey: file.key, fileName: file.fileName, validUntil: validUntil || null }),
+                  run(
+                    () =>
+                      onAdd
+                        ? onAdd({ key: file.key, fileName: file.fileName })
+                        : addDocumentAction({ ...target, fileKey: file.key, fileName: file.fileName, validUntil: validUntil || null }),
+                    `${label} tersimpan`,
                   );
               }}
             />

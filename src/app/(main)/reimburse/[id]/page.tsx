@@ -7,6 +7,7 @@ import { requestStatusBadge } from "@/components/shared/approval-status";
 import { FileChip } from "@/components/shared/file-chip";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { TableScroll } from "@/components/shared/table-scroll";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { formatDate, formatDateTime, formatRupiah } from "@/lib/format";
@@ -72,7 +73,7 @@ export default async function DetailReimbursePage({ params }: { params: Promise<
         </section>
       )}
 
-      <section className="overflow-x-auto rounded-2xl bg-card shadow-card">
+      <TableScroll as="section" label="Rincian biaya reimburse" className="rounded-2xl bg-card shadow-card">
         <table className="w-full min-w-[960px] text-sm">
           <thead className="bg-muted/60 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
             <tr>
@@ -121,7 +122,7 @@ export default async function DetailReimbursePage({ params }: { params: Promise<
             ))}
           </tbody>
         </table>
-      </section>
+      </TableScroll>
 
       {r.note && (
         <section className="rounded-2xl bg-card p-5 shadow-card">

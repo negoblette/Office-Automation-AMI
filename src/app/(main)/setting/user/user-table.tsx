@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { SelectInputField, TextInputField } from "@/components/form/fields";
 import { FormDialog } from "@/components/form/form-dialog";
+import { useFeedback } from "@/components/shared/feedback";
 import { PersonCell } from "@/components/shared/person-cell";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { DataTable, dataTableColumnHelper } from "@/components/table/data-table";
@@ -50,6 +51,7 @@ function PasswordDialog({ user }: { user: UserRow }) {
       schema={resetPasswordSchema}
       defaults={{ password: "" }}
       submitLabel="Reset Password"
+      successMessage={`Password ${user.name} direset`}
       action={(values) => resetPasswordAction(user.id, values)}
     >
       <TextInputField name="password" label="Password baru" type="password" autoComplete="new-password" required hint="Minimal 15 karakter. User wajib menggantinya saat login berikutnya, dan semua sesinya berakhir." />
@@ -62,6 +64,7 @@ function ResetMfaButton({ user }: { user: UserRow }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const { confirm, notify } = useFeedback();
   return (
     <div className="flex flex-col items-start gap-1">
       <Button
@@ -70,13 +73,21 @@ function ResetMfaButton({ user }: { user: UserRow }) {
         aria-label={`Reset MFA ${user.name}`}
         title="Reset MFA"
         disabled={pending}
-        onClick={() => {
-          if (!window.confirm(`Reset MFA ${user.name}? Semua sesinya berakhir dan ia wajib mendaftarkan aplikasi authenticator lagi saat login. Tercatat di audit.`)) return;
+        onClick={async () => {
+          const ok = await confirm({
+            title: `Reset MFA ${user.name}?`,
+            description: "Semua sesinya berakhir dan ia wajib mendaftarkan aplikasi authenticator lagi saat login. Tercatat di audit.",
+            confirmLabel: "Reset MFA",
+            tone: "danger",
+          });
+          if (!ok) return;
           setError(null);
           startTransition(async () => {
             const result = await resetMfaAction(user.id);
-            if (result.ok) router.refresh();
-            else setError(result.error);
+            if (result.ok) {
+              notify(`MFA ${user.name} direset`);
+              router.refresh();
+            } else setError(result.error);
           });
         }}
       >
@@ -96,6 +107,7 @@ function UnlockLoginButton({ user }: { user: UserRow }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const { confirm, notify } = useFeedback();
   return (
     <div className="flex flex-col items-start gap-1">
       <Button
@@ -104,13 +116,20 @@ function UnlockLoginButton({ user }: { user: UserRow }) {
         aria-label={`Buka blokir login ${user.name}`}
         title="Buka blokir login"
         disabled={pending}
-        onClick={() => {
-          if (!window.confirm(`Buka blokir login ${user.name}? Pastikan percobaan gagal tadi memang dari pemilik akun. Tercatat di audit.`)) return;
+        onClick={async () => {
+          const ok = await confirm({
+            title: `Buka blokir login ${user.name}?`,
+            description: "Pastikan percobaan gagal tadi memang dari pemilik akun. Tercatat di audit.",
+            confirmLabel: "Buka blokir",
+          });
+          if (!ok) return;
           setError(null);
           startTransition(async () => {
             const result = await unlockLoginAction(user.id);
-            if (result.ok) router.refresh();
-            else setError(result.error);
+            if (result.ok) {
+              notify(`Blokir login ${user.name} dibuka`);
+              router.refresh();
+            } else setError(result.error);
           });
         }}
       >
@@ -129,20 +148,29 @@ function ActiveToggle({ user }: { user: UserRow }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const { confirm, notify } = useFeedback();
   return (
     <div className="flex flex-col items-start gap-1">
       <Button
         variant={user.isActive ? "outline" : "default"}
         size="sm"
         disabled={pending}
-        onClick={() => {
+        onClick={async () => {
           const verb = user.isActive ? "Nonaktifkan" : "Aktifkan";
-          if (!window.confirm(`${verb} akun ${user.name}?`)) return;
+          const ok = await confirm({
+            title: `${verb} akun ${user.name}?`,
+            description: user.isActive ? "User tidak bisa login sampai akunnya diaktifkan lagi." : undefined,
+            confirmLabel: verb,
+            tone: user.isActive ? "danger" : "default",
+          });
+          if (!ok) return;
           setError(null);
           startTransition(async () => {
             const result = await setUserActiveAction(user.id, !user.isActive);
-            if (result.ok) router.refresh();
-            else setError(result.error);
+            if (result.ok) {
+              notify(`Akun ${user.name} ${user.isActive ? "dinonaktifkan" : "diaktifkan"}`);
+              router.refresh();
+            } else setError(result.error);
           });
         }}
       >

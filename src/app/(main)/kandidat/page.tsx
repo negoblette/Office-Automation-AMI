@@ -1,7 +1,7 @@
 import { UserPlus } from "lucide-react";
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/shared/page-header";
-import { StatCard } from "@/components/shared/stat-card";
+import { STAT_GRID, StatCard } from "@/components/shared/stat-card";
 import { requireAdmin } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { listCandidates } from "@/lib/services/candidate-queries";
@@ -24,7 +24,7 @@ export default async function KandidatPage() {
         breadcrumbs={[{ label: "SDM" }, { label: "Kandidat" }]}
         actions={<CandidateDialog />}
       />
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className={`${STAT_GRID} sm:grid-cols-3`}>
         <StatCard label="Total kandidat" value={rows.length} icon={UserPlus} />
         <StatCard label="Dalam proses" value={inProcess} tone="info" footer="Melamar & interview" />
         <StatCard label="Diterima, belum jadi karyawan" value={accepted} tone={accepted ? "warning" : "success"} />

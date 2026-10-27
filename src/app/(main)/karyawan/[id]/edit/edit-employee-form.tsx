@@ -6,7 +6,9 @@ import { FormProvider, useForm } from "react-hook-form";
 import type { z } from "zod";
 import { EmployeeAccountSection, EmployeePersonalSections } from "@/components/employee/employee-fields";
 import { FormActions, FormAlert } from "@/components/form/form-actions";
+import { useUnsavedChangesGuard } from "@/components/form/unsaved-changes";
 import { useActionSubmit } from "@/components/form/use-action-submit";
+import { useFeedback } from "@/components/shared/feedback";
 import type { EmployeeFormValues } from "@/lib/services/employee-queries";
 import { employeeAdminUpdateSchema } from "@/lib/validators/employee";
 import { updateEmployeeAction } from "../../actions";
@@ -21,9 +23,17 @@ export function EditEmployeeForm({ employeeId, defaultValues }: { employeeId: st
     defaultValues,
   });
   const { serverError, pending, submit } = useActionSubmit(form);
+  const { notify } = useFeedback();
+  useUnsavedChangesGuard(form.formState.isDirty);
 
   const onSubmit = form.handleSubmit((values) =>
-    submit(() => updateEmployeeAction(employeeId, values), () => router.push(`/karyawan/${employeeId}`)),
+    submit(
+      () => updateEmployeeAction(employeeId, values),
+      () => {
+        notify("Data karyawan tersimpan");
+        router.push(`/karyawan/${employeeId}`);
+      },
+    ),
   );
 
   return (

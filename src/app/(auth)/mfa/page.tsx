@@ -76,14 +76,18 @@ export default async function MfaPage() {
           )}
         </div>
 
-        <div className="mt-6 flex justify-center gap-4 text-sm">
+        {/* min-h-11: area sentuh ≥ 44 px untuk tautan teks (audit UI 2026-10-27). */}
+        <div className="mt-4 flex justify-center gap-2 text-sm">
           {!user.mustSetupMfa && (
-            <Link href="/dashboard" className="text-muted-foreground hover:underline">
+            <Link href="/dashboard" className="inline-flex min-h-11 items-center rounded-lg px-3 text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ink">
               Kembali ke dashboard
             </Link>
           )}
           <form action={logoutAction}>
-            <button type="submit" className="text-muted-foreground hover:underline">
+            <button
+              type="submit"
+              className="inline-flex min-h-11 cursor-pointer items-center rounded-lg px-3 text-muted-foreground hover:text-red-ink hover:underline focus-visible:outline-2 focus-visible:outline-ink"
+            >
               Keluar
             </button>
           </form>

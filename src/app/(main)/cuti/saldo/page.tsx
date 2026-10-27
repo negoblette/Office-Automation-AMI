@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/shared/page-header";
 import { PersonCell } from "@/components/shared/person-cell";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { TableScroll } from "@/components/shared/table-scroll";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { formatDate } from "@/lib/format";
@@ -48,15 +49,18 @@ async function AllBalances() {
   const [balances, adjustments] = await Promise.all([getAllCurrentBalances(prisma), listLeaveAdjustments(prisma)]);
   return (
     <>
-    <section className="overflow-x-auto rounded-2xl bg-card shadow-card">
+    <TableScroll as="section" label="Saldo cuti seluruh karyawan" className="rounded-2xl bg-card shadow-card">
       <table className="w-full min-w-[820px] text-sm">
         <thead className="bg-muted/60 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
           <tr>
-            {["Karyawan", "Periode", "Jatah", "Carry over", "Penyesuaian", "Terpakai", "Menunggu", "Sisa", ""].map((h, i) => (
+            {["Karyawan", "Periode", "Jatah", "Carry over", "Penyesuaian", "Terpakai", "Menunggu", "Sisa"].map((h, i) => (
               <th key={h} className={i > 1 ? "px-4 py-3 text-right" : "px-4 py-3"}>
                 {h}
               </th>
             ))}
+            <th className="px-4 py-3">
+              <span className="sr-only">Aksi</span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -88,7 +92,7 @@ async function AllBalances() {
           ))}
         </tbody>
       </table>
-    </section>
+    </TableScroll>
     <AdjustmentHistory rows={adjustments} showEmployee />
     </>
   );

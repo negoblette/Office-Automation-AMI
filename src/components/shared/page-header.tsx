@@ -38,7 +38,11 @@ export function PageHeader({ title, description, breadcrumbs, actions, className
                 return (
                   <li key={`${item.label}-${index}`} className="flex items-center gap-1.5">
                     {item.href && !isLast ? (
-                      <Link href={item.href} className="underline-offset-4 hover:underline">
+                      // Area klik ≥ 24 px tinggi (WCAG 2.5.8) tanpa menggeser baris breadcrumb.
+                      <Link
+                        href={item.href}
+                        className="-my-1.5 inline-flex min-h-7 items-center rounded-md underline-offset-4 hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-ink"
+                      >
                         {item.label}
                       </Link>
                     ) : (

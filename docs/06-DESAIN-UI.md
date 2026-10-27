@@ -44,7 +44,9 @@ Implementasi: tema diatur lewat CSS variables shadcn di `src/app/globals.css`
 - "Laporan — Menyusul" boleh ditampilkan non-aktif (modul laporan di luar scope).
 
 **Topbar:** kolom pencarian (lihat §5), tombol biru **+ Ajukan** (dropdown: Reimburse / Cuti /
-Klaim Kesehatan), avatar + nama + role, tombol logout.
+Klaim Kesehatan), avatar + nama + role, tombol logout. Layar ≥ 640 px: ikon MFA & Ganti password, lalu garis
+pemisah, lalu Keluar. **HP (< 640 px):** avatar membuka menu akun (nama + role, MFA, Ganti password, garis,
+**Keluar** merah) — sebelumnya Keluar terpotong di layar ≤ 390 px (audit UI 2026-10-27, `AccountMenu`).
 
 **Kepala halaman:** breadcrumb kecil → judul besar → deskripsi 1–2 baris abu → tombol aksi di kanan.
 
@@ -53,15 +55,21 @@ Klaim Kesehatan), avatar + nama + role, tombol logout.
 | Komponen | Dilihat di | Catatan |
 |---|---|---|
 | `PageHeader` | semua | breadcrumb, judul, deskripsi, slot aksi |
-| `StatCard` | baris 4 kartu di atas halaman | label UPPERCASE, angka besar, ikon di kotak berwarna kanan atas, keterangan/progress kecil di bawah |
-| `DataTable` | semua tabel | header UPPERCASE abu-biru, baris lega, paginasi "Menampilkan x dari y" + nomor halaman |
+| `StatCard` | baris 4 kartu di atas halaman | label UPPERCASE, angka besar, ikon di kotak berwarna kanan atas, keterangan/progress kecil di bawah. HP: ringkas tanpa ikon; kartu jumlah 2 kolom (`STAT_GRID`), kartu Rupiah 1 kolom |
+| `DataTable` | semua tabel | header UPPERCASE abu-biru, baris lega, paginasi "Menampilkan x dari y" + nomor halaman. HP (< 768 px): tiap baris jadi kartu (kolom pertama = judul, kolom berjudul teks = label/nilai, kolom `actions` di bawah) + pilihan "Urutkan"; `mobileLayout="table"` untuk tetap tabel |
+| `LeaveCalendar` | dashboard, `/cuti/kalender` | ≥ 640 px: grid bulan berisi nama. HP: kalender mini (angka + titik biru cuti / oranye Direktur cuti, libur merah, cincin hari ini; sentuh tanggal bertanda → gulir ke agendanya) + daftar agenda nama lengkap. Pembaca layar membaca agenda saja |
+| `TableScroll` | tabel lebar non-DataTable | bisa difokus & digeser dengan keyboard saat lebih lebar dari layar, berlabel untuk pembaca layar, bayangan tepi tanda masih ada kolom |
 | `PersonCell` | kolom pemohon/karyawan | avatar (foto atau inisial) + nama tebal + sub-teks (jabatan / NIK / email) |
 | `StatusBadge` | status pengajuan, aset, kelengkapan | pill berwarna dengan titik; mapping warna tunggal dari enum status |
 | `FilterPills` / `Tabs` | antrian approval, inventory | pill dengan jumlah, mis. "Semua (12)" |
 | `FileChip` | kolom bukti/nota | ikon + nama file, membuka `/api/files/[key]` |
 | `ApprovalStepper` | status reimburse | langkah "1. L1 ✓ → 2. L2 → Disetujui" sesuai step di `ApprovalRequestStep` |
-| `ProgressBar` | saldo cuti, plafon | biru / hijau / merah sesuai persentase |
+| `ProgressBar` | saldo cuti, plafon | biru / hijau / merah sesuai persentase; `label` wajib (+ `valueText`, mis. "8 dari 12 hari") |
 | `EmptyState` | tabel kosong | teks Bahasa Indonesia + aksi |
+| `useFeedback()` (`FeedbackProvider` di root layout) | semua aksi | `confirm()` = dialog konfirmasi aplikasi (pengganti `window.confirm`); `notify()` = notifikasi kecil kanan bawah (sukses ±4,5 dtk, error menetap sampai ditutup) |
+| `StatusScreen` / `ErrorScreen` | 404, error | `not-found.tsx`, `error.tsx`, `global-error.tsx` berbahasa Indonesia + jalan kembali; `(main)/loading.tsx` = kerangka abu saat pindah halaman |
+| `PasswordInput` | semua kolom password | tombol mata tampilkan/sembunyikan; dipakai otomatis oleh `TextInputField type="password"` |
+| `useUnsavedChangesGuard` / `useFormDraft` | form panjang | tanya sebelum meninggalkan form yang sudah diubah; draft sementara (sessionStorage) **hanya** untuk form tanpa data pribadi (reimburse) |
 
 ## 4. Pemetaan Desain → Halaman & Tahap
 
@@ -75,6 +83,23 @@ Klaim Kesehatan), avatar + nama + role, tombol logout.
 | 01 — tabel antrian approval + tombol Setujui | `/approval`, dashboard Admin | 5.5, 10.2 |
 | 03 — kartu saldo cuti / plafon, tabel riwayat reimburse dengan stepper | `/reimburse`, dashboard Staf | 6.3, 10.2 |
 | 01 — kartu kalender libur & cuti pekan ini | dashboard, `/cuti/kalender` | 7.1, 10.2 |
+
+## 4a. Aturan Interaksi & Aksesibilitas (audit UI 2026-10-27)
+
+Berlaku untuk halaman & komponen baru. Patokan: WCAG 2.2 AA.
+
+| Aturan | Cara |
+|---|---|
+| Kontras teks ≥ 4,5:1 | teks redup `--muted-foreground` / `--mute` = `#5b6b84`; warna status digelapkan (`--success #147a3a`, `--danger #c81e1e`, `--neutral #5b6b84`). Jangan memakai abu lebih terang untuk teks |
+| Aksi menghapus / tidak bisa dibatalkan | `confirm({ title, description, confirmLabel: "Hapus", tone: "danger" })` — judul = pertanyaan, deskripsi = akibatnya. Jangan `window.confirm` / `window.alert` |
+| Hasil aksi | sukses → `notify("… tersimpan")` (FormDialog otomatis "Tersimpan", ganti lewat `successMessage`); error → teks di dekat tombol/field, atau `notify(pesan, "danger")` bila tidak ada tempatnya |
+| Menutup dialog form yang sudah diubah | otomatis ditanya di dalam dialog ("Lanjut mengisi" / "Buang perubahan") |
+| Field wajib | prop `required` di field form → tanda * (visual) + `aria-required` (pembaca layar) |
+| Tombol ikon | `aria-label` spesifik ("Hapus KTP.pdf", bukan "Hapus"); ikon `aria-hidden` |
+| Target sentuh | minimal 24 px (WCAG 2.5.8); tombol `sm`/`xs`/`icon-sm`/`icon-xs` otomatis diperluas tak terlihat ±44 px di layar sentuh |
+| Informasi penting | jangan hanya di `title` (tooltip tidak bisa dibuka di HP) — tulis, atau sediakan teks `sr-only` |
+| Header kolom aksi | jangan `<th />` kosong — isi `<span className="sr-only">Aksi</span>` |
+| Gerak | animasi hanya transform/opacity; `prefers-reduced-motion` mematikan semuanya (globals.css) |
 
 ## 5. Elemen Desain di Luar Spesifikasi — PERLU KEPUTUSAN USER
 

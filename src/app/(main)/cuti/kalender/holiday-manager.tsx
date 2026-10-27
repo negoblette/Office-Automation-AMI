@@ -9,6 +9,7 @@ import type { z } from "zod";
 import { DateInputField, TextareaField, TextInputField } from "@/components/form/fields";
 import { FormAlert } from "@/components/form/form-actions";
 import { useActionSubmit } from "@/components/form/use-action-submit";
+import { useFeedback } from "@/components/shared/feedback";
 import { Button } from "@/components/ui/button";
 import { holidayImportSchema, holidaySchema } from "@/lib/validators/leave";
 import { addHolidayAction, deleteHolidayAction, importHolidaysAction } from "../actions";
@@ -38,6 +39,7 @@ export function HolidayForms() {
   const [importResult, setImportResult] = useState<string | null>(null);
   const singleNational = useWatch({ control: single.control, name: "isNational" });
   const bulkNational = useWatch({ control: bulk.control, name: "isNational" });
+  const { notify } = useFeedback();
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
@@ -50,6 +52,7 @@ export function HolidayForms() {
               () => addHolidayAction(values),
               () => {
                 single.reset({ date: "", name: "", isNational: values.isNational });
+                notify(`Hari libur "${values.name}" ditambahkan`);
                 router.refresh();
               },
             ),
@@ -107,22 +110,26 @@ export function HolidayForms() {
 export function DeleteHolidayButton({ id, name }: { id: string; name: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const { confirm, notify } = useFeedback();
   return (
     <Button
       variant="ghost"
       size="icon-sm"
       disabled={pending}
       aria-label={`Hapus ${name}`}
-      onClick={() => {
-        if (!window.confirm(`Hapus hari libur "${name}"?`)) return;
+      onClick={async () => {
+        const ok = await confirm({ title: `Hapus hari libur "${name}"?`, description: "Tanggal ini dihitung sebagai hari kerja lagi.", confirmLabel: "Hapus", tone: "danger" });
+        if (!ok) return;
         startTransition(async () => {
           const result = await deleteHolidayAction(id);
-          if (result.ok) router.refresh();
-          else window.alert(result.error);
+          if (result.ok) {
+            notify("Hari libur dihapus");
+            router.refresh();
+          } else notify(result.error, "danger");
         });
       }}
     >
-      {pending ? <Loader2 className="animate-spin" /> : <Trash2 />}
+      {pending ? <Loader2 className="animate-spin" aria-hidden /> : <Trash2 />}
     </Button>
   );
 }

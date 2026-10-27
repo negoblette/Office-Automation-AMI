@@ -1,7 +1,7 @@
 import { AlertTriangle, Boxes, PackageCheck, Users } from "lucide-react";
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/shared/page-header";
-import { StatCard } from "@/components/shared/stat-card";
+import { STAT_GRID, StatCard } from "@/components/shared/stat-card";
 import { requireAdmin } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { activeEmployeeOptions, listAssets } from "@/lib/services/asset-queries";
@@ -24,7 +24,7 @@ export default async function InventoryPage() {
         breadcrumbs={[{ label: "Operasional & Aset" }, { label: "Inventory / Demo Unit" }]}
         actions={<AssetFormDialog />}
       />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className={`${STAT_GRID} xl:grid-cols-4`}>
         <StatCard label="Total unit" value={rows.length} unit="perangkat" icon={Boxes} />
         <StatCard label="Dipinjam" value={assigned} unit="unit" icon={Users} tone="info" />
         <StatCard label="Tersedia" value={rows.length - assigned} unit="unit" icon={PackageCheck} tone="success" />

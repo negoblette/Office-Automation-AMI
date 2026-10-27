@@ -15,7 +15,12 @@ export function DocumentCompletenessCard({ completeness }: { completeness: Emplo
           {completeness.filled} / {completeness.total} ({completeness.percent}%)
         </span>
       </div>
-      <ProgressBar value={completeness.percent} tone={complete ? "success" : "warning"} />
+      <ProgressBar
+        value={completeness.percent}
+        tone={complete ? "success" : "warning"}
+        label="Kelengkapan dokumen"
+        valueText={`${completeness.filled} dari ${completeness.total} dokumen (${completeness.percent}%)`}
+      />
       <p className="mt-3 text-sm text-muted-foreground">
         {complete ? "Semua dokumen wajib sudah lengkap." : `Belum ada: ${completeness.missing.join(", ")}.`}
       </p>

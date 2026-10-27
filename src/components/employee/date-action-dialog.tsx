@@ -87,7 +87,14 @@ export function DateActionDialog({
         </DialogHeader>
         <FormAlert message={error} />
         <FormField label={dateLabel} htmlFor={`${fieldName}-dialog`} required error={fieldError}>
-          <DateInput id={`${fieldName}-dialog`} value={date} onChange={(event) => setDate(event.target.value)} />
+          <DateInput
+            id={`${fieldName}-dialog`}
+            value={date}
+            onChange={(event) => setDate(event.target.value)}
+            aria-required
+            aria-invalid={fieldError ? true : undefined}
+            aria-describedby={`${fieldName}-dialog-description`}
+          />
         </FormField>
         <DialogFooter>
           <DialogClose render={<Button variant="outline" />}>Batal</DialogClose>

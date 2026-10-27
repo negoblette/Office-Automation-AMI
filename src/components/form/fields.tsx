@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { DateInput } from "./date-input";
 import { fieldDescriptionId, FormField } from "./form-field";
+import { PasswordInput } from "./password-input";
 import { type SelectOption, SelectField } from "./select-field";
 
 type BaseFieldProps = {
@@ -18,7 +19,12 @@ type BaseFieldProps = {
   className?: string;
 };
 
-function useFieldState(name: string) {
+/**
+ * Atribut aksesibilitas input: salah (`aria-invalid`), keterangan/error (`aria-describedby`), dan wajib
+ * (`aria-required` — tanda * di label disembunyikan dari pembaca layar, jadi status wajib diumumkan dari sini;
+ * bukan atribut `required` supaya validasi tetap dari Zod, bukan balon bawaan browser).
+ */
+function useFieldState(name: string, required?: boolean) {
   const { formState } = useFormContext<FieldValues>();
   // Nama bisa bersarang ("items.0.amount").
   const error = name.split(".").reduce<unknown>((node, key) => (node as Record<string, unknown> | undefined)?.[key], formState.errors) as
@@ -29,6 +35,7 @@ function useFieldState(name: string) {
     aria: {
       "aria-invalid": error ? true : undefined,
       "aria-describedby": fieldDescriptionId(name),
+      "aria-required": required ? true : undefined,
     },
   };
 }
@@ -42,10 +49,15 @@ export function TextInputField({
   ...inputProps
 }: BaseFieldProps & Omit<React.ComponentProps<"input">, "name">) {
   const { register } = useFormContext<FieldValues>();
-  const { error, aria } = useFieldState(name);
+  const { error, aria } = useFieldState(name, required);
+  const { type, ...rest } = inputProps;
   return (
     <FormField label={label} htmlFor={name} required={required} hint={hint} error={error} className={className}>
-      <Input id={name} {...inputProps} {...aria} {...register(name)} />
+      {type === "password" ? (
+        <PasswordInput id={name} {...rest} {...aria} {...register(name)} />
+      ) : (
+        <Input id={name} type={type} {...rest} {...aria} {...register(name)} />
+      )}
     </FormField>
   );
 }
@@ -59,7 +71,7 @@ export function TextareaField({
   ...props
 }: BaseFieldProps & Omit<React.ComponentProps<"textarea">, "name">) {
   const { register } = useFormContext<FieldValues>();
-  const { error, aria } = useFieldState(name);
+  const { error, aria } = useFieldState(name, required);
   return (
     <FormField label={label} htmlFor={name} required={required} hint={hint} error={error} className={className}>
       <Textarea id={name} {...props} {...aria} {...register(name)} />
@@ -69,7 +81,7 @@ export function TextareaField({
 
 export function DateInputField({ name, label, required, hint, className, ...props }: BaseFieldProps & { max?: string; min?: string }) {
   const { register } = useFormContext<FieldValues>();
-  const { error, aria } = useFieldState(name);
+  const { error, aria } = useFieldState(name, required);
   return (
     <FormField label={label} htmlFor={name} required={required} hint={hint} error={error} className={className}>
       <DateInput id={name} {...props} {...aria} {...register(name)} />
@@ -88,7 +100,7 @@ export function SelectInputField({
   disabled,
 }: BaseFieldProps & { options: SelectOption[]; placeholder?: string; disabled?: boolean }) {
   const { control } = useFormContext<FieldValues>();
-  const { error, aria } = useFieldState(name);
+  const { error, aria } = useFieldState(name, required);
   return (
     <FormField label={label} htmlFor={name} required={required} hint={hint} error={error} className={className}>
       <Controller
@@ -193,28 +205,46 @@ export function CheckboxField({
   onCheckedChange,
 }: Omit<BaseFieldProps, "required"> & { onCheckedChange?: (checked: boolean) => void }) {
   const { control } = useFormContext<FieldValues>();
-  const { error } = useFieldState(name);
+  const { error, aria } = useFieldState(name);
+  const descriptionId = fieldDescriptionId(name);
   return (
     <div className={cn("flex flex-col gap-1", className)}>
       <Controller
         control={control}
         name={name}
         render={({ field }) => (
-          <label className="flex items-center gap-2 text-sm">
+          // min-h-11: seluruh baris (kotak + teks) jadi area sentuh ≥ 44 px.
+          <label className="flex min-h-11 cursor-pointer items-center gap-2.5 text-sm">
             <input
               type="checkbox"
+              id={name}
+              name={field.name}
+              ref={field.ref}
               checked={Boolean(field.value)}
+              onBlur={field.onBlur}
               onChange={(event) => {
                 field.onChange(event.target.checked);
                 onCheckedChange?.(event.target.checked);
               }}
-              className="size-4 accent-primary"
+              aria-invalid={aria["aria-invalid"]}
+              aria-describedby={error || hint ? descriptionId : undefined}
+              className="size-[18px] shrink-0 cursor-pointer accent-primary"
             />
             {label}
           </label>
         )}
       />
-      {error ? <p className="text-[12.5px] font-semibold text-red-ink">{error}</p> : hint && <p className="text-[12.5px] text-ink-3">{hint}</p>}
+      {error ? (
+        <p id={descriptionId} className="text-[12.5px] font-semibold text-red-ink">
+          {error}
+        </p>
+      ) : (
+        hint && (
+          <p id={descriptionId} className="text-[12.5px] text-ink-3">
+            {hint}
+          </p>
+        )
+      )}
     </div>
   );
 }
@@ -223,8 +253,9 @@ export function CheckboxField({
 export function CheckboxGroupField({ name, label, options, required, className }: BaseFieldProps & { options: SelectOption[] }) {
   const { control } = useFormContext<FieldValues>();
   const { error } = useFieldState(name);
+  const descriptionId = fieldDescriptionId(name);
   return (
-    <fieldset className={cn("flex flex-col gap-2", className)}>
+    <fieldset className={cn("flex flex-col gap-2", className)} aria-describedby={error ? descriptionId : undefined}>
       <legend className="mb-2 text-[13px] font-bold text-ink-2">
         {label}
         {required && <span className="text-red-ink"> *</span>}
@@ -235,12 +266,12 @@ export function CheckboxGroupField({ name, label, options, required, className }
         render={({ field }) => {
           const values: string[] = Array.isArray(field.value) ? field.value : [];
           return (
-            <div className="flex flex-wrap gap-x-5 gap-y-2">
+            <div className="flex flex-wrap gap-x-5 gap-y-1">
               {options.map((option) => (
-                <label key={option.value} className="flex items-center gap-2 text-sm">
+                <label key={option.value} className="flex min-h-10 cursor-pointer items-center gap-2.5 text-sm">
                   <input
                     type="checkbox"
-                    className="size-4 accent-primary"
+                    className="size-[18px] shrink-0 cursor-pointer accent-primary"
                     checked={values.includes(option.value)}
                     onChange={(event) =>
                       field.onChange(event.target.checked ? [...values, option.value] : values.filter((v) => v !== option.value))
@@ -253,7 +284,11 @@ export function CheckboxGroupField({ name, label, options, required, className }
           );
         }}
       />
-      {error && <p className="text-[12.5px] font-semibold text-red-ink">{error}</p>}
+      {error && (
+        <p id={descriptionId} className="text-[12.5px] font-semibold text-red-ink">
+          {error}
+        </p>
+      )}
     </fieldset>
   );
 }

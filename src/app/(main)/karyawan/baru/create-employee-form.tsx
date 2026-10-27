@@ -6,7 +6,9 @@ import { FormProvider, useForm } from "react-hook-form";
 import type { z } from "zod";
 import { EmployeeAccountSection } from "@/components/employee/employee-fields";
 import { FormActions, FormAlert } from "@/components/form/form-actions";
+import { useUnsavedChangesGuard } from "@/components/form/unsaved-changes";
 import { useActionSubmit } from "@/components/form/use-action-submit";
+import { useFeedback } from "@/components/shared/feedback";
 import { toJakartaIsoDate } from "@/lib/format";
 import { employeeCreateSchema } from "@/lib/validators/employee";
 import { createEmployeeAction } from "../actions";
@@ -29,9 +31,17 @@ export function CreateEmployeeForm() {
     },
   });
   const { serverError, pending, submit } = useActionSubmit(form);
+  const { notify } = useFeedback();
+  useUnsavedChangesGuard(form.formState.isDirty);
 
   const onSubmit = form.handleSubmit((values) =>
-    submit(() => createEmployeeAction(values), () => router.push("/karyawan")),
+    submit(
+      () => createEmployeeAction(values),
+      () => {
+        notify(`Akun ${values.fullName} dibuat`);
+        router.push("/karyawan");
+      },
+    ),
   );
 
   return (

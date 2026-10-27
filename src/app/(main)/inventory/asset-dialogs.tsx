@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { DateInputField, SelectInputField, TextareaField, TextInputField } from "@/components/form/fields";
 import { FormDialog } from "@/components/form/form-dialog";
+import { useFeedback } from "@/components/shared/feedback";
 import { Button } from "@/components/ui/button";
 import { toJakartaIsoDate } from "@/lib/format";
 import { ASSET_CATEGORY_LABEL, toOptions } from "@/lib/labels";
@@ -70,6 +71,7 @@ export function AssignAssetDialog({ asset, employees }: { asset: AssetRow; emplo
       schema={assignAssetSchema}
       defaults={{ employeeId: "", assignedAt: toJakartaIsoDate(), note: "" }}
       submitLabel="Pinjamkan"
+      successMessage="Unit dipinjamkan"
       action={(values) => assignAssetAction(asset.id, values)}
     >
       <SelectInputField name="employeeId" label="Karyawan" required options={employees} />
@@ -100,6 +102,7 @@ export function ReturnAssetDialog({ asset }: { asset: AssetRow }) {
 export function DeleteAssetButton({ asset }: { asset: AssetRow }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const { confirm, notify } = useFeedback();
   if (asset.assignmentCount > 0) return null;
   return (
     <Button
@@ -107,16 +110,19 @@ export function DeleteAssetButton({ asset }: { asset: AssetRow }) {
       size="icon-sm"
       disabled={pending}
       aria-label={`Hapus ${asset.deviceName}`}
-      onClick={() => {
-        if (!window.confirm(`Hapus ${asset.deviceName} (${asset.serialNo})?`)) return;
+      onClick={async () => {
+        const ok = await confirm({ title: `Hapus ${asset.deviceName}?`, description: `Serial number ${asset.serialNo}.`, confirmLabel: "Hapus", tone: "danger" });
+        if (!ok) return;
         startTransition(async () => {
           const result = await deleteAssetAction(asset.id);
-          if (result.ok) router.refresh();
-          else window.alert(result.error);
+          if (result.ok) {
+            notify(`${asset.deviceName} dihapus`);
+            router.refresh();
+          } else notify(result.error, "danger");
         });
       }}
     >
-      {pending ? <Loader2 className="animate-spin" /> : <Trash2 />}
+      {pending ? <Loader2 className="animate-spin" aria-hidden /> : <Trash2 />}
     </Button>
   );
 }
