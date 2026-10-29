@@ -143,13 +143,10 @@ export async function getReimbursementDetail(db: PrismaClient, reimbursementId: 
       hasReceipt: item.hasReceipt,
       paymentMethod: item.paymentMethod,
       amount: Number(item.amount),
-      receiptFileKey: item.receiptFileKey,
-      receiptFileName: item.receiptFileName,
     })),
   };
 }
 
-export type ReimbursementDetail = NonNullable<Awaited<ReturnType<typeof getReimbursementDetail>>>;
 
 /** Pilihan dropdown form: tipe sesuai divisi pemohon (RMB-04), customer, project aktif. */
 export async function getReimbursementFormOptions(db: PrismaClient, division: string, canAddMaster = false) {

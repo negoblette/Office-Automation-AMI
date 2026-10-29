@@ -4,7 +4,6 @@ import { notFound, redirect } from "next/navigation";
 import { CorrectionList } from "@/app/(main)/approval/correction-ui";
 import { ApprovalStepper } from "@/components/shared/approval-stepper";
 import { requestStatusBadge } from "@/components/shared/approval-status";
-import { FileChip } from "@/components/shared/file-chip";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { TableScroll } from "@/components/shared/table-scroll";
@@ -100,13 +99,7 @@ export default async function DetailReimbursePage({ params }: { params: Promise<
                     <td className="px-4 py-3">{item.location}</td>
                     <td className="px-4 py-3">{item.typeName}</td>
                     <td className="px-4 py-3">
-                      {item.receiptFileKey ? (
-                        <FileChip fileKey={item.receiptFileKey} fileName={item.receiptFileName ?? "kwitansi"} className="max-w-40" />
-                      ) : item.hasReceipt ? (
-                        "Ya"
-                      ) : (
-                        "Tidak"
-                      )}
+                      {item.hasReceipt ? "Ya" : "Tidak"}
                     </td>
                     <td className="px-4 py-3">{PAYMENT_METHOD_LABEL[item.paymentMethod]}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatRupiah(item.amount)}</td>

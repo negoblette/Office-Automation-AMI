@@ -82,11 +82,11 @@ async function AllBalances() {
               <td className="px-4 py-3 text-right tabular-nums">{b.pending}</td>
               <td className="px-4 py-3 text-right">
                 <StatusBadge variant={b.remaining > 0 ? "success" : b.remaining < 0 ? "danger" : "neutral"} dot={false}>
-                  {b.remaining} hari
+                  {b.remaining < 0 ? `−${Math.abs(b.remaining)}` : b.remaining} hari
                 </StatusBadge>
               </td>
               <td className="px-2 py-3 text-right">
-                <AdjustLeaveDialog employeeId={b.employeeId} employeeName={b.employeeName} />
+                <AdjustLeaveDialog employeeId={b.employeeId} employeeName={b.employeeName} remaining={b.remaining} />
               </td>
             </tr>
           ))}

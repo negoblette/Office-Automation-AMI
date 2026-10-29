@@ -2,7 +2,7 @@ import "server-only";
 import { FileNotFoundError, isValidFileKey, LocalStorage, type Storage } from "./local";
 import { type FileExtension, MIME_TYPES, validateUpload } from "./validate";
 
-export { FileNotFoundError, isValidFileKey, type Storage } from "./local";
+export { FileNotFoundError, isValidFileKey } from "./local";
 export { MAX_UPLOAD_MB, MIME_TYPES } from "./validate";
 
 let storage: Storage | undefined;

@@ -6,8 +6,6 @@ import { formatDate } from "@/lib/format";
 import { EDUCATION_LEVEL_LABEL } from "@/lib/labels";
 import { canRevoke } from "./approval";
 import { appealSummary } from "./attendance-appeal";
-import { openLines } from "./personal-data";
-import { profileChangeSummary } from "./profile-change";
 import { approverRoleLabel } from "@/components/shared/approval-status";
 
 /** Jumlah pengajuan yang sedang menunggu persetujuan user ini (step PENDING). */
@@ -43,8 +41,6 @@ export type ApprovalRow = {
   summary: string | null;
   /** File pendukung (mis. scan sertifikat) — approver boleh mengunduhnya. */
   file: { key: string; name: string } | null;
-  /** Perubahan data karyawan: baris "Data: sebelum → sesudah" untuk pratinjau (2026-10-13). */
-  changeLines: string[] | null;
 };
 
 const include = {
@@ -80,11 +76,6 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
     ? await db.attendanceAppeal.findMany({ where: { id: { in: appealIds } }, include: { employee: { select: { fullName: true } } } })
     : [];
   const appealOf = new Map(appeals.map((a) => [a.id, a]));
-  const changeIds = requests.filter((r) => r.module === "PROFILE_CHANGE").map((r) => r.entityId);
-  const changes = changeIds.length
-    ? await db.profileChangeRequest.findMany({ where: { id: { in: changeIds } }, include: { employee: { select: { fullName: true } } } })
-    : [];
-  const changeOf = new Map(changes.map((c) => [c.id, c]));
 
   return requests.map((request) => ({
     id: request.id,
@@ -112,19 +103,11 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
     correctable: (CORRECTABLE_MODULES as readonly ApprovalModule[]).includes(request.module),
     corrections: correctionsOf.get(request.id) ?? [],
     ...(() => {
-      const change = changeOf.get(request.entityId);
-      if (request.module === "PROFILE_CHANGE" && change) {
-        return {
-          summary: profileChangeSummary(change),
-          file: change.fileKey ? { key: change.fileKey, name: change.fileName ?? "Dokumen" } : null,
-          changeLines: openLines(change.summary),
-        };
-      }
       const appeal = appealOf.get(request.entityId);
       if (request.module === "ATTENDANCE_APPEAL" && appeal)
-        return { summary: appealSummary(appeal), file: appeal.fileKey ? { key: appeal.fileKey, name: appeal.fileName ?? "Surat sakit" } : null, changeLines: null };
+        return { summary: appealSummary(appeal), file: appeal.fileKey ? { key: appeal.fileKey, name: appeal.fileName ?? "Surat sakit" } : null };
       const c = certOf.get(request.entityId);
-      if (request.module !== "CERTIFICATE" || !c) return { summary: null, file: null, changeLines: null };
+      if (request.module !== "CERTIFICATE" || !c) return { summary: null, file: null };
       const parts = [
         `${c.name} (${c.employee.fullName})`,
         c.issuer && `Penerbit ${c.issuer}`,
@@ -138,7 +121,7 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
             ? `Berlaku s/d ${formatDate(c.endDate, "short")}`
             : "Permanen",
       ];
-      return { summary: parts.filter(Boolean).join(" · "), file: c.fileKey ? { key: c.fileKey, name: c.name } : null, changeLines: null };
+      return { summary: parts.filter(Boolean).join(" · "), file: c.fileKey ? { key: c.fileKey, name: c.name } : null };
     })(),
   }));
 }

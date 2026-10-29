@@ -62,25 +62,6 @@ export function openCandidate<T extends TextFields<CandidateEncryptedField>>(row
   return mapFields(row, CANDIDATE_ENCRYPTED_FIELDS, decryptText);
 }
 
-/** Isi Json (payload permintaan perubahan data) disimpan sebagai satu string terenkripsi. */
-export function sealJson(value: unknown): string {
-  return encryptText(JSON.stringify(value ?? null));
-}
-
-/** Kebalikan `sealJson`; payload lama yang masih berupa objek Json dikembalikan apa adanya. */
-export function openJson(value: unknown): unknown {
-  return typeof value === "string" && isEncryptedValue(value) ? JSON.parse(decryptText(value)) : value;
-}
-
-/** Ringkasan sebelum → sesudah (memuat nilai data pribadi) disimpan per baris terenkripsi. */
-export function sealLines(lines: string[]): string[] {
-  return lines.map((line) => encryptText(line));
-}
-
-export function openLines(lines: string[]): string[] {
-  return lines.map((line) => decryptText(line));
-}
-
 const RELATION_ORDER: readonly FamilyRelation[] = Object.values(FamilyRelation);
 
 /**
@@ -119,11 +100,6 @@ function sealIfPlain(value: unknown): unknown {
 export function protectAuditValue(entity: string, value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const row: Record<string, unknown> = { ...value };
-  if (entity === "ProfileChangeRequest") {
-    if ("payload" in row && !(typeof row.payload === "string" && isEncryptedValue(row.payload))) row.payload = sealJson(row.payload);
-    if (Array.isArray(row.summary)) row.summary = row.summary.map(sealIfPlain);
-    return row;
-  }
   const fields = AUDIT_ENCRYPTED_FIELDS[entity];
   if (!fields) return value;
   for (const field of fields) {

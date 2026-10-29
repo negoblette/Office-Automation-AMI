@@ -31,7 +31,6 @@ export const recoveryKeySchema = z
     message: "Kata sandi pemulihan harus berbeda dari password login",
   });
 
-export type RecoveryKeyInput = z.infer<typeof recoveryKeySchema>;
 
 // Nama field beda dari form buat kunci: kedua form tampil di halaman yang sama (id input harus unik).
 export const recoveryKeyTestSchema = z.object({

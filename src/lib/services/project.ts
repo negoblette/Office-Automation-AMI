@@ -1,12 +1,12 @@
-// Customer, Project, Expense & Revenue — URD PRJ-01..04, Tech Spec §6.5. Dikelola Admin;
+// Customer, Project & Expense — URD PRJ-01..03, Tech Spec §6.5. Dikelola Admin;
 // divisi Sales boleh MENAMBAH customer & project baru (2026-10-12, `createOnly`), tidak mengubah/menghapus.
 // Biaya project dihitung per tahun kalender (cutoff 31 Des, 2026-10-12) — `projectTotals(…, year)`.
-// Expense & revenue lewat approval engine (flow sama dengan Reimburse) dengan nomor EXP/REV.
+// Expense lewat approval engine (flow sama dengan Reimburse) dengan nomor EXP.
 import type { PrismaClient } from "@/generated/prisma/client";
 import { fromIsoDate } from "@/lib/format";
-import type { ProjectExpenseInput, ProjectInput, ProjectRevenueInput } from "@/lib/validators/project";
+import type { ProjectExpenseInput, ProjectInput } from "@/lib/validators/project";
 import type { Actor } from "./access";
-import { type ApprovalNotification, buildApproval, restartApproval } from "./approval";
+import { type ApprovalNotification, restartApproval } from "./approval";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { nextDocumentNumber } from "./numbering";
@@ -96,7 +96,7 @@ export async function saveProject(db: PrismaClient, actorId: string, projectId: 
 }
 
 // ---------------------------------------------------------------------
-// Expense & Revenue (PRJ-02, PRJ-04)
+// Expense (PRJ-02)
 // ---------------------------------------------------------------------
 
 export type SubmitProjectEntryResult = { id: string; number: string; status: "PENDING" | "APPROVED"; notifications: ApprovalNotification[] };
@@ -142,59 +142,31 @@ export async function submitProjectExpense(
   });
 }
 
-export async function submitProjectRevenue(db: PrismaClient, actor: Actor, projectId: string, input: ProjectRevenueInput): Promise<SubmitProjectEntryResult> {
-  if (actor.role !== "ADMIN") throw new ServiceError("Hanya Admin yang bisa menginput revenue project");
-  return db.$transaction(async (tx) => {
-    await activeProject(tx, projectId);
-    const number = await nextDocumentNumber(tx, "REV");
-    const revenue = await tx.projectRevenue.create({
-      data: {
-        number,
-        projectId,
-        date: fromIsoDate(input.date),
-        description: input.description,
-        amount: BigInt(input.amount),
-        status: "PENDING",
-        createdById: actor.id,
-      },
-    });
-    const approval = await buildApproval(tx, { module: "REVENUE", entityId: revenue.id, entityNumber: number, requesterId: actor.id });
-    await logAudit(tx, { actorId: actor.id, action: "CREATE", entity: "ProjectRevenue", entityId: revenue.id, after: revenue });
-    return { id: revenue.id, number, status: approval.status, notifications: approval.notifications };
-  });
-}
-
 /**
  * Total project (Tech Spec §6.5): expense = Σ baris reimburse APPROVED yang memilih project ini
- * + Σ ProjectExpense APPROVED (PRJ-03); revenue = Σ ProjectRevenue APPROVED.
+ * + Σ ProjectExpense APPROVED (PRJ-03).
  */
 export async function projectTotals(
-  db: Pick<PrismaClient, "reimbursementItem" | "projectExpense" | "projectRevenue">,
+  db: Pick<PrismaClient, "reimbursementItem" | "projectExpense">,
   projectId: string,
   /** Tahun kalender (cutoff per tahun, 2026-10-12); tanpa tahun = sepanjang masa. */
   year?: number,
 ) {
   const date = year ? yearRange(year) : undefined;
-  const [reimburse, expense, revenue, pendingExpense, pendingRevenue, pendingReimburse] = await Promise.all([
+  const [reimburse, expense, pendingExpense, pendingReimburse] = await Promise.all([
     db.reimbursementItem.aggregate({ _sum: { amount: true }, where: { projectId, date, reimbursement: { status: "APPROVED" } } }),
     db.projectExpense.aggregate({ _sum: { amount: true }, where: { projectId, date, status: "APPROVED" } }),
-    db.projectRevenue.aggregate({ _sum: { amount: true }, where: { projectId, date, status: "APPROVED" } }),
     db.projectExpense.aggregate({ _sum: { amount: true }, where: { projectId, date, status: "PENDING" } }),
-    db.projectRevenue.aggregate({ _sum: { amount: true }, where: { projectId, date, status: "PENDING" } }),
     db.reimbursementItem.aggregate({ _sum: { amount: true }, where: { projectId, date, reimbursement: { status: "PENDING" } } }),
   ]);
   const n = (value: bigint | null) => Number(value ?? 0);
   const reimburseTotal = n(reimburse._sum.amount);
   const directExpense = n(expense._sum.amount);
-  const revenueTotal = n(revenue._sum.amount);
   return {
     reimburse: reimburseTotal,
     directExpense,
     expense: reimburseTotal + directExpense,
-    revenue: revenueTotal,
-    margin: revenueTotal - reimburseTotal - directExpense,
     pendingExpense: n(pendingExpense._sum.amount),
-    pendingRevenue: n(pendingRevenue._sum.amount),
     pendingReimburse: n(pendingReimburse._sum.amount),
   };
 }

@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ApprovalStepper } from "@/components/shared/approval-stepper";
 import { requestStatusBadge } from "@/components/shared/approval-status";
-import { ChangePreviewButton } from "@/components/shared/change-preview";
 import { FileChip } from "@/components/shared/file-chip";
 import { FilterPills } from "@/components/shared/filter-pills";
 import { PersonCell } from "@/components/shared/person-cell";
@@ -54,7 +53,7 @@ const numberColumn = col.accessor("entityNumber", {
   header: "Nomor",
   cell: ({ row }) => (
     <div className="flex max-w-72 flex-col gap-1">
-      {row.original.module === "CERTIFICATE" || row.original.module === "ATTENDANCE_APPEAL" || row.original.module === "PROFILE_CHANGE" ? (
+      {row.original.module === "CERTIFICATE" || row.original.module === "ATTENDANCE_APPEAL" ? (
         <span className="font-medium whitespace-nowrap">{row.original.entityNumber}</span>
       ) : (
         <Link href={APPROVAL_MODULE_META[row.original.module].path(row.original.entityId)} className="font-medium whitespace-nowrap hover:underline">
@@ -62,7 +61,6 @@ const numberColumn = col.accessor("entityNumber", {
         </Link>
       )}
       {row.original.summary && <span className="text-xs text-muted-foreground">{row.original.summary}</span>}
-      {row.original.changeLines && <ChangePreviewButton title={`${row.original.entityNumber} · ${row.original.summary ?? "Perubahan data"}`} lines={row.original.changeLines} />}
       {row.original.file && <FileChip fileKey={row.original.file.key} fileName={row.original.file.name} className="max-w-60" />}
     </div>
   ),

@@ -125,23 +125,11 @@ enum ApprovalModule {
   LEAVE
   HEALTH
   EXPENSE
-  REVENUE
   CERTIFICATE // verifikasi sertifikat (Fase 14, 2026-10-05)
   ATTENDANCE_APPEAL // appeal tidak hadir: sakit / kunjungan keluar (Fase 14)
-  PROFILE_CHANGE // perubahan data diri / keluarga / dokumen oleh karyawan sendiri → Ci Ika (2026-10-12)
 }
 
 /// Jenis perubahan data karyawan yang menunggu persetujuan (2026-10-12).
-enum ProfileChangeKind {
-  SELF_DATA
-  FAMILY_ADD
-  FAMILY_UPDATE
-  FAMILY_DELETE
-  DOCUMENT_ADD
-  DOCUMENT_DELETE
-  CERTIFICATE_DELETE
-}
-
 enum AppealReason {
   SICK // sakit
   VISIT // kunjungan keluar
@@ -294,7 +282,6 @@ model Employee {
   attendances       Attendance[]
   attendanceAppeals AttendanceAppeal[]
   fromCandidate     Candidate?
-  profileChanges    ProfileChangeRequest[]
 
   @@index([status, division])
 }
@@ -438,7 +425,6 @@ model Project {
 
   reimbursementItems ReimbursementItem[]
   expenses           ProjectExpense[]
-  revenues           ProjectRevenue[]
 
   @@unique([customerId, name])
 }
@@ -458,19 +444,6 @@ model ProjectExpense {
 }
 
 // TODO(OI-06): detail field revenue belum ditentukan
-model ProjectRevenue {
-  id          String        @id @default(cuid())
-  number      String        @unique
-  projectId   String
-  project     Project       @relation(fields: [projectId], references: [id])
-  date        DateTime      @db.Date
-  description String
-  amount      BigInt
-  status      RequestStatus @default(DRAFT)
-  createdById String
-  createdAt   DateTime      @default(now())
-}
-
 // ---------------------------------------------------------------------
 // REIMBURSEMENT
 // ---------------------------------------------------------------------
@@ -526,8 +499,6 @@ model ReimbursementItem {
   hasReceipt      Boolean
   paymentMethod   PaymentMethod
   amount          BigInt
-  receiptFileKey  String?
-  receiptFileName String?
 
   @@index([projectId])
 }
@@ -640,9 +611,6 @@ model HealthClaim {
   category        HealthCategory @relation(fields: [categoryId], references: [id])
   claimDate       DateTime       @db.Date
   amount          BigInt
-  /// Upload invoice dihapus (Fase 14, 2026-10-02); kolom tetap untuk file lama sampai di-purge (> 2 tahun).
-  invoiceFileKey  String?
-  invoiceFileName String?
   note            String?
   status          RequestStatus  @default(DRAFT)
   submittedAt     DateTime?
@@ -861,7 +829,7 @@ model ApprovalCorrection {
   requestId  String
   request    ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   level      Int
-  targetId   String // id ReimbursementItem / ProjectExpense / ProjectRevenue / HealthClaim
+  targetId   String // id ReimbursementItem / ProjectExpense / HealthClaim
   label      String // mis. "Baris 2 · 12 Sep · Tol Cikampek"
   field      String // AMOUNT | TEXT
   before     String
@@ -925,24 +893,3 @@ model Division {
   createdAt   DateTime @default(now())
 }
 
-// Perubahan data diri / keluarga / dokumen / hapus sertifikat terverifikasi oleh karyawan SENDIRI
-// (2026-10-12): disimpan dulu di sini, diterapkan setelah disetujui Ci Ika (modul PROFILE_CHANGE).
-// Admin yang mengubah data karyawan lain langsung tersimpan.
-model ProfileChangeRequest {
-  id            String            @id @default(cuid())
-  number        String            @unique // PRF/YYYY/MM/NNNN
-  employeeId    String
-  employee      Employee          @relation(fields: [employeeId], references: [id])
-  kind          ProfileChangeKind
-  targetId      String? // id FamilyMember / Document / Certificate yang diubah / dihapus
-  payload       Json // isi perubahan (input tervalidasi)
-  summary       String[] // ringkasan untuk approver & pemohon, mis. "Alamat: A → B"
-  fileKey       String? // DOCUMENT_ADD: file yang diunggah (bisa dibuka approver)
-  fileName      String?
-  status        RequestStatus     @default(PENDING)
-  requestedById String
-  createdAt     DateTime          @default(now())
-  appliedAt     DateTime?
-
-  @@index([employeeId, status])
-}

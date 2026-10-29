@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import shell from "./app-shell.module.css";
 import { type AppRole, type NavItem, getActiveChildHref, getNavForRole, isPathActive } from "./nav-config";
@@ -43,14 +43,6 @@ export function SidebarNav({ role, badges, onNavigate }: SidebarNavProps) {
           ))}
         </div>
       ))}
-
-      {role === "ADMIN" && (
-        <div aria-disabled="true" className="mt-3.5 flex min-h-11 cursor-not-allowed items-center gap-3 px-3 text-sm font-medium text-mute" title="Modul laporan menyusul">
-          <BarChart3 className="size-4.5 shrink-0" strokeWidth={1.75} aria-hidden />
-          <span className="flex-1">Laporan</span>
-          <span className="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold shadow-[inset_0_0_0_1px_var(--rule)]">Menyusul</span>
-        </div>
-      )}
     </nav>
   );
 }

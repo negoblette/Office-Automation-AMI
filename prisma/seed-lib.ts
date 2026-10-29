@@ -1,10 +1,13 @@
-// Data & fungsi seed — dipakai prisma/seed.ts dan test approval (src/test/seed.ts).
-// Idempoten: aman dijalankan berulang.
+// Data & fungsi seed — dipakai prisma/seed.ts dan test (src/test/seed.ts). Idempoten: aman dijalankan berulang.
 //
-// Karyawan hanya dibuat dengan data minimal yang diisi Admin (nama, email, divisi,
-// jabatan, tanggal masuk, role). NIK, KK, NPWP, alamat, keluarga & dokumen diisi
-// staf sendiri lewat aplikasi — jangan diisi di sini.
-// Email & tanggal masuk di bawah masih DUMMY untuk development.
+// Dua jenis seed (2026-10-29):
+//   - `seedAll` (dev & test): data CONTOH — divisi, 8 orang (email @artha-mitra.local, tanggal masuk dummy), master
+//     data, alur approval. Tidak pernah dipakai di produksi.
+//   - `seedProduction` (SEED_MODE=production): hanya 1 akun Admin sistem + aturan jatah cuti. Divisi, master data,
+//     karyawan, dan alur approval diisi Admin dengan data aktual lewat aplikasi (docs/07-DEPLOYMENT.md §6.4).
+//
+// Karyawan hanya dibuat dengan data minimal yang diisi Admin (nama, email, divisi, jabatan, tanggal masuk, role).
+// NIK, KK, NPWP, alamat, keluarga & dokumen diisi staf sendiri lewat aplikasi — jangan diisi di sini.
 import type {
   PrismaClient,
   ApprovalModule,
@@ -132,7 +135,8 @@ const REIMBURSE_TYPES = [
 // Urutan = urutan di dropdown (sortOrder). Obat-obatan: 2026-10-16.
 const HEALTH_CATEGORIES = ["Rawat Jalan Dokter", "Obat-obatan", "Vitamin", "Kacamata"];
 
-export async function seedMasterData(prisma: PrismaClient) {
+/** Aturan jatah cuti (URD LV-02) & carry-over (LV-03) — dipakai seed dev maupun produksi. */
+async function seedLeaveRules(prisma: PrismaClient) {
   // LeavePolicy tidak punya kunci unik: isi hanya jika tabel masih kosong.
   if ((await prisma.leavePolicy.count()) === 0) {
     await prisma.leavePolicy.createMany({ data: LEAVE_POLICIES });
@@ -141,6 +145,10 @@ export async function seedMasterData(prisma: PrismaClient) {
   for (const [key, value] of Object.entries(APP_SETTINGS)) {
     await prisma.appSetting.upsert({ where: { key }, create: { key, value }, update: {} });
   }
+}
+
+export async function seedMasterData(prisma: PrismaClient) {
+  await seedLeaveRules(prisma);
 
   for (const type of REIMBURSE_TYPES) {
     await prisma.reimburseType.upsert({ where: { code: type.code }, create: type, update: {} });
@@ -167,8 +175,8 @@ type SeedFlow = {
   autoApproveWhenSkipped?: boolean;
 };
 
-// Reimburse; Expense & Revenue project sama dengan reimburse.
-const REGULAR_MODULES: ApprovalModule[] = ["REIMBURSE", "EXPENSE", "REVENUE"];
+// Reimburse; Expense project sama dengan reimburse.
+const REGULAR_MODULES: ApprovalModule[] = ["REIMBURSE", "EXPENSE"];
 // HR & Finance tidak punya alur sendiri: mengikuti Umum lewat `Division.followsCode`.
 const DIVISION_STEPS: Record<string, string[][]> = {
   // Fase 14 (2026-10-02): Sales satu level (salah satu cukup); Umum Bu Ika / Ko Leonard.
@@ -196,8 +204,6 @@ export const APPROVAL_FLOWS: SeedFlow[] = [
   // Verifikasi sertifikat: Ko Yosep -> Bu Ika (Fase 14, 2026-10-05).
   // Verifikasi sertifikat -> Ci Ika saja (2026-10-12; sebelumnya Ko Yosep -> Bu Ika); milik Ci Ika -> Fallback.
   { scope: "REGULAR", module: "CERTIFICATE", division: null, steps: [["ika"]] },
-  // Perubahan data diri / keluarga / dokumen oleh karyawan sendiri -> Ci Ika (2026-10-12).
-  { scope: "REGULAR", module: "PROFILE_CHANGE", division: null, steps: [["ika"]] },
   // Appeal absensi (sakit / kunjungan keluar) -> Bu Ika; appeal Bu Ika -> Fallback (Fase 14).
   { scope: "REGULAR", module: "ATTENDANCE_APPEAL", division: null, steps: [["ika"]] },
   // Klaim kesehatan -> Bu Ika; klaim Bu Ika sendiri -> Fallback.
@@ -237,7 +243,7 @@ export async function seedApprovalFlows(prisma: PrismaClient, userIds: Record<st
   console.log(`✔ approval flow: ${APPROVAL_FLOWS.length} flow (${created} baru)`);
 }
 
-/** Jalankan semua seed. Mengembalikan id user per key (mis. "rudy"). */
+/** Seed dev & test (data contoh). Mengembalikan id user per key (mis. "rudy"). */
 export async function seedAll(prisma: PrismaClient, passwordHash: string, { log = true } = {}) {
   const original = console.log;
   if (!log) console.log = () => undefined;
@@ -250,4 +256,22 @@ export async function seedAll(prisma: PrismaClient, passwordHash: string, { log 
   } finally {
     console.log = original;
   }
+}
+
+/**
+ * Seed produksi (2026-10-29): akun Admin sistem tanpa data karyawan + aturan jatah cuti. Email-nya khusus akun sistem
+ * (bukan email karyawan, karena email karyawan dipakai lagi saat Admin membuat data karyawannya). Password awal wajib
+ * diganti & MFA wajib saat login pertama. Akun ini bisa dinonaktifkan setelah Admin sungguhan dibuat.
+ */
+export async function seedProduction(prisma: PrismaClient, passwordHash: string, adminEmail: string) {
+  await seedLeaveRules(prisma);
+  const email = adminEmail.trim().toLowerCase();
+  // Password & status tidak ditimpa saat seed diulang.
+  await prisma.user.upsert({
+    where: { email },
+    create: { email, passwordHash, role: "ADMIN", mustChangePassword: true },
+    update: {},
+  });
+  console.log(`✔ aturan cuti: ${LEAVE_POLICIES.length} jatah, ${Object.keys(APP_SETTINGS).length} setting`);
+  console.log(`✔ akun Admin sistem: ${email}`);
 }

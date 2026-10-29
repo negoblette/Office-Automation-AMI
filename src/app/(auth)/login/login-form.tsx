@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertCircle, Loader2 } from "lucide-react";
+import { OtpInput } from "@/components/form/otp-input";
 import { PasswordInput } from "@/components/form/password-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,9 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
   const [serverError, setServerError] = useState<string | null>(null);
   // Langkah kedua (MFA, hardening Tahap 5): password benar → minta kode authenticator / kode cadangan.
   const [mfaStep, setMfaStep] = useState(false);
+  // Kode 6 digit per kotak, langsung dikirim saat lengkap (2026-10-28); kode cadangan lewat kolom teks biasa.
+  const [otp, setOtp] = useState("");
+  const [useBackupCode, setUseBackupCode] = useState(false);
   const [isPending, startTransition] = useTransition();
   const {
     register,
@@ -36,11 +40,12 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
     startTransition(async () => {
       // Sukses → server melakukan redirect; yang kembali ke sini hanya pesan error.
       const result = await loginAction(values, callbackUrl);
-      if (result?.mfa && !mfaStep) {
-        setMfaStep(true);
-        setTimeout(() => setFocus("code"), 0);
+      if (result?.mfa && !mfaStep) setMfaStep(true);
+      if (result?.mfa) {
+        setValue("code", "");
+        setOtp("");
+        if (useBackupCode) setTimeout(() => setFocus("code"), 0);
       }
-      if (result?.mfa) setValue("code", "");
       if (result?.error) setServerError(result.error);
     });
   });
@@ -58,21 +63,42 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
         </div>
       )}
 
-      {mfaStep && (
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="code">Kode verifikasi</Label>
-          <Input
-            id="code"
-            autoComplete="one-time-code"
-            inputMode="text"
-            placeholder="000000"
-            aria-required
-            className="h-11 bg-background px-3 text-center font-mono tracking-widest"
-            {...register("code")}
+      {mfaStep && !useBackupCode && (
+        <div className="flex flex-col gap-3">
+          <Label htmlFor="code-otp">Kode verifikasi</Label>
+          <OtpInput
+            id="code-otp"
+            label="Kode verifikasi"
+            value={otp}
+            autoFocus
+            disabled={isPending}
+            invalid={Boolean(serverError)}
+            onChange={(value) => {
+              setOtp(value);
+              setValue("code", value);
+            }}
+            onComplete={(value) => {
+              setValue("code", value);
+              void onSubmit();
+            }}
           />
           <p className="text-xs text-muted-foreground">
-            Buka Google / Microsoft Authenticator di HP Anda. HP hilang? Masukkan salah satu kode cadangan (format XXXXX-XXXXX).
+            Masukkan 6 digit dari Google / Microsoft Authenticator di HP Anda — langsung diperiksa setelah lengkap.
           </p>
+        </div>
+      )}
+      {mfaStep && useBackupCode && (
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="code">Kode cadangan</Label>
+          <Input
+            id="code"
+            autoComplete="off"
+            placeholder="XXXXX-XXXXX"
+            aria-required
+            className="h-11 bg-background px-3 text-center font-mono tracking-widest uppercase"
+            {...register("code")}
+          />
+          <p className="text-xs text-muted-foreground">Salah satu kode cadangan yang Anda simpan saat mengaktifkan MFA (sekali pakai).</p>
         </div>
       )}
 
@@ -115,7 +141,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
         )}
       </div>
 
-      <Button type="submit" size="lg" disabled={isPending} className="mt-1 w-full font-semibold">
+      <Button type="submit" size="lg" disabled={isPending || (mfaStep && !useBackupCode && otp.length < 6)} className="mt-1 w-full font-semibold">
         {isPending && <Loader2 className="size-4 animate-spin" aria-hidden />}
         {isPending ? "Memproses…" : mfaStep ? "Verifikasi" : "Masuk"}
       </Button>
@@ -124,7 +150,24 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
           type="button"
           className="-mt-2 min-h-11 cursor-pointer rounded-lg text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ink"
           onClick={() => {
+            setUseBackupCode(!useBackupCode);
+            setServerError(null);
+            setValue("code", "");
+            setOtp("");
+            if (!useBackupCode) setTimeout(() => setFocus("code"), 0);
+          }}
+        >
+          {useBackupCode ? "Pakai kode dari aplikasi authenticator" : "HP hilang? Pakai kode cadangan"}
+        </button>
+      )}
+      {mfaStep && (
+        <button
+          type="button"
+          className="-mt-2 min-h-11 cursor-pointer rounded-lg text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ink"
+          onClick={() => {
             setMfaStep(false);
+            setUseBackupCode(false);
+            setOtp("");
             setServerError(null);
             setValue("code", "");
             setValue("password", "");

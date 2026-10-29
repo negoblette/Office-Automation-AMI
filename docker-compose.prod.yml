@@ -81,6 +81,9 @@ services:
       RECOVERY_KEY_HOLDERS: ${RECOVERY_KEY_HOLDERS:?isi email pemegang kunci (Pak Rudy & Pak Leonard) di .env.production}
       SEED_PASSWORD: ${SEED_PASSWORD:-}
       SEED_MUST_CHANGE_PASSWORD: ${SEED_MUST_CHANGE_PASSWORD:-true}
+      # Seed produksi: hanya akun Admin sistem (SEED_ADMIN_EMAIL) + aturan cuti, tanpa data contoh (2026-10-29).
+      SEED_MODE: production
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
       TZ: Asia/Jakarta
     volumes:
       - uploads:/app/storage/uploads

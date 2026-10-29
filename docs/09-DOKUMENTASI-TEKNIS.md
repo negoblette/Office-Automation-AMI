@@ -564,8 +564,7 @@ lokasi, nama – jabatan orang yang ditemui, dan aktivitas.
 - Customer & project baru boleh ditambahkan oleh divisi **Sales dan Admin**; mengubah/menghapusnya hanya Admin.
 - Rekap per orang per bulan bisa **dicetak** (`/cetak/reimburse`) dan di-**export ke Excel**. Admin bisa mengunduh
   semua karyawan; yang lain hanya miliknya.
-- Upload kwitansi sudah tidak dipakai. File kwitansi lama disimpan maksimal 2 tahun lalu dihapus otomatis (nominalnya
-  tetap tercatat).
+- Tidak ada upload kwitansi; tiap baris hanya mencatat ada/tidaknya kwitansi.
 
 Pesan yang mungkin muncul: *"Baris 2: project bukan milik PT X"*, *"Baris 1: Names – Position wajib diisi untuk tipe
 Meals"*, *"Tambahkan minimal 1 baris sebelum mengajukan"*, *"Reimburse yang sudah diajukan tidak bisa diubah"*.
@@ -640,8 +639,7 @@ pengajuan 3 hari kerja"*.
 - Project ditampilkan sebagai **"ID - Nama"**.
 - Biaya project = jumlah reimburse + expense project yang sudah **disetujui**, dihitung **per tahun kalender** (bisa
   melihat tahun sebelumnya).
-- **Revenue project tidak dipakai lagi** (sejak 2026-10-05). Kode dan data lamanya dibiarkan untuk riwayat; jangan
-  menambah fitur revenue baru.
+- Revenue project tidak ada (dihapus 2026-10-29); project hanya mencatat biaya.
 
 **File kode:** `src/lib/services/project.ts`, `project-queries.ts`.
 
@@ -678,8 +676,6 @@ Halaman cetak memakai fitur print bawaan browser (pilih "Simpan sebagai PDF"). S
 - **Inventory / Demo Unit** dimatikan sementara lewat saklar `FEATURES.inventory = false` di `src/lib/features.ts`.
   Menu, halaman, aksi, dashboard, dan pengingatnya nonaktif, tetapi kode & datanya tetap ada. Untuk menyalakan, cukup
   ubah saklarnya menjadi `true`.
-- **Perubahan data diri lewat approval** (`ProfileChangeRequest`): sudah tidak dipakai sejak 2026-10-16 (data diri
-  kini langsung tersimpan). Kodenya dibiarkan untuk permintaan lama.
 
 ---
 
@@ -720,10 +716,10 @@ Setiap level punya status sendiri: **WAITING** (belum gilirannya), **PENDING** (
 ### 9.3 Alur awal (bisa diubah di Setting → Approval Flow)
 | Modul | Divisi | Level 1 | Level 2 |
 |---|---|---|---|
-| Reimburse, Expense, Revenue | Sales | Ko Darwin / Ko Leonard | — |
-| Reimburse, Expense, Revenue | Engineer | Ko Yosep | Ko Rudy |
-| Reimburse, Expense, Revenue | Umum (+ HR, Finance) | Bu Ika / Ko Leonard | — |
-| Reimburse, Expense, Revenue | Direktur | Bu Ika | — |
+| Reimburse, Expense | Sales | Ko Darwin / Ko Leonard | — |
+| Reimburse, Expense | Engineer | Ko Yosep | Ko Rudy |
+| Reimburse, Expense | Umum (+ HR, Finance) | Bu Ika / Ko Leonard | — |
+| Reimburse, Expense | Direktur | Bu Ika | — |
 | Cuti | semua | Ko Rudy | — |
 | Cuti | Direktur | (tanpa approval) | — |
 | Kesehatan, Sertifikat, Appeal absensi, Perubahan data | semua | Bu Ika | — |
@@ -755,7 +751,7 @@ Setiap level punya status sendiri: **WAITING** (belum gilirannya), **PENDING** (
 | Reimburse | Status APPROVED + tanggal disetujui | Kembali PENDING |
 | Cuti | APPROVED + saldo terpakai bertambah | Saldo dikembalikan |
 | Kesehatan | Nominal disetujui + APPROVED + jadwal pembayaran | Jadwal dihapus; **ditolak bila sudah dibayar** |
-| Expense / Revenue project | APPROVED (masuk total biaya project) | Kembali PENDING |
+| Expense project | APPROVED (masuk total biaya project) | Kembali PENDING |
 | Sertifikat | Terverifikasi | Kembali PENDING |
 | Appeal absensi | APPROVED (hari itu tidak dipotong cuti) | Kembali PENDING |
 | Perubahan data (lama) | Perubahan diterapkan | Tidak bisa dibatalkan |
@@ -770,9 +766,8 @@ urut dimulai lagi dari 0001 setiap bulan.
 | Prefix | Modul | Prefix | Modul |
 |---|---|---|---|
 | `RMB` | Reimburse | `EXP` | Expense project |
-| `LV` | Cuti | `REV` | Revenue project (lama) |
-| `HC` | Klaim kesehatan | `CRT` | Verifikasi sertifikat |
-| `APL` | Appeal absensi | `PRF` | Perubahan data (lama) |
+| `LV` | Cuti | `CRT` | Verifikasi sertifikat |
+| `HC` | Klaim kesehatan | `APL` | Appeal absensi |
 
 > **Kenapa begini?** Nomor dibuat dengan satu perintah database yang mengunci baris penghitungnya di dalam
 > transaksi. Jadi walaupun 50 orang menekan "Ajukan" pada detik yang sama, tidak akan ada dua pengajuan dengan nomor
@@ -792,13 +787,13 @@ urut dimulai lagi dari 0001 setiap bulan.
 |---|---|---|
 | Akun & keamanan | `User`, `MfaBackupCode`, `UploadedFile` | Akun login, kode cadangan MFA, catatan setiap upload |
 | Organisasi | `Division` | Master divisi |
-| Karyawan | `Employee`, `EmploymentPeriod`, `FamilyMember`, `Document`, `Certificate`, `EmployeeAsset`, `ProfileChangeRequest` | Data karyawan, periode kerja, keluarga, dokumen, sertifikat, aset |
+| Karyawan | `Employee`, `EmploymentPeriod`, `FamilyMember`, `Document`, `Certificate`, `EmployeeAsset` | Data karyawan, periode kerja, keluarga, dokumen, sertifikat, aset |
 | Kandidat | `Candidate` | Calon karyawan |
 | Absensi | `Attendance`, `AttendanceAppeal` | Clock in/out & appeal |
 | Cuti | `LeavePolicy`, `LeaveBalance`, `LeaveAdjustment`, `LeaveRequest`, `Holiday` | Jatah, saldo per tahun, penyesuaian, pengajuan, hari libur |
 | Kesehatan | `HealthCategory`, `HealthPlafond`, `HealthClaim`, `HealthPayout` | Kategori, plafon, klaim, jadwal bayar |
 | Reimburse | `ReimburseType`, `Reimbursement`, `ReimbursementItem` | Tipe, pengajuan, baris biaya |
-| Project | `Customer`, `Project`, `ProjectExpense`, `ProjectRevenue` | Customer, project, expense, revenue (lama) |
+| Project | `Customer`, `Project`, `ProjectExpense` | Customer, project, expense |
 | Inventory (ditunda) | `Asset`, `AssetAssignment` | Unit demo & peminjamannya |
 | Approval | `ApprovalFlow`, `ApprovalFlowStep`, `ApprovalStepApprover`, `ApprovalRequest`, `ApprovalRequestStep`, `ApprovalCorrection` | Definisi alur, salinan alur per pengajuan, koreksi |
 | Sistem | `NumberSequence`, `AppSetting`, `AuditLog`, `EmailLog`, `ReminderLog` | Penghitung nomor, pengaturan, audit, log email, log pengingat |
@@ -838,7 +833,6 @@ menampilkan data kepada orang yang berhak.
 | `Employee` | NIK (+ "sidik jari" `nikHash` untuk cek unik), No KK, NPWP, BPJS TK, BPJS Kesehatan, No HP, tanggal lahir, kontak darurat (nama, hubungan, HP) |
 | `FamilyMember` | NIK, tanggal lahir |
 | `Candidate` | NIK, No HP |
-| `ProfileChangeRequest` | Isi & ringkasan perubahan |
 | `User` | Rahasia MFA |
 
 > **Penting:** jangan membaca atau menulis kolom-kolom di atas secara langsung. Selalu lewat fungsi `seal…` (kunci)
@@ -876,7 +870,6 @@ Antrian dan jadwalnya disimpan di PostgreSQL (skema `pgboss`), jadi tidak butuh 
 | `email.send` | Setiap ada antrian | Mengirim email lalu mencatatnya di `EmailLog`. Kalau gagal, dicoba ulang 3 kali dengan jeda yang makin panjang |
 | `leave.rollover` | 00:30 | Membuat saldo cuti tahun baru dan memindahkan carry over |
 | `attendance.deduct` | 01:00 | Memotong 1 hari cuti untuk hari tidak hadir yang lewat 7 hari tanpa appeal |
-| `invoice.purge` | 02:00 | Menghapus file invoice/kwitansi yang lebih tua dari 2 tahun (nominalnya tetap tercatat) |
 | `storage.orphan-purge` | 03:00 | Menghapus file upload yang sudah 24 jam tidak dipakai data apa pun |
 | `reminder.certificate`, `reminder.document` | 07:00 | Mengirim email pengingat 30 hari sebelum masa berlaku habis |
 | `reminder.asset` | 07:00 | Nonaktif (modul Inventory ditunda) |
@@ -885,7 +878,7 @@ Antrian dan jadwalnya disimpan di PostgreSQL (skema `pgboss`), jadi tidak butuh 
 > pengingat ke Andi dan semua Admin. Pengingat hanya dikirim **sekali** per sertifikat per tanggal berakhir
 > (dicatat di `ReminderLog`), jadi tidak ada email berulang setiap hari.
 
-**File kode:** `worker/index.ts`, `src/lib/services/leave-balance.ts`, `attendance-appeal.ts`, `invoice-purge.ts`,
+**File kode:** `worker/index.ts`, `src/lib/services/leave-balance.ts`, `attendance-appeal.ts`,
 `upload.ts`, `reminder.ts`.
 
 ---
@@ -1168,7 +1161,8 @@ Langkah lengkapnya ada di `docs/07-DEPLOYMENT.md` §10.
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | Worker | Server email. Developer: Mailpit `localhost:1025`. `SMTP_REQUIRE_TLS=true` untuk memaksa TLS di dev |
 | `STORAGE_DRIVER`, `UPLOAD_DIR`, `MAX_UPLOAD_MB` | Aplikasi, worker | Penyimpanan file: `local`, `./storage/uploads`, `5` |
 | `TZ` | Semua | `Asia/Jakarta` |
-| `SEED_PASSWORD`, `SEED_MUST_CHANGE_PASSWORD` | Seed | Password awal akun contoh; di produksi wajib diganti saat login pertama |
+| `SEED_PASSWORD`, `SEED_MUST_CHANGE_PASSWORD` | Seed | Password awal akun hasil seed; di produksi wajib diganti saat login pertama |
+| `SEED_MODE`, `SEED_ADMIN_EMAIL` | Seed produksi | `production` = hanya akun Admin sistem (`SEED_ADMIN_EMAIL`) + aturan cuti, tanpa data contoh |
 | `DEV_ALLOWED_ORIGINS` | Dev | Alamat tambahan yang boleh membuka dev server (misalnya IP laptop lain di jaringan) |
 | `RECOVERY_KEY_HOLDERS` | Aplikasi, migrate | Email akun pemegang kunci (Pak Rudy & Pak Leonard), dipisah koma — harus sama persis dengan email login mereka |
 | `RECOVERY_DIR` | Aplikasi, migrate | Folder file kunci pemulihan. Developer: `./storage/recovery`; produksi: volume `recovery` |
@@ -1193,7 +1187,7 @@ cp .env.example .env                 # lalu isi: AUTH_SECRET, kunci data (npm ru
 npm ci                               # pasang paket sesuai lockfile (postinstall menjalankan prisma generate)
 npx prisma migrate deploy            # buat semua tabel (memakai akun pemilik via MIGRATE_DATABASE_URL)
 npx prisma generate                  # wajib setelah migrasi
-npx prisma db seed                   # data awal: divisi, akun contoh, alur approval, master data
+npx prisma db seed                   # data CONTOH dev: divisi, 8 akun contoh, alur approval, master data
 npm run dev                          # aplikasi di http://localhost:3000
 npm run worker                       # di terminal lain — WAJIB agar email & job harian jalan
 ```
@@ -1398,7 +1392,7 @@ Supaya riwayatnya mudah dilacak: satu nomor untuk satu pengajuan, sejak pertama 
 | 1 | Next.js full-stack + Server Actions | Satu codebase, satu bahasa, cocok untuk tim kecil | Logika bisnis harus disiplin ditaruh di `services/` |
 | 2 | Antrian job di PostgreSQL (pg-boss) | Tidak perlu Redis; cukup satu sistem untuk di-backup | Worker wajib jalan agar email terkirim |
 | 3 | Snapshot approval per pengajuan | Mengubah alur tidak mengacaukan pengajuan yang berjalan | Data step disalin saat pengajuan dibuat |
-| 4 | Soft delete untuk data utama | Data tidak hilang karena salah klik; jejak tetap ada | Semua query wajib menyaring `deletedAt` (pengecualian: file invoice > 2 tahun dan file yatim) |
+| 4 | Soft delete untuk data utama | Data tidak hilang karena salah klik; jejak tetap ada | Semua query wajib menyaring `deletedAt` (pengecualian: file yatim) |
 | 5 | Uang `BigInt`, tanggal `@db.Date`, zona WIB | Tidak ada pembulatan dan tanggal tidak bergeser | Konversi di batas server ke browser |
 | 6 | Enkripsi kolom di lapisan service | Tipe kode tetap sederhana, hasil query berupa objek biasa, audit tidak menerima data terbuka | Kolom pribadi wajib dibaca/ditulis lewat `personal-data.ts` |
 | 7 | Sidik jari NIK (HMAC) untuk cek unik | Bisa mengecek NIK ganda tanpa menyimpan NIK terbuka | Mengganti `DATA_INDEX_KEY` berarti menghitung ulang `nikHash` |
@@ -1456,7 +1450,7 @@ Supaya riwayatnya mudah dilacak: satu nomor untuk satu pengajuan, sejak pertama 
 | **Soft delete** | Data ditandai `deletedAt`, tidak benar-benar dihapus |
 | **Migrasi** | File SQL berisi perubahan struktur database, dijalankan berurutan |
 | **pg-boss / worker** | Antrian pekerjaan di PostgreSQL & program yang menjalankannya |
-| **Seed** | Data awal (divisi, akun contoh, alur approval, master data) |
+| **Seed** | Data awal. Dev: data contoh (divisi, akun contoh, alur approval, master data). Produksi: hanya akun Admin sistem + aturan cuti |
 | **Transaksi** | Sekumpulan perubahan database yang berhasil bersama atau gagal bersama |
 | **CSP** | Content Security Policy — aturan browser tentang script apa saja yang boleh dijalankan |
 | **MFA / TOTP** | Login dua langkah dengan kode 6 digit yang berganti setiap 30 detik |

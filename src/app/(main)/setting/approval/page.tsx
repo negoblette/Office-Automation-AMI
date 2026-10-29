@@ -36,9 +36,7 @@ function FlowSteps({ flow }: { flow: FlowView }) {
 
 export default async function SettingApprovalPage() {
   await requireAdmin();
-  const [allFlows, approvers] = await Promise.all([listFlows(prisma), listApproverOptions(prisma)]);
-  // Revenue project tidak dipakai lagi (2026-10-05): alurnya tetap di DB tapi tidak ditampilkan.
-  const flows = allFlows.filter((flow) => flow.module !== "REVENUE");
+  const [flows, approvers] = await Promise.all([listFlows(prisma), listApproverOptions(prisma)]);
 
   return (
     <div className="flex flex-col gap-6">

@@ -23,16 +23,33 @@ export function CutiTabs({ active }: { active: "pengajuan" | "saldo" | "kalender
 
 const date = (iso: string) => formatDate(`${iso}T00:00:00Z`, "short");
 
+/** Angka sisa cuti: minus pakai tanda "−" dan merah (2026-10-28: saldo minus harus terlihat jelas). */
+function RemainingValue({ remaining, className }: { remaining: number; className?: string }) {
+  return <span className={cn(remaining < 0 && "text-danger", className)}>{remaining < 0 ? `−${Math.abs(remaining)}` : remaining}</span>;
+}
+
+/** Keterangan saldo minus: jatah habis lalu tidak hadir tanpa keterangan (atau dikurangi Admin). */
+function OverdraftNote({ remaining }: { remaining: number }) {
+  if (remaining >= 0) return null;
+  return (
+    <p role="status" className="rounded-lg bg-danger-soft px-3 py-2 text-[13px] font-semibold text-danger">
+      Saldo cuti minus {Math.abs(remaining)} hari — jatah sudah habis dan ada potongan (mis. tidak hadir tanpa keterangan).
+      Minus ini mengurangi jatah cuti tahun berikutnya.
+    </p>
+  );
+}
+
 /**
  * Saldo cuti versi seimbang (sorotan halaman Cuti, LV-07): satu ruas per hari saldo —
  * biru = sisa, kuning = menunggu approval, abu = terpakai. Angka dari saldo yang sama dengan kartu lama.
  */
 export function LeaveBalanceSpotlight({ balance, title = "Saldo Cuti Saya" }: { balance: LeaveBalanceView; title?: string }) {
   const total = balance.entitlement + balance.carriedOver + balance.adjustment;
-  // Hanya tampilan: sisa + menunggu + terpakai = total. Saldo minus → tanpa ruas biru.
+  // Hanya tampilan: sisa + menunggu + terpakai = total. Saldo minus → tanpa ruas biru, plus ruas merah per hari minus.
   const slots = Math.max(0, total);
   const remainingSlots = Math.min(Math.max(0, balance.remaining), slots);
   const pendingSlots = Math.min(Math.max(0, balance.pending), slots - remainingSlots);
+  const overdraftSlots = Math.max(0, -balance.remaining);
   const facts: { label: string; value: number | string; swatch?: string }[] = [
     { label: "Jatah", value: balance.entitlement },
     { label: "Carry over", value: balance.carriedOver },
@@ -56,24 +73,25 @@ export function LeaveBalanceSpotlight({ balance, title = "Saldo Cuti Saya" }: { 
           )}
         </div>
         <p className="flex flex-wrap items-baseline gap-x-2 text-[38px] leading-[1.08] font-extrabold tracking-[-0.04em] text-ink tabular-nums sm:text-[46px]">
-          {balance.remaining}
+          <RemainingValue remaining={balance.remaining} />
           <span className="text-base font-semibold tracking-normal text-ink-3">/ {total} hari</span>
         </p>
       </div>
+      <OverdraftNote remaining={balance.remaining} />
       <div
         role="img"
-        aria-label={`${balance.remaining} hari tersisa, ${balance.pending} hari menunggu approval, ${balance.used} hari terpakai`}
+        aria-label={`${balance.remaining < 0 ? `minus ${-balance.remaining} hari` : `${balance.remaining} hari tersisa`}, ${balance.pending} hari menunggu approval, ${balance.used} hari terpakai`}
         className="flex gap-1"
       >
-        {slots === 0 ? (
+        {slots === 0 && overdraftSlots === 0 ? (
           <span className="h-3.5 flex-1 rounded-[4px] bg-rule" />
         ) : (
-          Array.from({ length: slots }, (_, index) => (
+          Array.from({ length: slots + overdraftSlots }, (_, index) => (
             <span
               key={index}
               className={cn(
                 "h-3.5 min-w-[3px] flex-1 rounded-[4px]",
-                index < remainingSlots ? "bg-brand" : index < remainingSlots + pendingSlots ? "bg-amber" : "bg-rule",
+                index >= slots ? "bg-danger" : index < remainingSlots ? "bg-brand" : index < remainingSlots + pendingSlots ? "bg-amber" : "bg-rule",
               )}
             />
           ))
@@ -116,16 +134,21 @@ export function LeaveBalanceCard({ balance, title = "Saldo Cuti Saya" }: { balan
           )}
         </div>
         <p className="text-3xl font-bold tabular-nums">
-          {balance.remaining}
+          <RemainingValue remaining={balance.remaining} />
           <span className="ml-1 text-base font-medium text-muted-foreground">/ {total} hari</span>
         </p>
       </div>
+      {balance.remaining < 0 && (
+        <div className="mt-3">
+          <OverdraftNote remaining={balance.remaining} />
+        </div>
+      )}
       <ProgressBar
         className="mt-4"
         value={usedPercent}
         tone={balance.remaining <= 0 ? "danger" : "info"}
         label="Cuti terpakai"
-        valueText={`${balance.used + balance.pending} dari ${total} hari terpakai atau menunggu approval, sisa ${balance.remaining} hari`}
+        valueText={`${balance.used + balance.pending} dari ${total} hari terpakai atau menunggu approval, ${balance.remaining < 0 ? `saldo minus ${-balance.remaining}` : `sisa ${balance.remaining}`} hari`}
       />
       <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
         {[

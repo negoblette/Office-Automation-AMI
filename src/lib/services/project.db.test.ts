@@ -2,10 +2,10 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { Actor } from "@/lib/services/access";
 import { approveRequest } from "@/lib/services/approval";
 import { saveHealthCategory, saveReimburseType, typeCodeFromName } from "@/lib/services/master-data";
-import { canAddCustomerProject, deleteCustomer, projectTotals, saveCustomer, saveProject, submitProjectExpense, submitProjectRevenue } from "@/lib/services/project";
+import { canAddCustomerProject, deleteCustomer, projectTotals, saveCustomer, saveProject, submitProjectExpense } from "@/lib/services/project";
 import { getProjectDetail, nextProjectCode, projectYears } from "@/lib/services/project-queries";
 import { saveReimbursementDraft, submitReimbursement } from "@/lib/services/reimbursement";
-import { projectExpenseSchema, projectRevenueSchema, projectSchema, reimburseTypeSchema } from "@/lib/validators/project";
+import { projectExpenseSchema, projectSchema, reimburseTypeSchema } from "@/lib/validators/project";
 import { reimbursementSchema } from "@/lib/validators/reimbursement";
 import { testDb } from "@/test/db";
 import { resetAndSeed } from "@/test/seed";
@@ -29,7 +29,7 @@ async function newProject(name = "Core Network") {
   const customer = await saveCustomer(testDb, u.yosep, null, "PT Bank Mandiri");
   return saveProject(testDb, u.yosep, null, projectSchema.parse({ customerId: customer.id, code: `PRJ-${name.slice(0, 4)}`, name, type: "RUNNING", isActive: true }));
 }
-const approveAll = async (entityId: string, module: "EXPENSE" | "REVENUE" | "REIMBURSE") => {
+const approveAll = async (entityId: string, module: "EXPENSE" | "REIMBURSE") => {
   const request = await testDb.approvalRequest.findUniqueOrThrow({ where: { module_entityId: { module, entityId } } });
   for (const step of await testDb.approvalRequestStep.findMany({ where: { requestId: request.id }, orderBy: { level: "asc" } })) {
     if (step.status === "SKIPPED") continue;
@@ -89,8 +89,8 @@ describe("2026-10-12: tambah customer & project hanya Sales + Admin; cutoff per 
   });
 });
 
-describe("expense & revenue (PRJ-02..04)", () => {
-  it("hanya Admin; nomor EXP/REV; lewat approval (Bu Ika → Ko Leonard); status APPROVED setelah final", async () => {
+describe("expense (PRJ-02, PRJ-03)", () => {
+  it("hanya Admin; nomor EXP; lewat approval (Bu Ika → Ko Leonard); status APPROVED setelah final", async () => {
     const project = await newProject();
     const expenseInput = projectExpenseSchema.parse({ date: "2026-09-10", description: "Tiket pesawat onsite", paymentMethod: "CORPORATE", amount: "3.000.000" });
     await expect(submitProjectExpense(testDb, actors.andi, project.id, expenseInput)).rejects.toThrow("Hanya Admin");
@@ -99,14 +99,11 @@ describe("expense & revenue (PRJ-02..04)", () => {
 
     const expense = await submitProjectExpense(testDb, actors.ika, project.id, expenseInput);
     expect(expense.number).toMatch(/^EXP\/\d{4}\/\d{2}\/0001$/);
-    const revenue = await submitProjectRevenue(testDb, actors.ika, project.id, projectRevenueSchema.parse({ date: "2026-09-15", description: "Termin 1", amount: 50_000_000 }));
-    expect(revenue.number).toMatch(/^REV\//);
 
-    expect(await projectTotals(testDb, project.id)).toMatchObject({ expense: 0, revenue: 0, pendingExpense: 3_000_000, pendingRevenue: 50_000_000 });
+    expect(await projectTotals(testDb, project.id)).toMatchObject({ expense: 0, pendingExpense: 3_000_000 });
     await approveAll(expense.id, "EXPENSE");
-    await approveAll(revenue.id, "REVENUE");
     expect((await testDb.projectExpense.findUniqueOrThrow({ where: { id: expense.id } })).status).toBe("APPROVED");
-    expect(await projectTotals(testDb, project.id)).toMatchObject({ directExpense: 3_000_000, revenue: 50_000_000, margin: 47_000_000 });
+    expect(await projectTotals(testDb, project.id)).toMatchObject({ directExpense: 3_000_000, expense: 3_000_000, pendingExpense: 0 });
   });
 
   it("PRJ-03: baris reimburse APPROVED yang memilih project ikut total expense (yang PENDING belum)", async () => {

@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { toJakartaIsoDate } from "@/lib/format";
 import type { Actor } from "@/lib/services/access";
@@ -34,7 +33,7 @@ const claim = (key: string, amount: number, claimDate = `${YEAR}-09-10`) =>
   submitHealthClaim(
     testDb,
     actors[key],
-    healthClaimSchema.parse({ categoryId, claimDate, amount, invoiceFileKey: `${randomUUID()}.pdf`, invoiceFileName: "invoice.pdf", note: "" }),
+    healthClaimSchema.parse({ categoryId, claimDate, amount, note: "" }),
   );
 const requestOf = (claimId: string) =>
   testDb.approvalRequest.findUniqueOrThrow({ where: { module_entityId: { module: "HEALTH", entityId: claimId } } });

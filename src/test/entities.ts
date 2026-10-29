@@ -43,15 +43,12 @@ export async function createApprovalEntity(module: ApprovalModule, requesterUser
           categoryId: category.id,
           claimDate: new Date(),
           amount: 100_000n,
-          invoiceFileKey: `${randomUUID()}.pdf`,
-          invoiceFileName: "invoice.pdf",
           status: "PENDING",
         },
       });
       return claim.id;
     }
-    case "EXPENSE":
-    case "REVENUE": {
+    case "EXPENSE": {
       const customer = await testDb.customer.upsert({ where: { name: "UJI Customer" }, create: { name: "UJI Customer" }, update: {} });
       const project = await testDb.project.upsert({
         where: { customerId_name: { customerId: customer.id, name: "UJI Project" } },
@@ -59,21 +56,13 @@ export async function createApprovalEntity(module: ApprovalModule, requesterUser
         update: {},
       });
       const data = { number: `UJI-${randomUUID()}`, projectId: project.id, date: new Date(), description: "uji", amount: 100_000n, status: "PENDING" as const, createdById: requesterUserId };
-      return module === "EXPENSE"
-        ? (await testDb.projectExpense.create({ data: { ...data, paymentMethod: "PERSONAL" } })).id
-        : (await testDb.projectRevenue.create({ data })).id;
+      return (await testDb.projectExpense.create({ data: { ...data, paymentMethod: "PERSONAL" } })).id;
     }
     case "CERTIFICATE": {
       const certificate = await testDb.certificate.create({
         data: { employeeId: user.employeeId!, type: "PROFESSIONAL", name: "Sertifikat Uji", startDate: new Date(), endDate: new Date(Date.now() + 365 * 86_400_000) },
       });
       return certificate.id;
-    }
-    case "PROFILE_CHANGE": {
-      const change = await testDb.profileChangeRequest.create({
-        data: { number: `UJI-${randomUUID()}`, employeeId: user.employeeId!, kind: "CERTIFICATE_DELETE", targetId: null, payload: {}, summary: ["uji"], requestedById: requesterUserId },
-      });
-      return change.id;
     }
     case "ATTENDANCE_APPEAL": {
       const appeal = await testDb.attendanceAppeal.create({

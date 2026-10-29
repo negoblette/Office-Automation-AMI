@@ -21,4 +21,3 @@ export const addDocumentSchema = z.object({
   /** Masa berlaku dokumen (opsional, 2026-10-12). */
   validUntil: optionalField(isoDateSchema),
 });
-export type AddDocumentInput = z.infer<typeof addDocumentSchema>;

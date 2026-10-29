@@ -149,14 +149,10 @@ export async function getProjectDetail(db: PrismaClient, projectId: string, view
 
   let expenses: ProjectEntryRow[] = [];
   let expenseCreator = new Map<string, string | null>();
-  let revenues: ProjectEntryRow[] = [];
   if (isAdmin) {
-    const [expenseRows, revenueRows] = await Promise.all([
-      db.projectExpense.findMany({ where: { projectId, date: year ? yearRange(year) : undefined }, orderBy: { date: "desc" } }),
-      db.projectRevenue.findMany({ where: { projectId, date: year ? yearRange(year) : undefined }, orderBy: { date: "desc" } }),
-    ]);
+    const expenseRows = await db.projectExpense.findMany({ where: { projectId, date: year ? yearRange(year) : undefined }, orderBy: { date: "desc" } });
     const approvals = await db.approvalRequest.findMany({
-      where: { module: { in: ["EXPENSE", "REVENUE"] }, entityId: { in: [...expenseRows, ...revenueRows].map((e) => e.id) } },
+      where: { module: "EXPENSE", entityId: { in: expenseRows.map((e) => e.id) } },
       select: { entityId: true, currentLevel: true },
     });
     const levelOf = new Map(approvals.map((a) => [a.entityId, a.currentLevel]));
@@ -186,7 +182,6 @@ export async function getProjectDetail(db: PrismaClient, projectId: string, view
     });
     const creatorOf = new Map(creators.map((c) => [c.id, c.employee?.fullName ?? c.email]));
     expenseCreator = new Map(expenseRows.map((e) => [e.id, creatorOf.get(e.createdById) ?? null]));
-    revenues = revenueRows.map(toRow);
   }
 
   const rejectedReimburse = await rejectionsOf(db, "REIMBURSE", [...new Set(reimburseItems.filter((i) => i.reimbursement.status === "REJECTED").map((i) => i.reimbursement.id))]);
@@ -218,12 +213,10 @@ export async function getProjectDetail(db: PrismaClient, projectId: string, view
     customerName: project.customer.name,
     totals: await projectTotals(db, projectId, year),
     expenses,
-    revenues,
     reimburse,
     costs,
   };
 }
-export type ProjectDetail = NonNullable<Awaited<ReturnType<typeof getProjectDetail>>>;
 
 export async function listMasterData(db: PrismaClient) {
   const [types, categories] = await Promise.all([
@@ -235,7 +228,6 @@ export async function listMasterData(db: PrismaClient) {
     categories: categories.map((c) => ({ id: c.id, name: c.name, isActive: c.isActive, usage: c._count.claims })),
   };
 }
-export type MasterData = Awaited<ReturnType<typeof listMasterData>>;
 
 /** Saran ID project berikutnya (PRJ-0001, PRJ-0002, …) dari ID berpola PRJ-<angka> terbesar. */
 export async function nextProjectCode(db: PrismaClient) {

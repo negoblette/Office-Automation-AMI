@@ -9,7 +9,7 @@ Panduan kerja untuk Claude Code di repository ini. Baca file ini dulu di setiap 
 Aplikasi web internal PT Artha Mitra Interdata untuk mengelola data karyawan dan
 administrasi kantor: master karyawan (termasuk arsip resign), dokumen, sertifikat,
 inventory/demo unit, reimbursement, cuti, klaim kesehatan, kandidat, serta
-expense/revenue project. Semua pengajuan melewati approval berjenjang dengan
+expense project. Semua pengajuan melewati approval berjenjang dengan
 notifikasi email.
 
 Dokumen acuan (WAJIB dirujuk sebelum membuat fitur):
@@ -103,18 +103,24 @@ docs/
   hanya lewat `/api/files/[key]` yang mengecek hak akses. Upload lewat
   `saveUpload()` di `lib/storage` (validasi magic bytes + simpan). Satu request =
   satu file (batas body Server Action 6 MB di `next.config.ts`); form dengan banyak
-  lampiran (mis. kwitansi per baris reimburse) meng-upload file satu per satu.
+  lampiran (mis. dokumen & surat sakit) meng-upload file satu per satu.
   Hardening Tahap 7 (2026-10-21): upload dicatat `UploadedFile` (kuota 30 file/jam, 200 MB/hari); file hanya bisa
   ditautkan pengunggahnya — kolom file baru WAJIB lewat `assertFileKeyAvailable(tx, key, actorId)` dan didaftarkan di
   `services/upload.ts#referencedKeys` (kalau tidak, job `storage.orphan-purge` menghapusnya). PDF ber-JavaScript ditolak.
 - Email **tidak pernah dikirim langsung** dari request — selalu enqueue ke pg-boss.
-- Modul pengajuan (Reimburse, Cuti, Kesehatan, Expense/Revenue): di dalam `$transaction`
+- Modul pengajuan (Reimburse, Cuti, Kesehatan, Expense, Sertifikat, Appeal absensi): di dalam `$transaction`
   submit panggil `nextDocumentNumber(tx, prefix)` + `buildApproval(tx, …)`; SETELAH commit
   panggil `enqueueApprovalNotifications(prisma, result.notifications)`. Efek saat APPROVED
   final didaftarkan di `services/approval-effects.ts` (map eksplisit per modul). Saat menambah
   efek modul baru, tambahkan juga pembuat entitasnya di `src/test/entities.ts` (dipakai test
   approval & email), kalau tidak test engine gagal karena entitas tidak ada.
-- Seed ada di `prisma/seed-lib.ts` (dipakai juga test lewat `src/test/seed.ts#resetAndSeed`).
+- Seed ada di `prisma/seed-lib.ts`. `seedAll` = data CONTOH untuk dev & test (`src/test/seed.ts#resetAndSeed`): divisi,
+  8 orang `@artha-mitra.local`, master data, alur approval. Produksi (`SEED_MODE=production` di compose prod, 2026-10-29)
+  memakai `seedProduction`: hanya 1 akun Admin sistem tanpa data karyawan (`SEED_ADMIN_EMAIL`) + aturan jatah cuti;
+  master data, karyawan, dan alur approval diisi Admin dengan data aktual (docs/07-DEPLOYMENT.md §6.4). 6 divisi bawaan &
+  kategori "Obat-obatan" berasal dari migrasi (bukan seed); divisi `DIRECTOR` wajib ada (logika cuti Direktur).
+- File yang dijalankan di container Linux (`*.sh`, `deploy/**`) wajib LF (`.gitattributes`). Skrip edit Python di Windows
+  menulis CRLF — tulis dengan `newline=""` atau cek `tr -cd '\r' < file | wc -c`.
 
 ## 6. Validasi Format Input (EMP-02)
 
@@ -141,7 +147,7 @@ Divisi = master `Division` (kode: UMUM, ENGINEER, SALES, DIRECTOR, HR, FINANCE; 
 divisi acuannya (`followsCode`, HR & Finance → Umum). Label divisi: server `divisionLabels(db)`, client `useDivisions()`.
 Hak approve ditentukan oleh **Approval Flow**, bukan oleh role saja.
 
-**Approval (dipakai Reimburse, Cuti, Kesehatan, Expense/Revenue):**
+**Approval (dipakai Reimburse, Cuti, Kesehatan, Expense, Sertifikat, Appeal absensi):**
 1. Ambil flow REGULAR sesuai `module` + `division` pemohon (division null = semua).
 2. Flow tanpa level → langsung APPROVED (mis. cuti divisi Direktur).
 3. Pemohon dikeluarkan dari level yang memuat dirinya (Darwin → Leonard, Ika → Leonard); level tanpa approver lain → SKIPPED.
@@ -150,13 +156,13 @@ Hak approve ditentukan oleh **Approval Flow**, bukan oleh role saja.
 6. Step terakhir yang disetujui = APPROVED (final).
 (`skipApproval` per karyawan sudah dihapus di v1.14.)
 
-Flow awal (seed, matriks v1.14):
+Flow awal (seed dev/test, matriks v1.14; produksi diisi Admin di Setting → Approval):
 | Module | Divisi | L1 | L2 | Catatan |
 |---|---|---|---|---|
-| REIMBURSE, EXPENSE, REVENUE | SALES | Ko Darwin / Ko Leonard | — | satu level, salah satu cukup |
-| REIMBURSE, EXPENSE, REVENUE | ENGINEER | Ko Yosep | Ko Rudy | |
-| REIMBURSE, EXPENSE, REVENUE | UMUM | Bu Ika / Ko Leonard | — | milik Bu Ika → Ko Leonard |
-| REIMBURSE, EXPENSE, REVENUE | DIRECTOR | Bu Ika | — | |
+| REIMBURSE, EXPENSE | SALES | Ko Darwin / Ko Leonard | — | satu level, salah satu cukup |
+| REIMBURSE, EXPENSE | ENGINEER | Ko Yosep | Ko Rudy | |
+| REIMBURSE, EXPENSE | UMUM | Bu Ika / Ko Leonard | — | milik Bu Ika → Ko Leonard |
+| REIMBURSE, EXPENSE | DIRECTOR | Bu Ika | — | |
 | LEAVE (cuti) | semua | Ko Rudy | — | |
 | LEAVE (cuti) | DIRECTOR | — | — | tanpa approval, tampil "Direktur cuti" di kalender |
 | HEALTH | semua | Bu Ika | — | milik Bu Ika → Fallback |
@@ -175,6 +181,8 @@ masuk Des → 0, baru dapat Januari berikutnya). Tahun-tahun berikutnya jatah me
 (`AppSetting leave.maxCarryOver`), berlaku sepanjang tahun berikutnya lalu hangus. Hari cuti = hari kerja
 (tanpa Sabtu, Minggu, `Holiday`). Penyesuaian saldo (Fase 14): `LeaveAdjustment` + `LeaveBalance.adjustment`
 (pemutihan Admin ±, potong cuti tidak hadir −1); saldo boleh minus dan minusnya terbawa ke tahun berikutnya.
+Saldo minus tampil merah "−N" + keterangan di kartu saldo (2026-10-28). Admin bisa **edit sisa cuti** di Cuti → Saldo:
+"Atur sisa cuti menjadi X" (`mode: SET`, selisihnya jadi satu `LeaveAdjustment` MANUAL, `services/leave-adjust.ts`) atau tambah/kurangi.
 Kalender cuti bulanan (`LeaveCalendar`) tampil di dashboard & `/cuti/kalender`; semua karyawan melihat cuti semua karyawan.
 
 **Kesehatan:** plafon **hanya tahunan** per karyawan per tahun (tidak ada plafon bulanan). Klaim >
@@ -198,25 +206,22 @@ sudah final, `REVERT_EFFECTS` (approval-effects.ts) membalik efek modul. Tercata
 email `approval-rejected` ke pemohon. Pemohon merevisi lalu mengajukan ulang lewat service modul (`reviseId` / status
 REJECTED) yang memanggil `restartApproval` (approval lama dihapus, mulai lagi dari L1, nomor dokumen tetap).
 
-**Invoice/kwitansi:** upload dihapus (Fase 14). File lama hanya disimpan 2 tahun: job `invoice.purge`
-(harian 02:00 WIB) menghapus file & referensinya, data nominal tetap — pengecualian dari aturan soft delete.
+**Invoice/kwitansi:** tidak ada upload (Fase 14); reimburse hanya mencatat ada/tidaknya kwitansi (`hasReceipt`). Kolom
+file invoice/kwitansi & job `invoice.purge` dihapus 2026-10-29.
 
 **Sertifikat:** setiap sertifikat **profesional** baru diverifikasi (ijazah langsung tersimpan, 2026-10-16) lewat approval engine (modul CERTIFICATE, `CRT/…`, flow
 Ci Ika sejak 2026-10-12); terverifikasi → hanya Admin yang bisa mengubah. Profesional: Level 1–3, masa berlaku wajib kecuali dicentang "Permanent" (`endDate` null). Ijazah: Gelar, Lembaga,
 Jenjang (`EducationLevel`), `graduationDate` (tanpa tanggal mulai; `startDate` = tanggal lulus), tanpa masa berlaku (2026-10-12). Upload file **hanya PDF**.
 
-**Perubahan data milik sendiri** (2026-10-12; **tidak dipakai lagi sejak 2026-10-16** — data diri, keluarga, dokumen, ijazah
-langsung tersimpan; approval hanya untuk upload sertifikat profesional. Kode & tabel dibiarkan untuk permintaan lama): data diri, keluarga, dokumen, dan hapus sertifikat terverifikasi oleh
-karyawan atas datanya sendiri (siapa pun role-nya) → `requestProfileChange` (tabel `ProfileChangeRequest`, modul
-`PROFILE_CHANGE`, `PRF/…`, Ci Ika; milik Ci Ika → Fallback); diterapkan saat disetujui (`applyApprovedProfileChange`
-memanggil fungsi `*InTx` yang sama). Validasi saat mengajukan = dry-run transaksi. Admin ke karyawan lain → langsung.
+**Data milik sendiri** (data diri, keluarga, dokumen, ijazah) langsung tersimpan; approval hanya untuk sertifikat
+profesional. Fitur "permintaan perubahan data" lewat approval (`ProfileChangeRequest`, modul `PROFILE_CHANGE`) dihapus
+total 2026-10-29.
 
 **Profil (Fase 14):** NIP (`employeeNo`) hanya diisi Admin; kontak darurat diisi karyawan; aset sederhana per
 karyawan (`EmployeeAsset`, dicatat Admin); biodata cetak di `/biodata/[employeeId]` (print browser → PDF).
 
-**Revenue project tidak dipakai (2026-10-05):** tampilan, tombol "Input Revenue", kolom Revenue/Selisih, dan
-pilihan modul REVENUE di Setting Approval dihapus. Model `ProjectRevenue`, service, dan modul approval REVENUE
-sengaja dibiarkan (data lama / approval yang masih berjalan) — jangan tambah fitur revenue baru.
+**Revenue project:** dihapus total 2026-10-29 (tidak dipakai sejak 2026-10-05) — model, service, modul approval
+REVENUE. Project hanya mencatat biaya (reimburse + expense).
 
 **Reimburse (Fase 14):** Form = beberapa **kunjungan** (tanggal + company + project), masing-masing berisi
 beberapa **baris** (tipe, payment, total, lokasi, nama – jabatan, aktivitas) — `reimbursementFormSchema`
@@ -248,7 +253,8 @@ dari email+IP yang sama, 20 gagal ke satu email, atau 20 gagal dari satu IP (`lo
 karakter (`lib/password-policy.ts`); akun baru & hasil reset Admin wajib ganti password (`/ganti-password`). Sesi: idle
 1 jam, absolut 12 jam; ganti/reset password mencabut semua sesi (`User.sessionVersion`). **MFA (hardening Tahap 5,
 2026-10-20):** Admin & Approver wajib kode TOTP authenticator (`services/mfa.ts`, halaman `/mfa`, kode cadangan sekali
-pakai, reset MFA oleh Admin lain di Setting → User); email `security-notice` saat password/MFA berubah. Detail: Tech Spec §9.
+pakai, reset MFA oleh Admin lain di Setting → User); email `security-notice` saat password/MFA berubah. Detail: Tech Spec §9. Kode verifikasi = 6 kotak
+(`components/form/otp-input.tsx`), langsung dikirim saat lengkap; kode cadangan lewat tombol "Pakai kode cadangan".
 **Audit & alarm (hardening Tahap 6, 2026-10-21):** AuditLog **permanen** (trigger menolak UPDATE/DELETE — jangan menulis
 kode yang mengubah/menghapus baris audit; buka blokir login = entri `LOGIN_UNLOCK`). Aksi penting menyertakan `meta`
 (`requestMeta`) untuk IP & perangkat; unduhan/export lewat `recordDataAccess`. Alarm ke Admin (`security-monitor.ts` +

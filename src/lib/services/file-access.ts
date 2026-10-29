@@ -1,6 +1,7 @@
 // Hak akses unduh file (Tech Spec §8, URD NF-04).
-// File tersimpan sebagai key di 4 tempat: Document, Certificate, ReimbursementItem (kwitansi),
-// HealthClaim (invoice). Pemilik file = karyawan pemilik data tersebut.
+// File tersimpan sebagai key di Document, Certificate, dan AttendanceAppeal (surat sakit);
+// dokumen kandidat juga di Document.
+// Pemilik file = karyawan pemilik data tersebut.
 import type { PrismaClient, Role } from "@/generated/prisma/client";
 import { type FileExtension, MIME_TYPES } from "@/lib/storage/validate";
 
@@ -9,8 +10,6 @@ export type FileOwner = {
   employeeId: string | null;
   /** User yang tercantum sebagai approver pengajuan terkait file ini (mis. verifikator sertifikat). */
   approverIds?: string[];
-  /** File milik permintaan perubahan data yang belum diterapkan (2026-10-12). */
-  pendingChange?: boolean;
   fileName: string;
   mimeType: string;
 };
@@ -34,7 +33,7 @@ function mimeOf(key: string): string {
 }
 
 /** Cukup `prisma` atau `tx` dari `$transaction`. */
-export type FileAccessDb = Pick<PrismaClient, "document" | "certificate" | "reimbursementItem" | "healthClaim" | "approvalRequest" | "profileChangeRequest" | "attendanceAppeal">;
+export type FileAccessDb = Pick<PrismaClient, "document" | "certificate" | "approvalRequest" | "attendanceAppeal">;
 
 export function prismaFileAccessRepository(db: FileAccessDb): FileAccessRepository {
   return {
@@ -68,22 +67,6 @@ export function prismaFileAccessRepository(db: FileAccessDb): FileAccessReposito
         };
       }
 
-      // Dokumen yang masih menunggu persetujuan perubahan (2026-10-12): pemilik & approver-nya.
-      const change = await db.profileChangeRequest.findFirst({ where: { fileKey: key }, select: { id: true, employeeId: true, fileName: true } });
-      if (change) {
-        const request = await db.approvalRequest.findUnique({
-          where: { module_entityId: { module: "PROFILE_CHANGE", entityId: change.id } },
-          select: { steps: { select: { approverIds: true } } },
-        });
-        return {
-          employeeId: change.employeeId,
-          fileName: change.fileName ?? key,
-          mimeType: mimeOf(key),
-          approverIds: request?.steps.flatMap((s) => s.approverIds) ?? [],
-          pendingChange: true,
-        };
-      }
-
       // Bukti surat sakit appeal absensi (2026-10-14): pemilik & approver appeal.
       const appeal = await db.attendanceAppeal.findFirst({ where: { fileKey: key }, select: { id: true, employeeId: true, fileName: true } });
       if (appeal) {
@@ -92,26 +75,6 @@ export function prismaFileAccessRepository(db: FileAccessDb): FileAccessReposito
           select: { steps: { select: { approverIds: true } } },
         });
         return { employeeId: appeal.employeeId, fileName: appeal.fileName ?? key, mimeType: mimeOf(key), approverIds: request?.steps.flatMap((s) => s.approverIds) ?? [] };
-      }
-
-      const receipt = await db.reimbursementItem.findFirst({
-        where: { receiptFileKey: key, reimbursement: { deletedAt: null } },
-        select: { receiptFileName: true, reimbursement: { select: { employeeId: true } } },
-      });
-      if (receipt) {
-        return {
-          employeeId: receipt.reimbursement.employeeId,
-          fileName: receipt.receiptFileName ?? key,
-          mimeType: mimeOf(key),
-        };
-      }
-
-      const invoice = await db.healthClaim.findFirst({
-        where: { invoiceFileKey: key },
-        select: { employeeId: true, invoiceFileName: true },
-      });
-      if (invoice) {
-        return { employeeId: invoice.employeeId, fileName: invoice.invoiceFileName ?? "invoice", mimeType: mimeOf(key) };
       }
 
       return null;

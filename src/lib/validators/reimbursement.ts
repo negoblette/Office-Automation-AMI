@@ -24,7 +24,6 @@ export const reimbursementItemSchema = z.object({
   paymentMethod: z.enum(PaymentMethod, { error: "Pembayaran wajib dipilih" }),
   amount: amountSchema,
 });
-export type ReimbursementItemInput = z.infer<typeof reimbursementItemSchema>;
 
 export const reimbursementSchema = z.object({
   note: optionalField(textSchema("Catatan", { max: 500 })),

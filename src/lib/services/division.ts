@@ -10,8 +10,6 @@ type Db = PrismaClient | Prisma.TransactionClient;
 
 /** Divisi Direktur (cuti tanpa approval, tampil "Direktur cuti" di kalender). */
 export const DIRECTOR_DIVISION = "DIRECTOR";
-/** Acuan alur approval default untuk divisi baru. */
-export const DEFAULT_FOLLOWS_DIVISION = "UMUM";
 
 export async function listDivisions(db: Db, options: { includeInactive?: boolean } = {}) {
   return db.division.findMany({

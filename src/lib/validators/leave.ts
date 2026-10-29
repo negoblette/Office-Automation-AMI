@@ -76,12 +76,21 @@ export const leavePolicySettingSchema = z
 export type LeavePolicySettingInput = z.infer<typeof leavePolicySettingSchema>;
 
 /** Pemutihan / penyesuaian saldo cuti oleh Admin (Fase 14): ± hari, alasan wajib. */
-export const leaveAdjustmentSchema = z.object({
-  days: z.coerce
-    .number({ error: "Jumlah hari wajib diisi" })
-    .int({ error: "Harus bilangan bulat" })
-    .refine((v) => v !== 0, { error: "Tidak boleh 0" })
-    .refine((v) => Math.abs(v) <= 30, { error: "Maksimal 30 hari per penyesuaian" }),
-  reason: textSchema("Alasan", { min: 3, max: 300 }),
-});
+/**
+ * Penyesuaian saldo cuti oleh Admin. `SET` (2026-10-28) = atur sisa cuti menjadi `days` (boleh minus; selisihnya dicatat
+ * sebagai penyesuaian); `DELTA` = tambah (+) / kurangi (−) `days` hari.
+ */
+export const LEAVE_ADJUST_MODES = { SET: "Atur sisa cuti menjadi", DELTA: "Tambah / kurangi" } as const;
+export const leaveAdjustmentSchema = z
+  .object({
+    mode: z.enum(["SET", "DELTA"]).default("DELTA"),
+    days: z.coerce.number({ error: "Jumlah hari wajib diisi" }).int({ error: "Harus bilangan bulat" }),
+    reason: textSchema("Alasan", { min: 3, max: 300 }),
+  })
+  .superRefine((v, ctx) => {
+    const issue = (message: string) => ctx.addIssue({ code: "custom", path: ["days"], message });
+    if (v.mode === "DELTA" && v.days === 0) issue("Tidak boleh 0");
+    if (v.mode === "DELTA" && Math.abs(v.days) > 30) issue("Maksimal 30 hari per penyesuaian");
+    if (v.mode === "SET" && Math.abs(v.days) > 60) issue("Sisa cuti antara −60 dan 60 hari");
+  });
 export type LeaveAdjustmentFormInput = z.infer<typeof leaveAdjustmentSchema>;

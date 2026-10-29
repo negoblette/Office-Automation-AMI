@@ -9,8 +9,7 @@ import { enqueueApprovalNotifications } from "@/lib/mail/approval-emails";
 import { ServiceError } from "@/lib/services/errors";
 import { addHolidays, deleteHoliday, submitLeaveRequest } from "@/lib/services/leave";
 import { holidayImportSchema, holidaySchema, leaveAdjustmentSchema, leaveRequestSchema, parseHolidayLines } from "@/lib/validators/leave";
-import { addLeaveAdjustment } from "@/lib/services/leave-balance";
-import { toJakartaIsoDate } from "@/lib/format";
+import { adjustLeaveBalance } from "@/lib/services/leave-adjust";
 
 function revalidateLeave() {
   revalidatePath("/cuti", "layout");
@@ -75,17 +74,7 @@ export async function deleteHolidayAction(holidayId: string): Promise<ActionResu
 export async function adjustLeaveBalanceAction(employeeId: string, values: unknown): Promise<ActionResult> {
   const admin = await requireAdmin();
   try {
-    const input = leaveAdjustmentSchema.parse(values);
-    await prisma.$transaction((tx) =>
-      addLeaveAdjustment(tx, {
-        employeeId: z.string().min(1).parse(employeeId),
-        refIso: toJakartaIsoDate(),
-        days: input.days,
-        reason: input.reason,
-        source: "MANUAL",
-        createdById: admin.id,
-      }),
-    );
+    await adjustLeaveBalance(prisma, admin.id, z.string().min(1).parse(employeeId), leaveAdjustmentSchema.parse(values));
     revalidateLeave();
     revalidatePath("/dashboard");
     return { ok: true, data: undefined };

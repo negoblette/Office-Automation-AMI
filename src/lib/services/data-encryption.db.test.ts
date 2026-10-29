@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import { decryptText, encryptedKeyId, isEncryptedValue, nikIndex } from "@/lib/crypto/field-encryption";
 import { isEncryptedFile } from "@/lib/crypto/file-encryption";
 import { encryptPersonalData } from "@/lib/services/data-encryption";
-import { openCandidate, openEmployee, openFamilyMember, openJson, openLines } from "@/lib/services/personal-data";
+import { openCandidate, openEmployee, openFamilyMember } from "@/lib/services/personal-data";
 import { LocalStorage } from "@/lib/storage/local";
 import { createTestEmployee, resetDb, testDb } from "@/test/db";
 
@@ -37,17 +37,7 @@ async function legacyData() {
   const candidate = await testDb.candidate.create({
     data: { fullName: "Rian", email: "rian@test.local", nik: "3171017001990005", phone: "+6281211112222", appliedPosition: "Engineer" },
   });
-  const change = await testDb.profileChangeRequest.create({
-    data: {
-      number: "PRF/2026/10/0001",
-      employeeId: andi.employeeId,
-      kind: "SELF_DATA",
-      payload: { nik: "3171012345678999" },
-      summary: ["NIK: 3171012345678901 → 3171012345678999"],
-      requestedById: andi.userId,
-    },
-  });
-  return { andi, member, candidate, change };
+  return { andi, member, candidate };
 }
 
 describe("encryptPersonalData (npm run data:encrypt)", () => {
@@ -61,13 +51,12 @@ describe("encryptPersonalData (npm run data:encrypt)", () => {
       { table: "Employee", rows: 1, changedRows: 1, changedValues: 5 }, // 4 kolom + nikHash
       { table: "FamilyMember", rows: 1, changedRows: 1, changedValues: 2 },
       { table: "Candidate", rows: 1, changedRows: 1, changedValues: 2 },
-      { table: "ProfileChangeRequest", rows: 1, changedRows: 1, changedValues: 2 },
     ]);
     expect(await testDb.employee.findUniqueOrThrow({ where: { id: andi.employeeId } })).toMatchObject({ nik: "3171012345678901", nikHash: null });
   });
 
   it("data lama dikunci, nikHash diisi, isi & updatedAt tetap; aman dijalankan ulang", async () => {
-    const { andi, member, candidate, change } = await legacyData();
+    const { andi, member, candidate } = await legacyData();
     const before = await testDb.employee.findUniqueOrThrow({ where: { id: andi.employeeId } });
 
     await encryptPersonalData(testDb);
@@ -86,13 +75,8 @@ describe("encryptPersonalData (npm run data:encrypt)", () => {
     expect(isEncryptedValue(rawCandidate.phone!)).toBe(true);
     expect(openCandidate(rawCandidate)).toMatchObject({ nik: "3171017001990005", phone: "+6281211112222" });
 
-    const rawChange = await testDb.profileChangeRequest.findUniqueOrThrow({ where: { id: change.id } });
-    expect(JSON.stringify([rawChange.payload, rawChange.summary])).not.toContain("3171012345678");
-    expect(openJson(rawChange.payload)).toEqual({ nik: "3171012345678999" });
-    expect(openLines(rawChange.summary)).toEqual(["NIK: 3171012345678901 → 3171012345678999"]);
-
     const again = await encryptPersonalData(testDb);
-    expect(again.tables.map((table) => table.changedRows)).toEqual([0, 0, 0, 0]);
+    expect(again.tables.map((table) => table.changedRows)).toEqual([0, 0, 0]);
   });
 
   it("rotasi: kunci baru di depan → semua nilai dikunci ulang dengan kunci baru, isinya tetap", async () => {

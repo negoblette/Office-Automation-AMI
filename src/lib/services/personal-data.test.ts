@@ -7,14 +7,10 @@ import {
   openCandidate,
   openEmployee,
   openFamilyMember,
-  openJson,
-  openLines,
   protectAuditValue,
   sealCandidateData,
   sealEmployeeData,
   sealFamilyData,
-  sealJson,
-  sealLines,
 } from "@/lib/services/personal-data";
 
 const SELF = {
@@ -72,24 +68,6 @@ describe("keluarga & kandidat", () => {
   });
 });
 
-describe("payload & ringkasan permintaan perubahan", () => {
-  it("payload Json disimpan sebagai satu string terenkripsi; payload lama (objek) dibaca apa adanya", () => {
-    const payload = { nik: "3171012345678901", address: "Jl. Melati 1" };
-    const sealed = sealJson(payload);
-    expect(isEncryptedValue(sealed)).toBe(true);
-    expect(openJson(sealed)).toEqual(payload);
-    expect(openJson(payload)).toEqual(payload);
-  });
-
-  it("ringkasan per baris terenkripsi; ringkasan lama dibaca apa adanya", () => {
-    const lines = ["NIK: — → 3171012345678901", "Alamat: — → Jl. Melati 1"];
-    const sealed = sealLines(lines);
-    expect(sealed.every(isEncryptedValue)).toBe(true);
-    expect(openLines(sealed)).toEqual(lines);
-    expect(openLines(lines)).toEqual(lines);
-  });
-});
-
 describe("compareFamilyMembers", () => {
   it("sama dengan ORDER BY lama: hubungan desc (anak dulu), tanggal lahir asc (kosong di akhir), lalu waktu input", () => {
     const at = (second: number) => new Date(Date.UTC(2026, 9, 1, 0, 0, second));
@@ -131,16 +109,4 @@ describe("protectAuditValue", () => {
     expect(protectAuditValue("Reimbursement", value)).toBe(value);
   });
 
-  it("permintaan perubahan: payload & ringkasan dikunci", () => {
-    const result = protectAuditValue("ProfileChangeRequest", {
-      number: "PRF/2026/10/0001",
-      payload: { nik: "3171012345678901" },
-      summary: ["NIK: — → 3171012345678901"],
-    }) as { number: string; payload: string; summary: string[] };
-
-    expect(result.number).toBe("PRF/2026/10/0001");
-    expect(openJson(result.payload)).toEqual({ nik: "3171012345678901" });
-    expect(openLines(result.summary)).toEqual(["NIK: — → 3171012345678901"]);
-    expect(JSON.stringify(result)).not.toContain("3171012345678901");
-  });
 });

@@ -42,7 +42,7 @@ export async function assertUploadedBy(db: UploadDb, fileKey: string, userId: st
   if (!upload || upload.uploaderId !== userId) throw new ServiceError("File tidak valid atau bukan upload Anda, silakan upload ulang", "fileKey");
 }
 
-type OrphanDb = Pick<PrismaClient, "document" | "certificate" | "reimbursementItem" | "healthClaim" | "attendanceAppeal" | "profileChangeRequest" | "auditLog">;
+type OrphanDb = Pick<PrismaClient, "document" | "certificate" | "attendanceAppeal" | "auditLog">;
 
 /**
  * Key yang dipakai data apa pun — TERMASUK data yang sudah di-soft-delete (file-nya sengaja disimpan, NFR v1.14).
@@ -50,22 +50,16 @@ type OrphanDb = Pick<PrismaClient, "document" | "certificate" | "reimbursementIt
  */
 async function referencedKeys(db: OrphanDb, keys: string[]): Promise<Set<string>> {
   const inKeys = { in: keys };
-  const [documents, certificates, receipts, invoices, appeals, changes] = await Promise.all([
+  const [documents, certificates, appeals] = await Promise.all([
     db.document.findMany({ where: { fileKey: inKeys }, select: { fileKey: true } }),
     db.certificate.findMany({ where: { fileKey: inKeys }, select: { fileKey: true } }),
-    db.reimbursementItem.findMany({ where: { receiptFileKey: inKeys }, select: { receiptFileKey: true } }),
-    db.healthClaim.findMany({ where: { invoiceFileKey: inKeys }, select: { invoiceFileKey: true } }),
     db.attendanceAppeal.findMany({ where: { fileKey: inKeys }, select: { fileKey: true } }),
-    db.profileChangeRequest.findMany({ where: { fileKey: inKeys }, select: { fileKey: true } }),
   ]);
   return new Set(
     [
       ...documents.map((d) => d.fileKey),
       ...certificates.map((c) => c.fileKey),
-      ...receipts.map((r) => r.receiptFileKey),
-      ...invoices.map((i) => i.invoiceFileKey),
       ...appeals.map((a) => a.fileKey),
-      ...changes.map((c) => c.fileKey),
     ].filter((key): key is string => Boolean(key)),
   );
 }

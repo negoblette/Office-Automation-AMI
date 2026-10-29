@@ -27,14 +27,6 @@ export const projectExpenseSchema = z.object({
 });
 export type ProjectExpenseInput = z.infer<typeof projectExpenseSchema>;
 
-// TODO(OI-06): detail data revenue project ditunda — field minimal tanggal, deskripsi, nominal.
-export const projectRevenueSchema = z.object({
-  date: isoDateSchema,
-  description: textSchema("Keterangan", { min: 3, max: 300 }),
-  amount: amountSchema,
-});
-export type ProjectRevenueInput = z.infer<typeof projectRevenueSchema>;
-
 /** Master tipe reimburse (SET-05): nama, divisi yang boleh memakai, aktif. */
 export const reimburseTypeSchema = z.object({
   name: textSchema("Nama tipe", { min: 2, max: 80 }),

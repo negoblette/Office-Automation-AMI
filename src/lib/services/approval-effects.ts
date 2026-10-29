@@ -4,7 +4,6 @@
 import type { ApprovalModule, Prisma } from "@/generated/prisma/client";
 import { applyApprovedHealthClaim, revertApprovedHealthClaim } from "./health-payout";
 import { applyApprovedLeave, revertApprovedLeave } from "./leave-balance";
-import { applyApprovedProfileChange } from "./profile-change-apply";
 
 export type FinalEffectOptions = {
   /** HEALTH: nominal disetujui approver final (null = sama dengan nominal diajukan). */
@@ -22,12 +21,9 @@ export const FINAL_EFFECTS: Partial<Record<ApprovalModule, FinalEffect>> = {
   LEAVE: applyApprovedLeave,
   // Fase 8 / v1.14: klaim disetujui final → nominal disetujui + status APPROVED + HealthPayout.
   HEALTH: (tx, entityId, approvedAt, options) => applyApprovedHealthClaim(tx, entityId, approvedAt, options.approvedAmount ?? null),
-  // Fase 9: expense/revenue project disetujui final → status APPROVED (masuk total project).
+  // Fase 9: expense project disetujui final → status APPROVED (masuk total project).
   EXPENSE: async (tx, entityId) => {
     await tx.projectExpense.update({ where: { id: entityId }, data: { status: "APPROVED" } });
-  },
-  REVENUE: async (tx, entityId) => {
-    await tx.projectRevenue.update({ where: { id: entityId }, data: { status: "APPROVED" } });
   },
   // Fase 14: sertifikat terverifikasi (2026-10-12: Ci Ika).
   CERTIFICATE: async (tx, entityId) => {
@@ -37,9 +33,6 @@ export const FINAL_EFFECTS: Partial<Record<ApprovalModule, FinalEffect>> = {
   ATTENDANCE_APPEAL: async (tx, entityId, approvedAt) => {
     await tx.attendanceAppeal.update({ where: { id: entityId }, data: { status: "APPROVED", approvedAt } });
   },
-  // 2026-10-12: perubahan data karyawan disetujui Ci Ika → baru diterapkan. (Arrow: hindari akses binding
-  // import melingkar saat modul dievaluasi.)
-  PROFILE_CHANGE: (tx, entityId, approvedAt) => applyApprovedProfileChange(tx, entityId, approvedAt),
 };
 
 export type RevertEffect = (tx: Prisma.TransactionClient, entityId: string) => Promise<void>;
@@ -56,9 +49,6 @@ export const REVERT_EFFECTS: Partial<Record<ApprovalModule, RevertEffect>> = {
   HEALTH: revertApprovedHealthClaim,
   EXPENSE: async (tx, entityId) => {
     await tx.projectExpense.update({ where: { id: entityId }, data: { status: "PENDING" } });
-  },
-  REVENUE: async (tx, entityId) => {
-    await tx.projectRevenue.update({ where: { id: entityId }, data: { status: "PENDING" } });
   },
   CERTIFICATE: async (tx, entityId) => {
     await tx.certificate.update({ where: { id: entityId }, data: { status: "PENDING" } });
@@ -87,17 +77,10 @@ export const REJECT_EFFECTS: Partial<Record<ApprovalModule, RejectEffect>> = {
   EXPENSE: async (tx, entityId) => {
     await tx.projectExpense.update({ where: { id: entityId }, data: { status: "REJECTED" } });
   },
-  REVENUE: async (tx, entityId) => {
-    await tx.projectRevenue.update({ where: { id: entityId }, data: { status: "REJECTED" } });
-  },
   CERTIFICATE: async (tx, entityId) => {
     await tx.certificate.update({ where: { id: entityId }, data: { status: "REJECTED" } });
   },
   ATTENDANCE_APPEAL: async (tx, entityId) => {
     await tx.attendanceAppeal.update({ where: { id: entityId }, data: { status: "REJECTED" } });
-  },
-  // Perubahan data ditolak → tidak diterapkan; karyawan bisa mengubah lagi (permintaan baru).
-  PROFILE_CHANGE: async (tx, entityId) => {
-    await tx.profileChangeRequest.update({ where: { id: entityId }, data: { status: "REJECTED" } });
   },
 };

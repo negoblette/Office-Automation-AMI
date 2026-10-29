@@ -39,4 +39,3 @@ export const appealSchema = z
     if (v.reason === "SICK" && !v.fileKey) ctx.addIssue({ code: "custom", path: ["fileKey"], message: "Surat keterangan sakit wajib diupload" });
     if (v.endDate && v.endDate < v.date) ctx.addIssue({ code: "custom", path: ["endDate"], message: "Tanggal akhir tidak boleh sebelum tanggal mulai" });
   });
-export type AppealFormInput = z.infer<typeof appealSchema>;

@@ -28,7 +28,7 @@ Skema lengkap ada di `prisma/schema.prisma`. Ringkasan:
 | Auth | `User` (role ADMIN/STAFF, relasi 1–1 ke Employee) |
 | Karyawan | `Employee`, `EmploymentPeriod`, `FamilyMember`, `Document`, `Certificate` |
 | Inventory | `Asset`, `AssetAssignment` |
-| Project | `Customer`, `Project`, `ProjectExpense`, `ProjectRevenue` |
+| Project | `Customer`, `Project`, `ProjectExpense` |
 | Reimburse | `ReimburseType`, `Reimbursement`, `ReimbursementItem` |
 | Cuti | `LeavePolicy`, `LeaveBalance`, `LeaveRequest`, `Holiday` |
 | Kesehatan | `HealthCategory`, `HealthPlafond`, `HealthClaim`, `HealthPayout` |
@@ -52,7 +52,6 @@ Format `PREFIX/YYYY/MM/NNNN`, counter reset per bulan.
 | LV | Cuti |
 | HC | Klaim Kesehatan |
 | EXP | Expense Project |
-| REV | Revenue Project |
 
 Implementasi (`services/numbering.ts`): di dalam transaksi, `INSERT ... ON CONFLICT
 (prefix, year, month) DO UPDATE SET "lastValue" = "lastValue" + 1 RETURNING "lastValue"`.
@@ -90,14 +89,14 @@ Semua langkah dalam satu transaksi; email di-enqueue setelah commit.
 | REIMBURSE | set `approvedAt` |
 | LEAVE | tambah `LeaveBalance.used` |
 | HEALTH | buat jadwal `HealthPayout` (§6.3) |
-| EXPENSE / REVENUE | set status APPROVED |
+| EXPENSE | set status APPROVED |
 
 ### 4.4 Seed flow awal
 | Scope | Module | Divisi | Level 1 | Level 2 |
 |---|---|---|---|---|
-| REGULAR | REIMBURSE, LEAVE, EXPENSE, REVENUE | ENGINEER | Yosep | Rudy |
-| REGULAR | REIMBURSE, LEAVE, EXPENSE, REVENUE | SALES | Darwin | Leonard |
-| REGULAR | REIMBURSE, LEAVE, EXPENSE, REVENUE | UMUM | Rudy / Leonard | — |
+| REGULAR | REIMBURSE, LEAVE, EXPENSE | ENGINEER | Yosep | Rudy |
+| REGULAR | REIMBURSE, LEAVE, EXPENSE | SALES | Darwin | Leonard |
+| REGULAR | REIMBURSE, LEAVE, EXPENSE | UMUM | Rudy / Leonard | — |
 | REGULAR | HEALTH | (semua) | Ika | — |
 | FALLBACK | — | — | Rudy / Leonard | — |
 
@@ -185,7 +184,7 @@ Template email: `approval-requested`, `approval-progress`, `approval-final`, `re
 ## 8. File Storage (`lib/storage/`)
 Interface `put(bytes, ext) → key`, `get(key) → bytes`, `delete(key)`. Implementasi awal `LocalStorage` (`UPLOAD_DIR`), siap ditambah `S3Storage`. Key = `<uuid>.<pdf|jpg|png>` (format lain ditolak → aman dari path traversal). Upload lewat `saveUpload(file)`: validasi magic bytes + ukuran, lalu simpan. Isi file disimpan terenkripsi AES-256-GCM (header `OAE1`, key file sebagai AAD) dan dibuka di dalam `get()`, jadi ukuran, unduhan, dan hak akses tidak berubah; file lama tanpa header tetap terbaca (hardening Tahap 4).
 
-Route `/api/files/[key]` (key, bukan id, karena file tersimpan sebagai `fileKey` di 4 tabel: `Document`, `Certificate`, `ReimbursementItem.receiptFileKey`, `HealthClaim.invoiceFileKey`). Pemilik dicari di keempat tabel itu. Izin: Admin (approver selalu Admin, §4.2), atau karyawan pemilik file. Belum login → 401, tidak berhak → 403, tidak ada → 404.
+Route `/api/files/[key]` (key, bukan id, karena file tersimpan sebagai `fileKey` di `Document` (termasuk dokumen kandidat), `Certificate`, dan `AttendanceAppeal`). Pemilik dicari di tabel-tabel itu. Izin: Admin (approver selalu Admin, §4.2), atau karyawan pemilik file. Belum login → 401, tidak berhak → 403, tidak ada → 404.
 
 ## 9. Keamanan
 - Password hash argon2. Password baru 15–128 karakter tanpa aturan komposisi; ditolak bila berupa
@@ -227,8 +226,7 @@ Route `/api/files/[key]` (key, bukan id, karena file tersimpan sebagai `fileKey`
     opsional) — panduan `docs/07-DEPLOYMENT.md` §7. Tujuan (NAS / cloud) menunggu keputusan manajemen.
 - **Upload & file (hardening Tahap 7, 2026-10-21):**
   - Setiap upload dicatat di `UploadedFile` (pengunggah, ukuran). File **hanya bisa ditautkan ke data oleh pengunggahnya**
-    (`assertFileKeyAvailable(tx, key, actorId, …)` → `assertUploadedBy`); key tanpa catatan upload ditolak. Pengecualian:
-    dokumen dari permintaan perubahan yang disetujui (ditautkan approver).
+    (`assertFileKeyAvailable(tx, key, actorId)` → `assertUploadedBy`); key tanpa catatan upload ditolak.
   - Kuota per orang: 30 file / jam, 200 MB / 24 jam (`UPLOAD_QUOTA`).
   - PDF berisi JavaScript, Launch, SubmitForm/ImportData, file tersemat, RichMedia, atau XFA ditolak saat upload
     (`pdfActiveContent`, juga memeriksa nama ber-escape `#xx` dan stream FlateDecode / object stream). Link & /OpenAction
@@ -247,7 +245,7 @@ Route `/api/files/[key]` (key, bukan id, karena file tersimpan sebagai `fileKey`
   `deploy/certs/` (atau Let's Encrypt lewat `TLS_CERT_PATH`/`TLS_KEY_PATH`), di-reload otomatis tiap 6 jam.
 - Data pribadi terenkripsi AES-256-GCM per kolom (hardening Tahap 4, `docs/08-INVENTARIS-DATA.md`): NIK, No KK, NPWP,
   BPJS TK/Kesehatan, No HP, tanggal lahir (disimpan `YYYY-MM-DD`), kontak darurat (Employee); NIK & tanggal lahir
-  keluarga; NIK & HP kandidat; isi & ringkasan `ProfileChangeRequest`. Dikunci/dibuka di lapisan service/query
+  keluarga; NIK & HP kandidat. Dikunci/dibuka di lapisan service/query
   (`services/personal-data.ts`), jadi logika & tampilan memakai nilai terbuka seperti biasa. Urutan anggota keluarga
   dihitung di aplikasi (`compareFamilyMembers`, sama dengan ORDER BY sebelumnya). Kunci di env:
   `DATA_ENCRYPTION_KEYS` (ring `v1:…`, entri pertama aktif → rotasi tanpa kehilangan data lama) & `DATA_INDEX_KEY`.

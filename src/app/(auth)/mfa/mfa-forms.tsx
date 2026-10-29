@@ -3,8 +3,8 @@
 import { Check, Copy, Download, Loader2 } from "lucide-react";
 import { type ReactNode, useState, useTransition } from "react";
 import { FormAlert } from "@/components/form/form-actions";
+import { OtpInput } from "@/components/form/otp-input";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { ActionResult } from "@/lib/actions";
 import { confirmMfaSetupAction, regenerateBackupCodesAction } from "./actions";
@@ -24,32 +24,31 @@ function CodeForm({
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // Langsung dikirim saat 6 digit lengkap (2026-10-28); kode salah → kotak dikosongkan untuk dicoba lagi.
+  const submit = (value: string) => {
+    setError(null);
+    startTransition(async () => {
+      const result = await action(value);
+      if (result.ok) onDone(result.data);
+      else {
+        setError(result.fieldErrors?.code ?? result.error);
+        setCode("");
+      }
+    });
+  };
   return (
     <form
       noValidate
       className="flex flex-col gap-3"
       onSubmit={(event) => {
         event.preventDefault();
-        setError(null);
-        startTransition(async () => {
-          const result = await action(code);
-          if (result.ok) onDone(result.data);
-          else setError(result.fieldErrors?.code ?? result.error);
-        });
+        submit(code);
       }}
     >
       <FormAlert message={error} />
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-3">
         <Label htmlFor="mfa-code">{label}</Label>
-        <Input
-          id="mfa-code"
-          value={code}
-          onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
-          autoComplete="one-time-code"
-          inputMode="numeric"
-          placeholder="000000"
-          className="h-10 bg-background px-3 text-center font-mono text-lg tracking-[0.4em]"
-        />
+        <OtpInput id="mfa-code" label={label} value={code} onChange={setCode} onComplete={submit} disabled={pending} invalid={Boolean(error)} autoFocus />
       </div>
       <Button type="submit" size="lg" disabled={pending || code.length !== 6} className="w-full">
         {pending && <Loader2 className="animate-spin" aria-hidden />}

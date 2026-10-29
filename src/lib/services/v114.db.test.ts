@@ -1,6 +1,5 @@
 // Perubahan spesifikasi v1.14 (keputusan user 2026-09-29): nominal disetujui klaim kesehatan,
 // soft delete (pulihkan libur / customer), flow tanpa approval, cuti Direktur di kalender.
-import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { Actor } from "@/lib/services/access";
 import { approveRequest, buildApproval } from "@/lib/services/approval";
@@ -38,7 +37,7 @@ describe("klaim kesehatan: nominal diajukan & disetujui", () => {
     const result = await submitHealthClaim(
       testDb,
       actors[key],
-      healthClaimSchema.parse({ categoryId, claimDate: "2026-09-10", amount, invoiceFileKey: `${randomUUID()}.pdf`, invoiceFileName: "inv.pdf", note: "" }),
+      healthClaimSchema.parse({ categoryId, claimDate: "2026-09-10", amount, note: "" }),
     );
     const request = await testDb.approvalRequest.findUniqueOrThrow({ where: { module_entityId: { module: "HEALTH", entityId: result.claimId } } });
     return { claimId: result.claimId, requestId: request.id };

@@ -1,4 +1,4 @@
-// Approval engine — Tech Spec §4, URD §2.2. Dipakai Reimburse, Cuti, Kesehatan, Expense, Revenue.
+// Approval engine — Tech Spec §4, URD §2.2. Dipakai Reimburse, Cuti, Kesehatan, Expense, Sertifikat, Appeal absensi.
 //
 // - build(): dipanggil di dalam transaksi SUBMIT modul; membuat snapshot ApprovalRequest + steps.
 // - approve(): dipanggil dari halaman Approval; memajukan step atau menyelesaikan pengajuan.

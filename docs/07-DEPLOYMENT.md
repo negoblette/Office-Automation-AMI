@@ -4,7 +4,7 @@
 |---|---|
 | **Sistem** | Office Automation System — PT Artha Mitra Interdata |
 | **Disusun oleh** | Tim Intern: **Attariq Shaquille** dan **Nello Aurelius** |
-| **Versi dokumen** | 1.2 (2026-10-22) |
+| **Versi dokumen** | 1.4 (2026-10-29) |
 | **Pembaca** | Petugas IT / admin server yang memasang dan merawat aplikasi di server kantor |
 | **Status** | Lengkap. Gladi resik (§13) dijalankan Tim IT di server percobaan sebelum go-live |
 | **Sumber kebenaran** | Kode di repository (`docker-compose.prod.yml`, `scripts/`). Bila berbeda, kode yang benar. |
@@ -254,7 +254,7 @@ nano .env.production
 | `AUTH_TRUST_HOST`, `CSP_MODE` | Biarkan `true` dan `enforce` | |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | Akun email | Wajib TLS; tanpa TLS email ditolak dan tercatat gagal |
 | `STORAGE_DRIVER`, `MAX_UPLOAD_MB` | Biarkan `local` dan `5` | |
-| `SEED_PASSWORD`, `SEED_MUST_CHANGE_PASSWORD` | Hasil §4.1, `true` | Dipakai sekali saat seed |
+| `SEED_ADMIN_EMAIL`, `SEED_PASSWORD`, `SEED_MUST_CHANGE_PASSWORD` | Email akun Admin sistem, hasil §4.1, `true` | Dipakai sekali saat seed (§6.2) |
 
 ### 4.3 Menyimpan salinan konfigurasi
 `.env.production` sengaja **tidak** ikut backup otomatis, karena isinya rahasia. Bila server rusak total, file ini bisa
@@ -326,24 +326,45 @@ Keduanya hilang setelah langkah §6.5.
 ```bash
 dc run --rm migrate npx prisma db seed
 ```
-Seed membuat divisi, master data, alur approval, dan akun awal: Yosep, Rudy, Darwin, Leonard, Ika, ditambah tiga akun
-staf contoh (Andi Pratama, Sinta Lestari, Devi). Semua memakai `SEED_PASSWORD` dan email `…@artha-mitra.local`, dan
-wajib ganti password saat login pertama.
+Seed produksi **tidak membuat data contoh apa pun**. Isinya hanya:
+- **satu akun Admin sistem** dengan email `SEED_ADMIN_EMAIL` dan password `SEED_PASSWORD` (wajib ganti password dan
+  daftar MFA saat login pertama). Akun ini tidak terhubung ke data karyawan;
+- **aturan jatah cuti** per masa kerja (0 / 12 / 15 / 18 hari) dan carry-over maksimal 3 hari.
+
+Selain itu migrasi database sudah mengisi **6 divisi bawaan** (Umum, Engineer, Sales, Direktur, HR, Finance — HR &
+Finance mengikuti alur Umum) dan kategori klaim **Obat-obatan**. Tipe reimburse, kategori kesehatan lainnya, karyawan,
+dan alur approval diisi Admin dengan **data aktual** (§6.4).
+
+> **Penting:** `SEED_ADMIN_EMAIL` harus email khusus akun sistem (misalnya `admin-oa@artha-mitra.co.id`), **bukan**
+> email karyawan. Email karyawan dipakai lagi saat Admin membuat data karyawannya, dan satu email hanya bisa dipakai
+> satu akun.
 
 ### 6.3 Cek dari komputer karyawan
 - Buka `https://<APP_DOMAIN>` → halaman login tampil tanpa peringatan sertifikat.
 - Buka `https://<APP_DOMAIN>/api/health` → `{"status":"ok","database":"ok"}`.
 - Dari server sendiri, IP server biasanya tidak termasuk `ALLOWED_SUBNETS`, sehingga nginx menjawab 403. Itu normal.
 
-### 6.4 Merapikan akun awal (Admin aplikasi)
-1. Login sebagai Admin dengan `SEED_PASSWORD`, ganti password (minimal 15 karakter), lalu daftarkan MFA (Google /
-   Microsoft Authenticator). Ini wajib untuk Admin dan Approver.
-2. Ganti email akun hasil seed menjadi email kantor yang sebenarnya, lewat **Karyawan → edit**. Ini termasuk akun
-   Pak Rudy dan Pak Leonard.
-3. Samakan `RECOVERY_KEY_HOLDERS` di `.env.production` dengan email baru Pak Rudy & Pak Leonard, lalu jalankan
-   `dc up -d`. **Lakukan ini sebelum §6.5.**
-4. Nonaktifkan akun staf contoh (Setting → User) bila bukan karyawan sebenarnya.
-5. Tambahkan karyawan lain.
+### 6.4 Mengisi data aktual (Admin aplikasi)
+Kerjakan berurutan; karyawan baru boleh mulai memakai aplikasi setelah langkah 6 selesai.
+1. Login dengan `SEED_ADMIN_EMAIL` dan `SEED_PASSWORD`, ganti password (minimal 15 karakter), lalu daftarkan MFA
+   (Google / Microsoft Authenticator).
+2. **Setting → Divisi**: cek 6 divisi bawaan; ubah nama, tambah, atau nonaktifkan sesuai struktur kantor. Divisi
+   **Direktur jangan dihapus atau diganti dengan divisi baru** — kodenya (`DIRECTOR`) dipakai aplikasi untuk cuti
+   Direktur (tampil "Direktur cuti" di kalender).
+3. **Setting → Master Data**: tipe reimburse (beserta divisi yang boleh memakainya) dan kategori klaim kesehatan.
+   **Setting → Cuti**: cek aturan jatah cuti hasil seed.
+4. **Karyawan → Tambah**: semua karyawan dengan nama, **email kantor**, divisi, jabatan, **tanggal masuk** yang benar,
+   dan role (Admin / Approver / Staf). Pak Rudy & Pak Leonard dibuat dengan role **Admin**. Tanggal masuk menentukan
+   jatah cuti. Saldo tahun berjalan dibuat sekali dan tidak dihitung ulang bila tanggal masuk dibetulkan sesudahnya —
+   betulkan saldonya dengan **Cuti → Saldo → "Atur sisa cuti menjadi"** (juga untuk sisa cuti dari pencatatan lama).
+   Lalu **Setting → Kesehatan**: plafon kesehatan tiap karyawan.
+5. **Setting → Approval**: buat alur untuk setiap modul (Reimburse, Expense, Cuti, Kesehatan, Sertifikat, Appeal
+   absensi) dan **alur Fallback**. Selama alur belum ada, pengajuan karyawan ditolak dengan pesan "Alur approval …
+   belum diatur. Hubungi Admin."
+6. Samakan `RECOVERY_KEY_HOLDERS` di `.env.production` dengan email Pak Rudy & Pak Leonard, lalu jalankan `dc up -d`.
+   **Lakukan ini sebelum §6.5.**
+7. Setelah ada Admin sungguhan yang sudah login dan mengaktifkan MFA, **nonaktifkan akun Admin sistem** (Setting → User,
+   oleh Admin lain), supaya tidak ada akun Admin bersama yang tidak jelas pemiliknya.
 
 ### 6.5 Pemegang kunci membuat kata sandi pemulihan
 
@@ -679,6 +700,7 @@ Ringkasan; detail ada di `docs/08-INVENTARIS-DATA.md` §4–5.
 | Email tidak terkirim | `worker` mati, atau SMTP tanpa TLS / kredensial salah | `dc logs worker`; cek status email di tabel `EmailLog` |
 | Restore: "kunci data di .env.production tidak bisa membuka data" | Server memakai kunci lain dari backup | Hapus baris `DATA_ENCRYPTION_KEYS` & `DATA_INDEX_KEY` dari `.env.production`, lalu ulangi restore |
 | `ss -tlnp` menampilkan port lain yang terbuka ke jaringan | Ada layanan lain terpasang di server | Hentikan / hapus layanan itu (§3.3) |
+| Deploy pertama: `dc logs migrate` → "credentials for `oa_app` are not valid"; `dc logs db` → `$'\r': command not found` | Kode disalin dari komputer Windows tanpa `git clone`, sehingga file `.sh` ber-akhir baris CRLF | Pakai `git clone` (§3.4). Bila terlanjur: `sed -i 's/\r$//' deploy/postgres/*.sh deploy/nginx/* scripts/*.sh`, lalu `dc exec -T db bash /docker-entrypoint-initdb.d/10-roles.sh` dan `dc up -d` |
 
 ---
 
@@ -893,3 +915,5 @@ Isi template di bawah dengan tangan atau salin ke dokumen terpisah, lalu simpan 
 | 1.0 | 2026-10-21 | Versi pertama: persiapan server, konfigurasi, deploy, kunci pemulihan lewat aplikasi, salinan backup ke luar server (NAS / cloud / HDD), pekerjaan rutin, update, pemulihan, troubleshooting, checklist go-live |
 | 1.1 | 2026-10-21 | Versi lengkap: firewall server (UFW) dihapus atas keputusan pemilik project, diganti §3.3 "Pintu yang terbuka di server"; bab 13 gladi resik rinci (18 uji), go-live, dan serah terima ke Tim IT; lampiran template berita acara & Lembar Data Instalasi |
 | 1.2 | 2026-10-22 | Hasil gladi resik emulasi 18/18 lulus (§13.6); update memakai `--force-recreate` (§9); pemulihan: tunggu prompt `Enter passphrase:` (§10.2) |
+| 1.4 | 2026-10-29 | Seed produksi hanya akun Admin sistem (`SEED_ADMIN_EMAIL`) + aturan cuti; data aktual diisi Admin dengan urutan di §6.4. Uji pasang di **Ubuntu 24.04.5 LTS** (Docker Engine 29.9 dari repository resmi, kode setara `git clone`): §3.2–§6.3, backup (§6.6), update (§9), dan restart Docker — lulus |
+| 1.3 | 2026-10-28 | Uji pra-deploy lokal dengan kode terbaru (build image, stack lengkap, seed, health, login: lulus). Seed produksi tanpa staf contoh Andi & Sinta (`SEED_SAMPLE_STAFF`, §6.2); Admin membetulkan email, tanggal masuk & saldo cuti akun awal (§6.4); troubleshooting file `.sh` CRLF (§12) |

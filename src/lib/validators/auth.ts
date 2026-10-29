@@ -34,4 +34,3 @@ export const changePasswordSchema = z
     message: "Konfirmasi password tidak sama",
   });
 
-export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;

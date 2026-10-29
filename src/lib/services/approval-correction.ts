@@ -16,7 +16,7 @@ import { ServiceError } from "./errors";
 type Tx = Prisma.TransactionClient;
 type Db = Tx | PrismaClient;
 
-/** Modul yang bisa dikoreksi; cuti tidak (tanggal cuti memengaruhi saldo). Revenue tidak dipakai lagi. */
+/** Modul yang bisa dikoreksi; cuti tidak (tanggal cuti memengaruhi saldo). */
 export const CORRECTABLE_MODULES = ["REIMBURSE", "EXPENSE", "HEALTH"] as const satisfies readonly ApprovalModule[];
 
 export type CorrectionValue = string | number | boolean | null;

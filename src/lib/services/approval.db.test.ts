@@ -83,7 +83,7 @@ describe("Tech Spec §4.5 — pembentukan approval", () => {
     }
   });
 
-  it.each(["REIMBURSE", "EXPENSE", "REVENUE", "HEALTH"] as const)("Direktur %s → Bu Ika (tidak lagi otomatis)", async (module) => {
+  it.each(["REIMBURSE", "EXPENSE", "HEALTH"] as const)("Direktur %s → Bu Ika (tidak lagi otomatis)", async (module) => {
     const { requestId } = await submit("rudy", module);
     expect(await stepsOf(requestId)).toEqual({ status: "PENDING", currentLevel: 1, steps: [[1, "ika", "PENDING"]] });
   });
@@ -94,7 +94,7 @@ describe("Tech Spec §4.5 — pembentukan approval", () => {
     expect([...notifications[0].recipientIds].sort()).toEqual([u.ika, u.leonard].sort());
   });
 
-  it.each(["REIMBURSE", "EXPENSE", "REVENUE"] as const)("Bu Ika %s sendiri → Ko Leonard", async (module) => {
+  it.each(["REIMBURSE", "EXPENSE"] as const)("Bu Ika %s sendiri → Ko Leonard", async (module) => {
     const { requestId, status } = await submit("ika", module);
     expect(status).toBe("PENDING");
     expect((await stepsOf(requestId)).steps).toEqual([[1, "leonard", "PENDING"]]);

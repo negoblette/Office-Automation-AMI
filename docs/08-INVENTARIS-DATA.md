@@ -36,7 +36,6 @@ untuk UU No. 27 Tahun 2022 tentang Pelindungan Data Pribadi.
 | `Candidate` | Nama, email, posisi, catatan | Tidak dienkripsi |
 | File upload (`storage/uploads`, volume `uploads`) | Scan KTP, KK, NPWP, BPJS, ijazah, sertifikat, surat nikah, akte anak, surat keterangan sakit | **Terenkripsi** per file |
 | `HealthClaim.note`, `AttendanceAppeal.note` | Keterangan klaim kesehatan dan alasan appeal sakit (bisa memuat info medis) | Tidak dienkripsi (belum dipilih, 2026-10-20). Bisa dipertimbangkan lagi nanti. |
-| `ProfileChangeRequest` (fitur lama) | Isi (payload) dan ringkasan perubahan data diri | **Terenkripsi** |
 | `AuditLog.before/after` | Salinan data saat diubah | Kolom pribadi tersimpan dalam bentuk sandi. Baris audit sebelum Tahap 4 tidak diubah, karena audit tidak boleh diedit. Di dev tidak ada data pribadi di baris lama; produksi belum berjalan. |
 | `User` | Email, password | Password disimpan sebagai hash argon2 |
 | `EmailLog` | Alamat email tujuan, subjek | Tidak dienkripsi |

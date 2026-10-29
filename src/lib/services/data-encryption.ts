@@ -7,11 +7,11 @@ import { randomUUID } from "node:crypto";
 import { readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
-import { decryptText, encryptedKeyId, encryptText, isEncryptedValue, nikIndex } from "@/lib/crypto/field-encryption";
+import { decryptText, encryptedKeyId, encryptText, nikIndex } from "@/lib/crypto/field-encryption";
 import { decryptFile, encryptedFileKeyId, encryptFile } from "@/lib/crypto/file-encryption";
 import { activeKeyId, nikIndexKey } from "@/lib/crypto/keys";
 import { isValidFileKey } from "@/lib/storage/local";
-import { CANDIDATE_ENCRYPTED_FIELDS, EMPLOYEE_ENCRYPTED_FIELDS, FAMILY_ENCRYPTED_FIELDS, openJson, sealJson } from "./personal-data";
+import { CANDIDATE_ENCRYPTED_FIELDS, EMPLOYEE_ENCRYPTED_FIELDS, FAMILY_ENCRYPTED_FIELDS } from "./personal-data";
 
 export type TableReport = { table: string; rows: number; changedRows: number; changedValues: number };
 export type EncryptionReport = { dryRun: boolean; keyId: string; tables: TableReport[]; files: { total: number; changed: number } };
@@ -78,24 +78,6 @@ async function encryptCandidates(db: PrismaClient, keyId: string, dryRun: boolea
   return report("Candidate", rows.length, changes);
 }
 
-/** Permintaan perubahan data (fitur lama): isi (payload) & ringkasan memuat data pribadi. */
-async function encryptProfileChanges(db: PrismaClient, keyId: string, dryRun: boolean): Promise<TableReport> {
-  const rows = await db.profileChangeRequest.findMany({ select: { id: true, payload: true, summary: true }, orderBy: { id: "asc" } });
-  const changes: Record<string, unknown>[] = [];
-  for (const row of rows) {
-    const data: { payload?: string; summary?: string[] } = {};
-    const payloadSealed = typeof row.payload === "string" && isEncryptedValue(row.payload);
-    if (!payloadSealed || needsSealing(row.payload as string, keyId)) data.payload = sealJson(openJson(row.payload));
-    if (row.summary.some((line) => needsSealing(line, keyId))) {
-      data.summary = row.summary.map((line) => (needsSealing(line, keyId) ? encryptText(decryptText(line)) : line));
-    }
-    if (!Object.keys(data).length) continue;
-    changes.push(data);
-    if (!dryRun) await db.profileChangeRequest.update({ where: { id: row.id }, data });
-  }
-  return report("ProfileChangeRequest", rows.length, changes);
-}
-
 /**
  * File upload di `dir`: file terbuka / berkunci lama dikunci dengan kunci aktif. Ditulis ke file sementara lalu
  * di-rename, jadi aman bila proses terputus. Satu file berkunci aktif dibuka sebagai pengecekan kunci.
@@ -148,7 +130,6 @@ export async function encryptPersonalData(
     await encryptEmployees(db, keyId, dryRun),
     await encryptFamilyMembers(db, keyId, dryRun),
     await encryptCandidates(db, keyId, dryRun),
-    await encryptProfileChanges(db, keyId, dryRun),
   ];
   const files = options.uploadDir ? await encryptStoredFiles(options.uploadDir, keyId, dryRun) : { total: 0, changed: 0 };
   return { dryRun, keyId, tables, files };
