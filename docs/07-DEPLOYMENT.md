@@ -4,7 +4,7 @@
 |---|---|
 | **Sistem** | Office Automation System — PT Artha Mitra Interdata |
 | **Disusun oleh** | Tim Intern: **Attariq Shaquille** dan **Nello Aurelius** |
-| **Versi dokumen** | 1.4 (2026-10-29) |
+| **Versi dokumen** | 1.5 (2026-10-29) |
 | **Pembaca** | Petugas IT / admin server yang memasang dan merawat aplikasi di server kantor |
 | **Status** | Lengkap. Gladi resik (§13) dijalankan Tim IT di server percobaan sebelum go-live |
 | **Sumber kebenaran** | Kode di repository (`docker-compose.prod.yml`, `scripts/`). Bila berbeda, kode yang benar. |
@@ -131,7 +131,8 @@ virtual (VM).
 - **IP LAN tetap** untuk server (`BIND_IP`), dan daftar jaringan yang boleh membuka aplikasi, misalnya jaringan karyawan
   dan VPN (`ALLOWED_SUBNETS`).
 - **Nama domain** aplikasi (`APP_DOMAIN`), misalnya `oa.artha-mitra.co.id`, yang di DNS kantor mengarah ke `BIND_IP`.
-- **Sertifikat HTTPS** untuk domain tersebut (§5).
+  Tanpa domain, aplikasi juga bisa dibuka lewat **alamat IP** server: isi `APP_DOMAIN` dengan IP tersebut (§5 pilihan C).
+- **Sertifikat HTTPS** untuk domain / IP tersebut (§5).
 - **Akun email SMTP** yang mendukung TLS (port 465 atau 587) untuk notifikasi.
 - **Tempat salinan backup**: NAS dan/atau cloud (§7.3) — keputusan manajemen.
 
@@ -243,7 +244,7 @@ nano .env.production
 | `POSTGRES_*PASSWORD` | Hasil §4.1 | |
 | `DATA_ENCRYPTION_KEYS`, `DATA_INDEX_KEY` | Hasil §4.1 | Server baru hasil pemulihan: biarkan contoh, diisi `restore.sh` (§10.3) |
 | `RECOVERY_KEY_HOLDERS` | Email akun Pak Rudy & Pak Leonard, dipisah koma | **Harus sama persis** dengan email login mereka di aplikasi |
-| `APP_DOMAIN` | Domain aplikasi | Misalnya `oa.artha-mitra.co.id` |
+| `APP_DOMAIN` | Domain aplikasi, atau IP server | Misalnya `oa.artha-mitra.co.id`, atau `192.168.2.121` bila dibuka lewat IP |
 | `BIND_IP` | IP LAN server | Jangan `0.0.0.0` |
 | `ALLOWED_SUBNETS` | Jaringan yang boleh membuka aplikasi | Misalnya `192.168.20.0/24,10.8.0.0/24` |
 | `TLS_CERT_PATH`, `TLS_KEY_PATH` | Lokasi sertifikat | Hanya diisi bila memakai Let's Encrypt (§5) |
@@ -272,6 +273,7 @@ non-rahasia (domain, IP, subnet) dicatat di Lembar Data Instalasi (§15.4).
 |---|---|---|
 | **A. Sertifikat dari CA internal / dibeli** | Kantor punya CA sendiri, atau membeli sertifikat | Simpan di `deploy/certs/` (lihat di bawah) |
 | **B. Let's Encrypt (DNS challenge)** | Domain publik milik kantor; server tidak perlu terbuka ke internet | `certbot` dengan plugin DNS penyedia domain |
+| **C. Dibuka lewat alamat IP** | Tanpa domain (`APP_DOMAIN` = IP server) | Sertifikat buatan sendiri untuk IP itu, dipasang sebagai tepercaya di komputer karyawan |
 
 **Pilihan A**
 ```bash
@@ -296,6 +298,22 @@ TLS_KEY_PATH="/etc/letsencrypt/live/oa.artha-mitra.co.id/privkey.pem"
 ```
 Perpanjangan otomatis (cron root): `0 3 * * * certbot renew -q --config-dir /opt/office-automation/deploy/letsencrypt`.
 nginx memuat ulang sertifikat sendiri setiap 6 jam, jadi tidak perlu restart.
+
+**Pilihan C** (dibuka lewat IP, misalnya `https://192.168.2.121`; CA publik tidak menerbitkan sertifikat untuk IP LAN):
+```bash
+IP=192.168.2.121
+mkdir -p deploy/certs && openssl req -x509 -newkey rsa:2048 -nodes -days 825 -subj "/CN=$IP"   -addext "subjectAltName=IP:$IP" -addext "extendedKeyUsage=serverAuth"   -keyout deploy/certs/privkey.pem -out deploy/certs/fullchain.pem && chmod 600 deploy/certs/privkey.pem
+```
+Di `.env.production`: `APP_DOMAIN="192.168.2.121"`, `AUTH_URL` dan `APP_URL` = `"https://192.168.2.121"`.
+
+Supaya browser tidak memperingatkan, pasang `deploy/certs/fullchain.pem` (**bukan** `privkey.pem`) di setiap komputer
+karyawan sebagai sertifikat tepercaya: ganti nama menjadi `oa-server.crt`, klik dua kali → **Install Certificate** →
+*Local Machine* → *Place all certificates in the following store* → **Trusted Root Certification Authorities**. Tim IT
+bisa memasangnya sekaligus lewat Group Policy. Sertifikat berlaku 825 hari; buat ulang & pasang ulang sebelum habis.
+
+> **Kenapa begini?** Browser tidak mengirim nama host (SNI) saat membuka alamat IP. Di mode IP, nginx menjadikan blok
+> aplikasi penerima default port 443 (`deploy/nginx/proxy-start.sh`); di mode domain, koneksi tanpa nama domain yang
+> benar tetap ditolak.
 
 ---
 
@@ -915,5 +933,6 @@ Isi template di bawah dengan tangan atau salin ke dokumen terpisah, lalu simpan 
 | 1.0 | 2026-10-21 | Versi pertama: persiapan server, konfigurasi, deploy, kunci pemulihan lewat aplikasi, salinan backup ke luar server (NAS / cloud / HDD), pekerjaan rutin, update, pemulihan, troubleshooting, checklist go-live |
 | 1.1 | 2026-10-21 | Versi lengkap: firewall server (UFW) dihapus atas keputusan pemilik project, diganti §3.3 "Pintu yang terbuka di server"; bab 13 gladi resik rinci (18 uji), go-live, dan serah terima ke Tim IT; lampiran template berita acara & Lembar Data Instalasi |
 | 1.2 | 2026-10-22 | Hasil gladi resik emulasi 18/18 lulus (§13.6); update memakai `--force-recreate` (§9); pemulihan: tunggu prompt `Enter passphrase:` (§10.2) |
+| 1.5 | 2026-10-29 | Akses lewat alamat IP tanpa domain: `APP_DOMAIN` boleh berisi IP, sertifikat §5 pilihan C |
 | 1.4 | 2026-10-29 | Seed produksi hanya akun Admin sistem (`SEED_ADMIN_EMAIL`) + aturan cuti; data aktual diisi Admin dengan urutan di §6.4. Uji pasang di **Ubuntu 24.04.5 LTS** (Docker Engine 29.9 dari repository resmi, kode setara `git clone`): §3.2–§6.3, backup (§6.6), update (§9), dan restart Docker — lulus |
 | 1.3 | 2026-10-28 | Uji pra-deploy lokal dengan kode terbaru (build image, stack lengkap, seed, health, login: lulus). Seed produksi tanpa staf contoh Andi & Sinta (`SEED_SAMPLE_STAFF`, §6.2); Admin membetulkan email, tanggal masuk & saldo cuti akun awal (§6.4); troubleshooting file `.sh` CRLF (§12) |

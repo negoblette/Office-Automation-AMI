@@ -35,15 +35,16 @@ server {
 }
 
 # ---------- Tolak HTTPS untuk nama domain lain (Host/SNI palsu) ----------
+# Mode IP (APP_DOMAIN = alamat IP): blok ini bukan default, karena browser tidak mengirim SNI untuk IP (proxy-start.sh).
 server {
-    listen 443 ssl default_server;
+    listen 443 ssl ${REJECT_DEFAULT_SERVER};
     server_name _;
     ssl_reject_handshake on;
 }
 
 # ---------- Aplikasi ----------
 server {
-    listen 443 ssl;
+    listen 443 ssl ${APP_DEFAULT_SERVER};
     http2 on;
     server_name ${APP_DOMAIN};
     server_tokens off;
