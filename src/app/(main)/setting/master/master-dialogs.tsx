@@ -8,13 +8,15 @@ import { healthCategorySchema, reimburseTypeSchema } from "@/lib/validators/proj
 import { saveHealthCategoryAction, saveReimburseTypeAction } from "./actions";
 import { useDivisions } from "@/components/shared/divisions-context";
 
-function Trigger({ label, editing }: { label: string; editing: boolean }) {
+/** Dipakai sebagai `render` DialogTrigger: props dari Base UI (onClick, ref, aria-*) wajib diteruskan ke Button,
+ *  kalau tidak tombolnya tidak membuka dialog. */
+function Trigger({ label, editing, ...props }: { label: string; editing: boolean } & React.ComponentProps<typeof Button>) {
   return editing ? (
-    <Button variant="ghost" size="icon-sm" aria-label={`Ubah ${label}`}>
+    <Button {...props} variant="ghost" size="icon-sm" aria-label={`Ubah ${label}`}>
       <Pencil />
     </Button>
   ) : (
-    <Button variant="outline" size="sm">
+    <Button {...props} variant="outline" size="sm">
       <Plus aria-hidden /> {label}
     </Button>
   );
