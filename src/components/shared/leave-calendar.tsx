@@ -63,13 +63,15 @@ export function LeaveCalendar({
           </div>
         </div>
         <nav aria-label="Pilih bulan kalender" className="flex items-center gap-1">
-          <Link href={hrefFor(shiftMonth(yearMonth, -1))} className={navLinkClass} aria-label="Bulan sebelumnya">
+          {/* scroll={false}: ganti bulan tidak melompat ke atas halaman (Next.js menggulir ke awal halaman bila bagian
+              atasnya sudah tidak terlihat), 2026-10-30. */}
+          <Link href={hrefFor(shiftMonth(yearMonth, -1))} scroll={false} className={navLinkClass} aria-label="Bulan sebelumnya">
             <ChevronLeft className="size-5" aria-hidden />
           </Link>
           <span className="min-w-32 text-center text-sm font-semibold capitalize" aria-live="polite">
             {label}
           </span>
-          <Link href={hrefFor(shiftMonth(yearMonth, 1))} className={navLinkClass} aria-label="Bulan berikutnya">
+          <Link href={hrefFor(shiftMonth(yearMonth, 1))} scroll={false} className={navLinkClass} aria-label="Bulan berikutnya">
             <ChevronRight className="size-5" aria-hidden />
           </Link>
         </nav>
