@@ -19,6 +19,8 @@ export default async function CutiPage({ searchParams }: { searchParams: Promise
   // Filter per bulan (Fase 14); kosong = semua.
   const yearMonth = bulan && /^\d{4}-(0[1-9]|1[0-2])$/.test(bulan) ? bulan : undefined;
   const [balance] = user.employeeId ? await getCurrentBalances(prisma, [user.employeeId]) : [];
+  // Jenis kelamin menentukan jatah cuti melahirkan (2026-10-30).
+  const gender = user.employeeId ? ((await prisma.employee.findUnique({ where: { id: user.employeeId }, select: { gender: true } }))?.gender ?? null) : null;
   const [rows, holidays] = await Promise.all([listLeaveRequests(prisma, user, yearMonth), listHolidays(prisma)]);
   const monthLabel = yearMonth
     ? new Intl.DateTimeFormat("id-ID", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${yearMonth}-01T00:00:00Z`))
@@ -36,6 +38,7 @@ export default async function CutiPage({ searchParams }: { searchParams: Promise
               holidays={holidays.map((h) => h.date)}
               remaining={balance.remaining}
               eligibleFrom={balance.eligibleFrom ?? balance.firstEligibleDate}
+              gender={gender}
             />
           )
         }
@@ -66,7 +69,7 @@ export default async function CutiPage({ searchParams }: { searchParams: Promise
         showRequester={isAdmin}
         revise={
           balance
-            ? { holidays: holidays.map((h) => h.date), remaining: balance.remaining, eligibleFrom: balance.eligibleFrom ?? balance.firstEligibleDate }
+            ? { holidays: holidays.map((h) => h.date), remaining: balance.remaining, eligibleFrom: balance.eligibleFrom ?? balance.firstEligibleDate, gender }
             : undefined
         }
       />

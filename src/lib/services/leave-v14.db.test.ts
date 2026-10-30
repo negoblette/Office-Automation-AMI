@@ -21,7 +21,7 @@ afterAll(async () => {
 });
 
 const leave = (employeeId: string, number: string, start: string, end: string, workingDays: number, status: "APPROVED" | "PENDING" = "APPROVED") =>
-  testDb.leaveRequest.create({ data: { number, employeeId, startDate: d(start), endDate: d(end), workingDays, reason: "x", status } });
+  testDb.leaveRequest.create({ data: { number, employeeId, startDate: d(start), endDate: d(end), workingDays, deductDays: workingDays, reason: "x", status } });
 
 describe("pemutihan / penyesuaian saldo", () => {
   it("Admin menambah 2 hari lalu mengurangi 1 → sisa ikut berubah, tercatat di riwayat", async () => {

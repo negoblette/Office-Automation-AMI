@@ -1,5 +1,6 @@
 // Perhitungan absensi murni (tanpa database) — clock in / clock out (keputusan user 2026-09-25).
 // Jam berupa string `HH:MM` zona Asia/Jakarta; tanggal `YYYY-MM-DD`.
+import type { AppealReason } from "@/generated/prisma/enums";
 import { formatTime, toJakartaIsoDate } from "@/lib/format";
 
 export type WorkHours = { workStart: string; workEnd: string };
@@ -51,6 +52,7 @@ export type DayStatus =
   | "ABSENT" // hari kerja tanpa absen & tanpa cuti
   | "SICK" // appeal disetujui: sakit (Fase 14)
   | "VISIT" // appeal disetujui: kunjungan keluar
+  | "OTHER" // appeal disetujui: alasan lainnya (2026-10-30)
   | "APPEAL_PENDING" // appeal menunggu persetujuan
   | "NOT_YET" // hari ini belum clock in
   | "NOT_EMPLOYED"; // di luar periode kerja
@@ -66,6 +68,7 @@ export const DAY_STATUS_LABEL: Record<DayStatus, string> = {
   ABSENT: "Tidak hadir",
   SICK: "Sakit",
   VISIT: "Kunjungan keluar",
+  OTHER: "Lainnya",
   APPEAL_PENDING: "Appeal menunggu",
   NOT_YET: "Belum clock in",
   NOT_EMPLOYED: "—",
@@ -85,7 +88,7 @@ export function dayStatus(input: {
   onLeave: boolean;
   holiday: boolean;
   /** Appeal hari itu (Fase 14); REJECTED diabaikan. */
-  appeal?: { reason: "SICK" | "VISIT"; status: string } | null;
+  appeal?: { reason: AppealReason; status: string } | null;
 }): DayStatus {
   const { dateIso, todayIso, employed, record, onLeave, holiday, appeal } = input;
   if (record) {
@@ -110,4 +113,4 @@ export function appealDeadline(dateIso: string): string {
   return new Date(Date.parse(`${dateIso}T00:00:00Z`) + APPEAL_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10);
 }
 
-export const APPEAL_REASON_LABEL = { SICK: "Sakit", VISIT: "Kunjungan keluar" } as const;
+export const APPEAL_REASON_LABEL: Record<AppealReason, string> = { SICK: "Sakit", VISIT: "Kunjungan keluar", OTHER: "Lainnya" };

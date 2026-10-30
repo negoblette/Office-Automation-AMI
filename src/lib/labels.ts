@@ -7,6 +7,12 @@ export const LEAVE_TYPE_LABEL: Record<LeaveType, string> = {
   BEREAVEMENT: "Cuti kematian",
 };
 
+/** "potong saldo" / "tidak potong saldo" / "potong saldo 2 dari 4 hari" (2026-10-30). */
+export function leaveDeductLabel(deductDays: number, workingDays: number): string {
+  if (deductDays === 0) return "tidak potong saldo";
+  return deductDays >= workingDays ? "potong saldo" : `potong saldo ${deductDays} dari ${workingDays} hari`;
+}
+
 export const ROLE_LABEL: Record<Role, string> = {
   ADMIN: "Admin",
   APPROVER: "Approver",

@@ -113,8 +113,8 @@ enum CandidateStatus {
   REJECTED
 }
 
-/// Jenis cuti (2026-10-30). Tahunan memotong saldo; Melahirkan & Kematian tidak (approver bisa mengubah lewat
-/// `LeaveRequest.deductBalance`).
+/// Jenis cuti (2026-10-30). Tahunan memotong saldo; Kematian tidak; Melahirkan gratis 2 hari kerja (laki-laki) /
+/// 90 hari kerja (perempuan), lebihnya memotong saldo. Approver bisa mengubah lewat `LeaveRequest.deductDays`.
 enum LeaveType {
   ANNUAL // cuti tahunan
   MATERNITY // cuti melahirkan
@@ -141,6 +141,7 @@ enum ApprovalModule {
 enum AppealReason {
   SICK // sakit
   VISIT // kunjungan keluar
+  OTHER // lainnya — keterangan wajib, tanpa lampiran (2026-10-30)
 }
 
 enum FlowScope {
@@ -569,8 +570,9 @@ model LeaveRequest {
   workingDays   Int // tanpa Sabtu/Minggu/Holiday
   reason        String
   type          LeaveType     @default(ANNUAL)
-  /// Dipotong dari saldo saat APPROVED final. Awal = jenis cuti (Tahunan saja); approver bisa mengubah saat menyetujui.
-  deductBalance Boolean       @default(true)
+  /// Hari kerja yang dipotong dari saldo saat APPROVED final (0..workingDays). Awal menurut jenis cuti & jenis kelamin
+  /// (`defaultDeductDays`); approver bisa mengubah saat menyetujui.
+  deductDays    Int
   status        RequestStatus @default(DRAFT)
   submittedAt   DateTime?
   approvedAt    DateTime?

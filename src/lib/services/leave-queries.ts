@@ -39,11 +39,11 @@ export async function getCurrentBalances(db: PrismaClient, employeeIds: string[]
     const [employee, pending] = await Promise.all([
       db.employee.findUniqueOrThrow({ where: { id: employeeId }, select: { fullName: true, position: true } }),
       db.leaveRequest.aggregate({
-        _sum: { workingDays: true },
-        where: { employeeId, status: "PENDING", deductBalance: true, startDate: { gte: balance.periodStart, lte: balance.periodEnd } },
+        _sum: { deductDays: true },
+        where: { employeeId, status: "PENDING", startDate: { gte: balance.periodStart, lte: balance.periodEnd } },
       }),
     ]);
-    const pendingDays = pending._sum.workingDays ?? 0;
+    const pendingDays = pending._sum.deductDays ?? 0;
     result.push({
       employeeId,
       employeeName: employee.fullName,
@@ -78,8 +78,8 @@ export type LeaveRequestRow = {
   workingDays: number;
   reason: string;
   type: LeaveType;
-  /** Dipotong dari saldo cuti (awal sesuai jenis; approver bisa mengubah). */
-  deductBalance: boolean;
+  /** Hari kerja yang dipotong dari saldo cuti (awal menurut jenis & jenis kelamin; approver bisa mengubah). */
+  deductDays: number;
   status: RequestStatus;
   currentLevel: number | null;
   submittedAt: string | null;
@@ -121,7 +121,7 @@ export async function listLeaveRequests(db: PrismaClient, viewer: { role: Role; 
     workingDays: request.workingDays,
     reason: request.reason,
     type: request.type,
-    deductBalance: request.deductBalance,
+    deductDays: request.deductDays,
     status: request.status,
     currentLevel: levelOf.get(request.id) ?? null,
     submittedAt: request.submittedAt?.toISOString() ?? null,

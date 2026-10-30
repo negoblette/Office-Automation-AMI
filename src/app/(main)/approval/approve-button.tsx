@@ -17,31 +17,32 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { formatRupiah } from "@/lib/format";
 import { approveAction } from "./actions";
 
 /**
  * Tombol "Setujui" + dialog konfirmasi dengan catatan opsional. Klaim kesehatan: isian nominal disetujui.
- * Cuti (2026-10-30): centang "Potong saldo cuti", awalnya sesuai jenis cuti.
+ * Cuti (2026-10-30): isian "Hari dipotong dari saldo", awalnya sesuai jenis cuti & jenis kelamin.
  */
 export function ApproveButton({
   requestId,
   label,
   requestedAmount = null,
-  deductBalance = null,
+  leaveDeduct = null,
 }: {
   requestId: string;
   label: string;
   requestedAmount?: number | null;
-  /** Cuti: nilai potong saldo saat ini; null = bukan cuti. */
-  deductBalance?: boolean | null;
+  /** Cuti: hari dipotong dari saldo saat ini & jumlah hari kerja; null = bukan cuti. */
+  leaveDeduct?: { days: number; workingDays: number } | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
   const [approvedAmount, setApprovedAmount] = useState<number | null>(requestedAmount);
-  const [deduct, setDeduct] = useState(deductBalance ?? false);
+  const [deductDays, setDeductDays] = useState(String(leaveDeduct?.days ?? ""));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -52,11 +53,16 @@ export function ApproveButton({
         setError(`Nominal disetujui harus lebih dari 0 dan maksimal ${formatRupiah(requestedAmount)}`);
         return;
       }
+      const days = Number(deductDays);
+      if (leaveDeduct && (deductDays.trim() === "" || !Number.isInteger(days) || days < 0 || days > leaveDeduct.workingDays)) {
+        setError(`Hari dipotong dari saldo harus 0–${leaveDeduct.workingDays}`);
+        return;
+      }
       const result = await approveAction({
         requestId,
         note,
         approvedAmount: requestedAmount !== null ? approvedAmount : null,
-        deductBalance: deductBalance !== null ? deduct : null,
+        deductDays: leaveDeduct ? days : null,
       });
       if (result.ok) {
         setOpen(false);
@@ -75,7 +81,7 @@ export function ApproveButton({
         if (next) {
           setNote("");
           setApprovedAmount(requestedAmount);
-          setDeduct(deductBalance ?? false);
+          setDeductDays(String(leaveDeduct?.days ?? ""));
           setError(null);
         }
       }}
@@ -98,23 +104,24 @@ export function ApproveButton({
             <RupiahInput id={`amount-${requestId}`} value={approvedAmount} onChange={setApprovedAmount} />
           </FormField>
         )}
-        {deductBalance !== null && (
-          <div className="flex flex-col gap-1">
-            {/* Gaya sama dengan CheckboxField (min-h-11 = area sentuh ≥ 44 px). */}
-            <label className="flex min-h-11 cursor-pointer items-center gap-2.5 text-sm">
-              <input
-                type="checkbox"
-                checked={deduct}
-                onChange={(event) => setDeduct(event.target.checked)}
-                aria-describedby={`deduct-${requestId}-hint`}
-                className="size-[18px] shrink-0 cursor-pointer accent-primary"
-              />
-              Potong saldo cuti
-            </label>
-            <p id={`deduct-${requestId}-hint`} className="text-[12.5px] text-ink-3">
-              Cuti tahunan biasanya dipotong; cuti melahirkan & kematian tidak. Saldo dipotong saat disetujui final.
-            </p>
-          </div>
+        {leaveDeduct && (
+          <FormField
+            label="Hari dipotong dari saldo cuti"
+            htmlFor={`deduct-${requestId}`}
+            hint={`Dari ${leaveDeduct.workingDays} hari kerja. Terisi sesuai aturan: cuti tahunan semua, cuti kematian 0, cuti melahirkan hanya yang melewati jatah (laki-laki 2 hari kerja, perempuan 90 hari kerja). Saldo dipotong saat disetujui final.`}
+          >
+            <Input
+              id={`deduct-${requestId}`}
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={leaveDeduct.workingDays}
+              step={1}
+              value={deductDays}
+              onChange={(event) => setDeductDays(event.target.value)}
+              className="max-w-32"
+            />
+          </FormField>
         )}
         <FormField label="Catatan (opsional)" htmlFor={`note-${requestId}`}>
           <Textarea id={`note-${requestId}`} value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} />

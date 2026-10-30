@@ -1,13 +1,21 @@
 import { z } from "zod";
-import type { LeaveType } from "@/generated/prisma/enums";
+import type { Gender, LeaveType } from "@/generated/prisma/enums";
 import { isoDateSchema, textSchema, withDateRange } from "./common";
 
 /** Jenis cuti (2026-10-30). Urutan = urutan di dropdown form. */
 export const LEAVE_TYPES = ["ANNUAL", "MATERNITY", "BEREAVEMENT"] as const satisfies readonly LeaveType[];
 
-/** Potong saldo awal per jenis: hanya cuti tahunan. Approver bisa mengubahnya saat menyetujui. */
-export function defaultDeductBalance(type: LeaveType): boolean {
-  return type === "ANNUAL";
+/** Jatah cuti melahirkan yang tidak memotong saldo, dalam hari kerja per pengajuan (2026-10-30). */
+export const MATERNITY_FREE_DAYS: Record<Gender, number> = { MALE: 2, FEMALE: 90 };
+
+/**
+ * Hari kerja yang dipotong dari saldo menurut aturan: tahunan semua, kematian tidak ada, melahirkan hanya yang
+ * melewati jatah gratis per jenis kelamin (mis. laki-laki 4 hari → 2 gratis, 2 potong saldo). Approver bisa mengubahnya.
+ */
+export function defaultDeductDays(type: LeaveType, workingDays: number, gender: Gender | null): number {
+  if (type === "ANNUAL") return workingDays;
+  if (type === "BEREAVEMENT") return 0;
+  return Math.max(0, workingDays - (gender ? MATERNITY_FREE_DAYS[gender] : 0));
 }
 
 /** Pengajuan cuti (LV-05..08). */

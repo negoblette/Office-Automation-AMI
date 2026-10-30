@@ -36,7 +36,7 @@ describe("getAdminDashboard", () => {
     await testDb.assetAssignment.create({ data: { assetId: asset.id, employeeId: andiEmployeeId, assignedAt: d("2026-09-01") } });
     await testDb.certificate.create({ data: { employeeId: andiEmployeeId, type: "PROFESSIONAL", name: "CCNA", startDate: d("2024-01-01"), endDate: d("2026-09-30") } });
     await testDb.leaveRequest.create({
-      data: { number: "LV/2026/09/0001", employeeId: andiEmployeeId, startDate: d("2026-09-18"), endDate: d("2026-09-22"), workingDays: 3, reason: "x", status: "APPROVED" },
+      data: { number: "LV/2026/09/0001", employeeId: andiEmployeeId, startDate: d("2026-09-18"), endDate: d("2026-09-22"), workingDays: 3, deductDays: 3, reason: "x", status: "APPROVED" },
     });
     await testDb.holiday.create({ data: { date: d("2026-09-25"), name: "Libur Uji" } });
 

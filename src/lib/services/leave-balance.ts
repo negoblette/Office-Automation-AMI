@@ -58,22 +58,22 @@ export async function ensureLeaveBalance(tx: Tx, employeeId: string, refIso: str
 }
 
 /**
- * Efek final LEAVE (Tech Spec §4.3): status APPROVED dan saldo `used` bertambah — hanya bila `deductBalance`
- * (cuti melahirkan / kematian awalnya tidak memotong saldo, 2026-10-30).
+ * Efek final LEAVE (Tech Spec §4.3): status APPROVED dan saldo `used` bertambah sebanyak `deductDays` (2026-10-30:
+ * cuti kematian & jatah cuti melahirkan tidak memotong saldo).
  */
 export async function applyApprovedLeave(tx: Tx, leaveRequestId: string, approvedAt: Date) {
   const request = await tx.leaveRequest.update({ where: { id: leaveRequestId }, data: { status: "APPROVED", approvedAt } });
-  if (!request.deductBalance) return;
+  if (!request.deductDays) return;
   const balance = await ensureLeaveBalance(tx, request.employeeId, toJakartaIsoDate(request.startDate));
-  await tx.leaveBalance.update({ where: { id: balance.id }, data: { used: { increment: request.workingDays } } });
+  await tx.leaveBalance.update({ where: { id: balance.id }, data: { used: { increment: request.deductDays } } });
 }
 
 /** Kebalikan `applyApprovedLeave` (approval final dibatalkan): status PENDING, saldo `used` dikembalikan. */
 export async function revertApprovedLeave(tx: Tx, leaveRequestId: string) {
   const request = await tx.leaveRequest.update({ where: { id: leaveRequestId }, data: { status: "PENDING", approvedAt: null } });
-  if (!request.deductBalance) return;
+  if (!request.deductDays) return;
   const balance = await ensureLeaveBalance(tx, request.employeeId, toJakartaIsoDate(request.startDate));
-  await tx.leaveBalance.update({ where: { id: balance.id }, data: { used: { decrement: request.workingDays } } });
+  await tx.leaveBalance.update({ where: { id: balance.id }, data: { used: { decrement: request.deductDays } } });
 }
 
 /** Job harian `leave.rollover`: pastikan setiap karyawan aktif punya saldo periode berjalan. */

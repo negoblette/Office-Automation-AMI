@@ -108,8 +108,8 @@ describe("kalender: Direktur cuti (BR-CUT-11)", () => {
     const d = (iso: string) => new Date(`${iso}T00:00:00Z`);
     await testDb.leaveRequest.createMany({
       data: [
-        { number: "LV/2026/10/0001", employeeId: rudy.employeeId!, startDate: d("2026-10-05"), endDate: d("2026-10-06"), workingDays: 2, reason: "x", status: "APPROVED" },
-        { number: "LV/2026/10/0002", employeeId: andi.employeeId!, startDate: d("2026-10-05"), endDate: d("2026-10-05"), workingDays: 1, reason: "x", status: "APPROVED" },
+        { number: "LV/2026/10/0001", employeeId: rudy.employeeId!, startDate: d("2026-10-05"), endDate: d("2026-10-06"), workingDays: 2, deductDays: 2, reason: "x", status: "APPROVED" },
+        { number: "LV/2026/10/0002", employeeId: andi.employeeId!, startDate: d("2026-10-05"), endDate: d("2026-10-05"), workingDays: 1, deductDays: 1, reason: "x", status: "APPROVED" },
       ],
     });
     expect((await listDirectorLeaves(testDb, "2026-01-01", "2026-12-31")).map((l) => l.employeeName)).toEqual(["Rudy"]);

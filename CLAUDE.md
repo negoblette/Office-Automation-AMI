@@ -184,10 +184,12 @@ masuk Des → 0, baru dapat Januari berikutnya). Tahun-tahun berikutnya jatah me
 Saldo minus tampil merah "−N" + keterangan di kartu saldo (2026-10-28). Admin bisa **edit sisa cuti** di Cuti → Saldo:
 "Atur sisa cuti menjadi X" (`mode: SET`, selisihnya jadi satu `LeaveAdjustment` MANUAL, `services/leave-adjust.ts`) atau tambah/kurangi.
 Kalender cuti bulanan (`LeaveCalendar`) tampil di dashboard & `/cuti/kalender`; semua karyawan melihat cuti semua karyawan.
-**Jenis cuti (2026-10-30):** Tahunan / Melahirkan / Kematian (`LeaveRequest.type`). `deductBalance` awal = Tahunan saja;
-yang tidak memotong saldo bebas dari syarat 1 tahun, batas 31 Des & cek saldo. Approver menentukan lewat centang
-"Potong saldo cuti" di dialog Setujui (`approveRequest({ deductBalance })`, dicatat `ApprovalCorrection`); efek final &
-revoke memotong/mengembalikan saldo hanya bila `deductBalance` (`leave-balance.ts`).
+**Jenis cuti (2026-10-30):** Tahunan / Melahirkan / Kematian (`LeaveRequest.type`). `deductDays` = hari kerja yang
+dipotong dari saldo, awal dari `defaultDeductDays` (validators/leave.ts): tahunan semua, kematian 0, melahirkan hanya yang
+melewati jatah gratis per pengajuan `MATERNITY_FREE_DAYS` (laki-laki 2, perempuan 90 hari kerja; `Employee.gender` dari
+Data Diri wajib terisi). Syarat 1 tahun & cek saldo hanya bila `deductDays > 0`; batas 31 Des hanya cuti tahunan. Approver
+mengubah lewat isian "Hari dipotong dari saldo" di dialog Setujui (`approveRequest({ deductDays })`, dicatat
+`ApprovalCorrection`); efek final & revoke memotong/mengembalikan `deductDays` (`leave-balance.ts`).
 
 **Kesehatan:** plafon **hanya tahunan** per karyawan per tahun (tidak ada plafon bulanan). Klaim >
 sisa plafon tahunan ditolak saat submit. Approver mengisi nominal disetujui (≤ diajukan, `approvedAmount`);
@@ -271,7 +273,7 @@ karyawan per hari. Terlambat / pulang cepat terhadap jam kerja `AppSetting atten
 **Clock out otomatis (2026-10-30):** job `attendance.auto-clock-out` (tiap 5 menit) mengisi clock out = jam pulang untuk
 yang lupa (`Attendance.autoClockOut`; clock in setelah jam pulang → 23:59). Yang lembur masih bisa clock out sendiri
 sekali di hari yang sama (jam otomatis diganti); koreksi Admin menghapus tanda otomatis.
-Appeal (Fase 14): hari kerja tidak hadir → appeal Sakit (wajib surat keterangan sakit PDF, 2026-10-14) / Kunjungan keluar maks 7 hari (modul ATTENDANCE_APPEAL,
+Appeal (Fase 14): hari kerja tidak hadir → appeal Sakit (wajib surat keterangan sakit PDF, 2026-10-14) / Kunjungan keluar / Lainnya (keterangan wajib, tanpa lampiran, 2026-10-30) maks 7 hari (modul ATTENDANCE_APPEAL,
 `APL/…`, Bu Ika; milik Bu Ika → Fallback). Lewat 7 hari tanpa appeal → job `attendance.deduct` (01:00 WIB) memotong
 1 hari cuti (`LeaveAdjustment` ABSENCE), hanya untuk tanggal ≥ `attendance.deductionStartDate`.
 

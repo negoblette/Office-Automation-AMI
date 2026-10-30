@@ -154,12 +154,14 @@ semua direktur auto-approve; bila flow REGULAR tidak ditemukan, engine melempar 
 - Submit ditolak jika sebelum genap 1 tahun masa kerja, melewati 31 Des, atau `workingDays > entitlement + carriedOver − used − (pending lain)`.
 - Carry over dipakai lebih dulu sebelum jatah periode berjalan.
 - **Jenis cuti (2026-10-30):** `LeaveRequest.type` = `ANNUAL` (Tahunan), `MATERNITY` (Melahirkan), `BEREAVEMENT`
-  (Kematian). `deductBalance` awal = `type === ANNUAL`. Hanya pengajuan yang memotong saldo yang terkena syarat 1 tahun
-  masa kerja, batas 31 Des, dan cek sisa saldo; pengajuan menunggu dihitung ke "pending" hanya bila `deductBalance`.
-  Approver mencentang/menghapus centang **"Potong saldo cuti"** di dialog Setujui (setiap level; pilihan tersimpan &
-  tercatat sebagai `ApprovalCorrection` "Cuti · Potong saldo cuti" yang terlihat pemohon). Efek final menambah
-  `LeaveBalance.used` (saldo tahun tanggal mulai) hanya bila `deductBalance`; batalkan approval membaliknya. Tanpa
-  lampiran dan tanpa batas lama cuti (dihitung hari kerja).
+  (Kematian). `deductDays` = hari kerja yang dipotong dari saldo, awal `defaultDeductDays`: tahunan = semua hari kerja,
+  kematian = 0, melahirkan = hari kerja di atas jatah gratis per pengajuan (laki-laki 2, perempuan 90 hari kerja; contoh
+  laki-laki 4 hari → 2 gratis + 2 potong). Cuti melahirkan wajib `Employee.gender` terisi (Data Diri). Syarat 1 tahun masa
+  kerja & cek sisa saldo hanya bila `deductDays > 0` (yang dicek = `deductDays`); batas 31 Des hanya cuti tahunan;
+  "pending" = jumlah `deductDays` pengajuan menunggu. Approver mengubah lewat isian **"Hari dipotong dari saldo"**
+  (0..workingDays) di dialog Setujui (setiap level; tersimpan & tercatat sebagai `ApprovalCorrection` "Cuti · Hari dipotong
+  dari saldo" yang terlihat pemohon). Efek final menambah `LeaveBalance.used` (saldo tahun tanggal mulai) sebanyak
+  `deductDays`; batalkan approval membaliknya. Tanpa lampiran.
 
 ### 6.3 Kesehatan
 - `HealthPlafond` per karyawan per tahun, diisi Admin.

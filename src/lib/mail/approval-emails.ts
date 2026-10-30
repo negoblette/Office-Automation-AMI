@@ -2,7 +2,7 @@
 import type { ApprovalModule, PrismaClient } from "@/generated/prisma/client";
 import { formatDate, formatRupiah } from "@/lib/format";
 import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
-import { LEAVE_TYPE_LABEL } from "@/lib/labels";
+import { LEAVE_TYPE_LABEL, leaveDeductLabel } from "@/lib/labels";
 import type { ApprovalNotification } from "@/lib/services/approval";
 import { appUrl } from "./app-url";
 import { enqueueEmails, type OutgoingEmail } from "./queue";
@@ -16,7 +16,7 @@ async function detailLines(db: PrismaClient, module: ApprovalModule, entityId: s
       const start = formatDate(leave.startDate);
       const end = formatDate(leave.endDate);
       return [
-        `Jenis: ${LEAVE_TYPE_LABEL[leave.type]}${leave.deductBalance ? "" : " (tidak memotong saldo cuti)"}`,
+        `Jenis: ${LEAVE_TYPE_LABEL[leave.type]}${leave.deductDays >= leave.workingDays ? "" : ` (${leaveDeductLabel(leave.deductDays, leave.workingDays)})`}`,
         `Tanggal cuti: ${start === end ? start : `${start} – ${end}`} (${leave.workingDays} hari kerja)`,
         `Alasan: ${leave.reason}`,
       ];

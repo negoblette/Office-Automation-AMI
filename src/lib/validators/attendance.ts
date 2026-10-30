@@ -23,13 +23,13 @@ export const attendanceCorrectionSchema = z
   .refine((v) => !v.clockOut || v.clockOut > v.clockIn, { path: ["clockOut"], error: "Jam pulang harus setelah jam masuk" });
 export type AttendanceCorrectionInput = z.infer<typeof attendanceCorrectionSchema>;
 
-/** Appeal tidak hadir (Fase 14): tanggal, alasan Sakit / Kunjungan keluar, keterangan. */
+/** Appeal tidak hadir (Fase 14): tanggal, alasan Sakit / Kunjungan keluar / Lainnya (2026-10-30), keterangan. */
 export const appealSchema = z
   .object({
     date: isoDateSchema,
     /** Sampai tanggal (opsional, 2026-10-14) — satu appeal untuk beberapa hari berturut-turut. */
     endDate: optionalField(isoDateSchema),
-    reason: z.enum(["SICK", "VISIT"], { error: "Alasan wajib dipilih" }),
+    reason: z.enum(["SICK", "VISIT", "OTHER"], { error: "Alasan wajib dipilih" }),
     note: textSchema("Keterangan", { min: 3, max: 300 }),
     /** Bukti surat keterangan sakit — WAJIB untuk alasan Sakit (2026-10-14). */
     fileKey: optionalField(z.string()),

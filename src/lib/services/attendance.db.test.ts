@@ -92,7 +92,7 @@ describe("rekap", () => {
     await clockOut(testDb, andi, jakartaDateTime("2026-09-21", "17:00"));
     await clockIn(testDb, andi, jakartaDateTime("2026-09-22", "08:10")); // lupa clock out
     await testDb.leaveRequest.create({
-      data: { number: "LV/2026/09/0001", employeeId: andi.employeeId!, startDate: d("2026-09-23"), endDate: d("2026-09-23"), workingDays: 1, reason: "x", status: "APPROVED" },
+      data: { number: "LV/2026/09/0001", employeeId: andi.employeeId!, startDate: d("2026-09-23"), endDate: d("2026-09-23"), workingDays: 1, deductDays: 1, reason: "x", status: "APPROVED" },
     });
     await testDb.holiday.create({ data: { date: d("2026-09-24"), name: "Libur Uji" } });
 

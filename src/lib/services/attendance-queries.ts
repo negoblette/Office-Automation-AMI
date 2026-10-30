@@ -1,5 +1,5 @@
 // Query halaman Absensi & kartu dashboard. Hasil aman dikirim ke Client Component (tanpa Date).
-import type { PrismaClient } from "@/generated/prisma/client";
+import type { AppealReason, PrismaClient } from "@/generated/prisma/client";
 import { appealDeadline, type DayStatus, dayStatus, isWorkday, type WorkHours } from "@/lib/attendance";
 import { formatTime, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { addDays } from "@/lib/leave";
@@ -22,7 +22,7 @@ export type AttendanceDay = {
   correctionNote: string | null;
   correctedBy: string | null;
   /** Appeal hari itu (Fase 14). */
-  appeal: { number: string; reason: "SICK" | "VISIT"; status: string; note: string; rejection?: string | null; fileKey?: string | null; fileName?: string | null } | null;
+  appeal: { number: string; reason: AppealReason; status: string; note: string; rejection?: string | null; fileKey?: string | null; fileName?: string | null } | null;
   /** Saldo cuti sudah dipotong karena tidak hadir tanpa appeal. */
   leaveDeducted: boolean;
   /** Masih boleh mengajukan appeal (tidak hadir, ≤ 7 hari). */
@@ -191,6 +191,7 @@ export type AttendanceSummaryRow = {
   /** Appeal disetujui (Fase 14). */
   sick: number;
   visit: number;
+  other: number;
   /** Hari yang sudah dipotong cuti. */
   deducted: number;
   lateMinutes: number;
@@ -222,6 +223,7 @@ export async function monthSummary(db: PrismaClient, yearMonth: string, todayIso
       absent: 0,
       sick: 0,
       visit: 0,
+      other: 0,
       deducted: 0,
       lateMinutes: 0,
       today: null,
@@ -242,6 +244,7 @@ export async function monthSummary(db: PrismaClient, yearMonth: string, todayIso
       });
       if (status === "SICK") row.sick++;
       if (status === "VISIT") row.visit++;
+      if (status === "OTHER") row.other++;
       if (data.deductedSet.has(key)) row.deducted++;
       if (record) row.present++;
       if (record && record.lateMinutes > 0) row.late++;

@@ -20,12 +20,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import type { LeaveType } from "@/generated/prisma/enums";
+import type { Gender, LeaveType } from "@/generated/prisma/enums";
 import { formatDate, toJakartaIsoDate } from "@/lib/format";
 import { LEAVE_TYPE_LABEL } from "@/lib/labels";
 import { countWorkingDays } from "@/lib/leave";
 import { cn } from "@/lib/utils";
-import { defaultDeductBalance, LEAVE_TYPES, leaveRequestSchema } from "@/lib/validators/leave";
+import { defaultDeductDays, LEAVE_TYPES, leaveRequestSchema } from "@/lib/validators/leave";
 import { submitLeaveAction } from "./actions";
 
 type Input = z.input<typeof leaveRequestSchema>;
@@ -39,12 +39,15 @@ export function LeaveRequestDialog({
   holidays,
   remaining,
   eligibleFrom,
+  gender,
   revise,
 }: {
   holidays: string[];
   remaining: number;
   /** Tanggal paling awal cuti boleh dimulai (genap 1 tahun masa kerja). */
   eligibleFrom: string;
+  /** Jenis kelamin karyawan — menentukan jatah cuti melahirkan (2026-10-30); null = belum diisi di Profil. */
+  gender: Gender | null;
   /** Revisi cuti yang ditolak (2026-10-12): isi awal + diajukan ulang dengan nomor yang sama. */
   revise?: { id: string; number: string; type: LeaveType; startDate: string; endDate: string; reason: string };
 }) {
@@ -59,17 +62,19 @@ export function LeaveRequestDialog({
 
   const [type, startDate, endDate] = useWatch({ control: form.control, name: ["type", "startDate", "endDate"] });
   const holidaySet = useMemo(() => new Set(holidays), [holidays]);
-  // Cuti melahirkan & kematian tidak memotong saldo → tanpa syarat 1 tahun masa kerja & sisa saldo (dicek ulang server).
-  const deducts = defaultDeductBalance(type ?? "ANNUAL");
-  const tooEarly = deducts && typeof startDate === "string" && startDate !== "" && startDate < eligibleFrom;
-  const overBalance = (days: number | null) => deducts && days !== null && days > remaining;
   const preview =
     typeof startDate === "string" && typeof endDate === "string" && startDate && endDate && endDate >= startDate
       ? countWorkingDays(startDate, endDate, holidaySet)
       : null;
-  // Saldo tidak cukup / belum genap 1 tahun → tombol Ajukan nonaktif (2026-10-30); server tetap mengecek ulang.
-  // Cuti melahirkan & kematian tidak terkena karena tidak memotong saldo.
-  const blocked = tooEarly || overBalance(preview);
+  // Hari yang memotong saldo (2026-10-30): tahunan semua, kematian 0, melahirkan hanya yang melewati jatah gratis
+  // (laki-laki 2 / perempuan 90 hari kerja). Syarat 1 tahun & sisa saldo hanya untuk yang dipotong; server mengecek ulang.
+  const leaveType = type ?? "ANNUAL";
+  const needsGender = leaveType === "MATERNITY" && !gender;
+  const deductDays = preview === null ? (leaveType === "ANNUAL" ? 1 : 0) : defaultDeductDays(leaveType, preview, gender);
+  const tooEarly = deductDays > 0 && typeof startDate === "string" && startDate !== "" && startDate < eligibleFrom;
+  const overBalance = preview !== null && deductDays > remaining;
+  // Saldo tidak cukup / belum genap 1 tahun / jenis kelamin belum diisi → tombol Ajukan nonaktif.
+  const blocked = needsGender || tooEarly || overBalance;
 
   const onSubmit = form.handleSubmit((values) =>
     submit(
@@ -118,13 +123,17 @@ export function LeaveRequestDialog({
                 blocked ? "bg-danger-soft text-danger" : "bg-info-soft text-foreground",
               )}
             >
-              {tooEarly
-                ? `Cuti baru bisa dipakai mulai ${formatDate(`${eligibleFrom}T00:00:00Z`)} (setelah genap 1 tahun masa kerja)`
-                : preview === null
-                ? "Pilih rentang tanggal."
-                : deducts
-                ? `${preview} hari kerja · sisa saldo ${remaining} hari${overBalance(preview) ? " — saldo tidak cukup, kurangi tanggal cuti" : ""}`
-                : `${preview} hari kerja · tidak memotong saldo cuti (approver dapat menentukan lain)`}
+              {needsGender
+              ? "Isi jenis kelamin di Profil → Data Diri dulu; jatah cuti melahirkan bergantung pada jenis kelamin (laki-laki 2 hari kerja, perempuan 90 hari kerja)."
+              : tooEarly
+              ? `Cuti baru bisa dipakai mulai ${formatDate(`${eligibleFrom}T00:00:00Z`)} (setelah genap 1 tahun masa kerja)`
+              : preview === null
+              ? "Pilih rentang tanggal."
+              : leaveType === "ANNUAL"
+              ? `${preview} hari kerja · sisa saldo ${remaining} hari${overBalance ? " — saldo tidak cukup, kurangi tanggal cuti" : ""}`
+              : deductDays === 0
+              ? `${preview} hari kerja · tidak memotong saldo cuti`
+              : `${preview} hari kerja · ${preview - deductDays} hari jatah cuti melahirkan, ${deductDays} hari dipotong dari saldo (sisa ${remaining} hari)${overBalance ? " — saldo tidak cukup, kurangi tanggal cuti" : ""}`}
             </p>
             <TextareaField name="reason" label="Alasan / delegasi tugas" required />
             <DialogFooter>

@@ -5,13 +5,15 @@ import { requestStatusBadge } from "@/components/shared/approval-status";
 import { PersonCell } from "@/components/shared/person-cell";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { DataTable, type DataTableColumn, dataTableColumnHelper } from "@/components/table/data-table";
+import type { Gender } from "@/generated/prisma/enums";
 import { formatDate } from "@/lib/format";
-import { LEAVE_TYPE_LABEL } from "@/lib/labels";
+import { LEAVE_TYPE_LABEL, leaveDeductLabel } from "@/lib/labels";
 import type { LeaveRequestRow } from "@/lib/services/leave-queries";
 import { LeaveRequestDialog } from "./leave-form";
 
 const col = dataTableColumnHelper<LeaveRequestRow>();
 const date = (iso: string) => formatDate(`${iso}T00:00:00Z`, "short");
+const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 const numberColumn = col.accessor("number", {
   header: "Nomor",
@@ -28,7 +30,9 @@ const restColumns = [
     cell: ({ row }) => (
       <div className="flex flex-col">
         <span className="whitespace-nowrap">{LEAVE_TYPE_LABEL[row.original.type]}</span>
-        {!row.original.deductBalance && <span className="text-xs whitespace-nowrap text-muted-foreground">Tidak potong saldo</span>}
+        {row.original.deductDays < row.original.workingDays && (
+          <span className="text-xs whitespace-nowrap text-muted-foreground">{capitalize(leaveDeductLabel(row.original.deductDays, row.original.workingDays))}</span>
+        )}
       </div>
     ),
   }),
@@ -67,7 +71,7 @@ const restColumns = [
 ];
 
 /** Data form untuk tombol Revisi (cuti milik sendiri yang ditolak). */
-export type LeaveReviseContext = { holidays: string[]; remaining: number; eligibleFrom: string };
+export type LeaveReviseContext = { holidays: string[]; remaining: number; eligibleFrom: string; gender: Gender | null };
 
 export function LeaveTable({ rows, showRequester, revise }: { rows: LeaveRequestRow[]; showRequester: boolean; revise?: LeaveReviseContext }) {
   const columns = useMemo(

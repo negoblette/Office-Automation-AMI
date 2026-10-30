@@ -22,6 +22,7 @@ export async function createApprovalEntity(module: ApprovalModule, requesterUser
           startDate: new Date(),
           endDate: new Date(),
           workingDays: 1,
+          deductDays: 1,
           reason: "uji",
           status: "PENDING",
         },

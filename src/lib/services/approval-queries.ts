@@ -3,7 +3,7 @@ import type { ApprovalModule, Prisma, PrismaClient, RequestStatus } from "@/gene
 import type { ApprovalStepView } from "@/components/shared/approval-stepper";
 import { CORRECTABLE_MODULES, type CorrectionView, listCorrections } from "./approval-correction";
 import { formatDate } from "@/lib/format";
-import { EDUCATION_LEVEL_LABEL, LEAVE_TYPE_LABEL } from "@/lib/labels";
+import { EDUCATION_LEVEL_LABEL, LEAVE_TYPE_LABEL, leaveDeductLabel } from "@/lib/labels";
 import { canRevoke } from "./approval";
 import { appealSummary } from "./attendance-appeal";
 import { approverRoleLabel } from "@/components/shared/approval-status";
@@ -31,8 +31,8 @@ export type ApprovalRow = {
   canApprove: boolean;
   /** HEALTH: nominal diajukan (dasar isian "nominal disetujui"); null untuk modul lain. */
   requestedAmount: number | null;
-  /** LEAVE: nilai "Potong saldo cuti" saat ini (dasar centang di dialog Setujui); null untuk modul lain. */
-  leaveDeductBalance: boolean | null;
+  /** LEAVE: hari dipotong dari saldo saat ini & jumlah hari kerja (dasar isian di dialog Setujui); null untuk modul lain. */
+  leaveDeduct: { days: number; workingDays: number } | null;
   /** User yang login boleh membatalkan persetujuan terakhir (approver yang menyetujui / Admin). */
   canRevoke: boolean;
   /** Bisa dikoreksi approver (modul dengan nominal/keterangan). */
@@ -105,7 +105,10 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
     canApprove: request.steps.some((step) => step.status === "PENDING" && step.approverIds.includes(viewerId)),
     canRevoke: viewer ? canRevoke(viewer, request) : false,
     requestedAmount: request.module === "HEALTH" ? (claimAmountOf.get(request.entityId) ?? null) : null,
-    leaveDeductBalance: request.module === "LEAVE" ? (leaveOf.get(request.entityId)?.deductBalance ?? null) : null,
+    leaveDeduct: (() => {
+      const leave = request.module === "LEAVE" ? leaveOf.get(request.entityId) : undefined;
+      return leave ? { days: leave.deductDays, workingDays: leave.workingDays } : null;
+    })(),
     correctable: (CORRECTABLE_MODULES as readonly ApprovalModule[]).includes(request.module),
     corrections: correctionsOf.get(request.id) ?? [],
     ...(() => {
@@ -119,7 +122,7 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
         const parts = [
           LEAVE_TYPE_LABEL[leave.type],
           `${start === end ? start : `${start} – ${end}`} (${leave.workingDays} hari kerja)`,
-          leave.deductBalance ? "potong saldo" : "tidak potong saldo",
+          leaveDeductLabel(leave.deductDays, leave.workingDays),
         ];
         return { summary: parts.join(" · "), file: null };
       }

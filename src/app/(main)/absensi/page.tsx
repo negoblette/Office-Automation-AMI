@@ -109,6 +109,7 @@ async function Recap({ yearMonth, thisMonth, todayIso }: { yearMonth: string; th
               <th className="px-4 py-3 text-right font-semibold">Cuti</th>
               <th className="px-4 py-3 text-right font-semibold">Sakit</th>
               <th className="px-4 py-3 text-right font-semibold">Kunjungan</th>
+              <th className="px-4 py-3 text-right font-semibold">Lainnya</th>
               <th className="px-4 py-3 text-right font-semibold">Tidak hadir</th>
               <th className="px-4 py-3 text-right font-semibold">Cuti dipotong</th>
             </tr>
@@ -145,6 +146,7 @@ async function Recap({ yearMonth, thisMonth, todayIso }: { yearMonth: string; th
                 <td className="px-4 py-2.5 text-right tabular-nums">{row.leave}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{row.sick}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{row.visit}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{row.other}</td>
                 <td className={`px-4 py-2.5 text-right tabular-nums ${row.absent ? "font-semibold text-danger" : ""}`}>{row.absent}</td>
                 <td className={`px-4 py-2.5 text-right tabular-nums ${row.deducted ? "font-semibold text-danger" : ""}`}>{row.deducted}</td>
               </tr>

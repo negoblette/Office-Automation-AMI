@@ -33,6 +33,7 @@ export const DAY_STATUS_VARIANT: Record<DayStatus, StatusVariant> = {
   ABSENT: "danger",
   SICK: "info",
   VISIT: "info",
+  OTHER: "info",
   APPEAL_PENDING: "warning",
   NOT_YET: "neutral",
   NOT_EMPLOYED: "neutral",

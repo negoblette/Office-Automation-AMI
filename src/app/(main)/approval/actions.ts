@@ -16,21 +16,21 @@ const approveSchema = z.object({
   note: z.string().trim().max(500, { error: "Catatan maksimal 500 karakter" }).optional(),
   /** Klaim kesehatan: nominal disetujui (v1.14); diabaikan modul lain / level non-final. */
   approvedAmount: z.number().int().positive({ error: "Nominal disetujui harus lebih dari 0" }).nullish(),
-  /** Cuti: centang "Potong saldo cuti" (2026-10-30); diabaikan modul lain. */
-  deductBalance: z.boolean().nullish(),
+  /** Cuti: hari kerja yang dipotong dari saldo (2026-10-30); diabaikan modul lain. */
+  deductDays: z.number({ error: "Isi jumlah hari" }).int({ error: "Harus bilangan bulat" }).min(0, { error: "Minimal 0" }).nullish(),
 });
 
 /** Setujui step PENDING. Hak approve dicek engine (approver step, bukan sekadar Admin). */
 export async function approveAction(values: unknown): Promise<ActionResult<{ status: ApproveResult["status"] }>> {
   const admin = await requireApprover();
   try {
-    const { requestId, note, approvedAmount, deductBalance } = approveSchema.parse(values);
+    const { requestId, note, approvedAmount, deductDays } = approveSchema.parse(values);
     const result = await approveRequest(prisma, {
       requestId,
       actorId: admin.id,
       note: note || null,
       approvedAmount: approvedAmount ?? null,
-      deductBalance: deductBalance ?? null,
+      deductDays: deductDays ?? null,
       meta: requestMeta(await headers()),
     });
     // Email di-enqueue SETELAH transaksi approve commit.
