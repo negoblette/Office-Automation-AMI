@@ -22,7 +22,9 @@ export default async function AbsensiPage({ searchParams }: { searchParams: Prom
   const user = await requireUser();
   const { tab, bulan } = await searchParams;
   const isAdmin = user.role === "ADMIN";
-  const activeTab = isAdmin && tab === "rekap" ? "rekap" : "saya";
+  // Admin tanpa data karyawan (super admin sistem, 2026-10-30) tidak absen sendiri → langsung rekap.
+  const ownAttendance = Boolean(user.employeeId);
+  const activeTab = isAdmin && (tab === "rekap" || !ownAttendance) ? "rekap" : "saya";
   const todayIso = toJakartaIsoDate();
   const thisMonth = todayIso.slice(0, 7);
   const yearMonth = validMonth(bulan, thisMonth);
@@ -34,7 +36,7 @@ export default async function AbsensiPage({ searchParams }: { searchParams: Prom
         description="Clock in saat mulai kerja dan clock out saat pulang — jam dicatat otomatis dari server (WIB)."
         breadcrumbs={[{ label: "Utama" }, { label: "Absensi" }]}
       />
-      {isAdmin && (
+      {isAdmin && ownAttendance && (
         <LinkTabs
           label="Absensi"
           active={activeTab}

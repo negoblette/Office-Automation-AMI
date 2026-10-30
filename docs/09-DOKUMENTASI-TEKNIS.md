@@ -370,7 +370,7 @@ docker-compose.prod.yml produksi: db, migrate, app, worker, proxy, backup
 | Login, ganti password, MFA | `/login`, `/ganti-password`, `/mfa` | ✔ | ✔ | ✔ |
 | Dashboard | `/dashboard` | Ringkasan semua + antrian | Milik sendiri + antrian | Milik sendiri |
 | Absensi | `/absensi`, `/absensi/[employeeId]` | ✔ + rekap & koreksi | Milik sendiri | Milik sendiri |
-| Profil (data diri, dokumen & keluarga, sertifikat, inventory kantor) | `/profil/*` | ✔ | ✔ | ✔ |
+| Profil (data diri, dokumen & keluarga, sertifikat, asset kantor) | `/profil/*` | ✔ | ✔ | ✔ |
 | Karyawan (daftar, tambah, detail, edit, arsip) | `/karyawan/*` | ✔ | — | — |
 | Kandidat | `/kandidat`, `/kandidat/[id]` | ✔ | — | — |
 | Project | `/project`, `/project/[id]` | ✔ | Lihat | Lihat |
@@ -439,7 +439,7 @@ sendiri; isinya selalu dihitung langsung dari data, jadi selalu sesuai kondisi t
 
 **File kode:** `src/lib/services/dashboard-queries.ts`, `notifications.ts`, halaman `src/app/(main)/dashboard`.
 
-### 8.3 Profil Saya: data diri, dokumen & keluarga, sertifikat, inventory kantor
+### 8.3 Profil Saya: data diri, dokumen & keluarga, sertifikat, asset kantor
 **Untuk apa:** setiap karyawan melengkapi datanya sendiri, sehingga HRD tidak perlu mengetik ulang.
 
 **Data diri.** Admin hanya membuat akun minimal (nama, email, divisi, jabatan, tanggal masuk, role). Selanjutnya

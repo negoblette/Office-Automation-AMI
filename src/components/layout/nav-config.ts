@@ -9,20 +9,26 @@ import {
   MonitorSmartphone,
   ReceiptText,
   Settings,
+  Timer,
   UserPlus,
   UserRound,
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { FEATURES } from "@/lib/features";
+import { inventoryEnabled } from "@/lib/features";
 import { canApprove } from "@/lib/roles";
 
 export type AppRole = Role;
+
+/** Yang menentukan isi menu: role, super admin (modul ditunda tetap terbuka), dan hak overtime (divisi Engineer). */
+export type NavViewer = { role: AppRole; isSuperAdmin: boolean; canOvertime: boolean };
 
 export type NavChild = {
   label: string;
   href: string;
   adminOnly?: boolean;
+  /** Modul Inventory (ditunda; terbuka untuk super admin). */
+  inventory?: boolean;
 };
 
 export type NavItem = {
@@ -34,6 +40,10 @@ export type NavItem = {
   approverOnly?: boolean;
   /** Label pengganti untuk Staf, mis. "Project" (Staf hanya melihat, tanpa Customer). */
   staffLabel?: string;
+  /** Modul Inventory (ditunda; terbuka untuk super admin). */
+  inventory?: boolean;
+  /** Overtime: karyawan divisi Engineer + Admin (rekap), 2026-10-30. */
+  overtime?: boolean;
   children?: NavChild[];
 };
 
@@ -52,6 +62,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Dashboard", href: "/dashboard", icon: LayoutGrid },
       { label: "Absensi", href: "/absensi", icon: Clock },
+      { label: "Overtime", href: "/overtime", icon: Timer, overtime: true },
       {
         label: "Profil Saya",
         href: "/profil",
@@ -60,8 +71,8 @@ export const NAV_GROUPS: NavGroup[] = [
           { label: "Data Diri", href: "/profil" },
           { label: "Dokumen & Keluarga", href: "/profil/dokumen" },
           { label: "Sertifikat & Ijazah", href: "/profil/sertifikat" },
-          { label: "Inventory Kantor", href: "/profil/aset" },
-          ...(FEATURES.inventory ? [{ label: "Inventory Saya", href: "/profil/inventory" }] : []),
+          { label: "Asset Kantor", href: "/profil/aset" },
+          { label: "Inventory Saya", href: "/profil/inventory", inventory: true },
         ],
       },
     ],
@@ -85,7 +96,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Operasional & Aset",
     items: [
-      ...(FEATURES.inventory ? [{ label: "Inventory / Demo Unit", href: "/inventory", icon: MonitorSmartphone, adminOnly: true }] : []),
+      { label: "Inventory / Demo Unit", href: "/inventory", icon: MonitorSmartphone, adminOnly: true, inventory: true },
       {
         label: "Project & Customer",
         href: "/project",
@@ -155,15 +166,22 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-/** Menu yang boleh dilihat role tertentu; grup kosong dibuang. */
-export function getNavForRole(role: AppRole): NavGroup[] {
+/** Menu yang boleh dilihat user tertentu; grup kosong dibuang. */
+export function getNavFor({ role, isSuperAdmin, canOvertime }: NavViewer): NavGroup[] {
   const isAdmin = role === "ADMIN";
+  const inventory = inventoryEnabled({ isSuperAdmin });
   return NAV_GROUPS.map((group) => ({
     ...group,
     items: group.items
-      .filter((item) => (isAdmin || !item.adminOnly) && (!item.approverOnly || canApprove(role)))
+      .filter(
+        (item) =>
+          (isAdmin || !item.adminOnly) &&
+          (!item.approverOnly || canApprove(role)) &&
+          (!item.inventory || inventory) &&
+          (!item.overtime || canOvertime || isAdmin),
+      )
       .map((item) => {
-        const children = item.children?.filter((child) => isAdmin || !child.adminOnly);
+        const children = item.children?.filter((child) => (isAdmin || !child.adminOnly) && (!child.inventory || inventory));
         // Sub-menu dengan satu isi saja tidak perlu ditampilkan.
         return {
           ...item,

@@ -6,13 +6,13 @@ import { usePathname } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import shell from "./app-shell.module.css";
-import { type AppRole, type NavItem, getActiveChildHref, getNavForRole, isPathActive } from "./nav-config";
+import { type NavItem, type NavViewer, getActiveChildHref, getNavFor, isPathActive } from "./nav-config";
 
 /** Angka badge per href menu, mis. { "/approval": 3 }. */
 export type NavBadges = Record<string, number>;
 
 type SidebarNavProps = {
-  role: AppRole;
+  viewer: NavViewer;
   badges?: NavBadges;
   /** Dipanggil setelah klik link (menutup drawer di HP). */
   onNavigate?: () => void;
@@ -29,9 +29,9 @@ const itemActiveClass = "bg-sidebar-primary font-bold text-sidebar-primary-foreg
 /** Induk submenu yang route-nya aktif: tebal + ikon biru (pil putih ada di sub-menu aktif). */
 const parentActiveClass = "font-bold text-ink hover:bg-sidebar-accent [&>svg:first-child]:text-brand";
 
-export function SidebarNav({ role, badges, onNavigate }: SidebarNavProps) {
+export function SidebarNav({ viewer, badges, onNavigate }: SidebarNavProps) {
   const pathname = usePathname();
-  const groups = getNavForRole(role);
+  const groups = getNavFor(viewer);
 
   return (
     <nav aria-label="Menu utama" className="flex flex-col pt-1 pr-1 pb-7 pl-4">

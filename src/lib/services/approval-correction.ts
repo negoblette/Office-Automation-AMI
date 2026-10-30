@@ -7,7 +7,7 @@ import type { ApprovalModule, Prisma, PrismaClient } from "@/generated/prisma/cl
 import { formatDate, formatRupiah, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL, projectLabel } from "@/lib/labels";
 import type { RequestMeta } from "@/lib/request-meta";
-import { canApprove } from "@/lib/roles";
+import { canActOnStep, canApprove } from "@/lib/roles";
 import { NEW_ACQUISITION, reimbursementTotals } from "@/lib/validators/reimbursement";
 import { logAudit } from "./audit";
 import { ForbiddenError } from "./approval";
@@ -124,8 +124,8 @@ async function assertCurrentApprover(db: Db, requestId: string, actorId: string)
   if (request.status !== "PENDING") throw new ServiceError("Pengajuan ini sudah diproses");
   if (!(CORRECTABLE_MODULES as readonly ApprovalModule[]).includes(request.module)) throw new ServiceError("Pengajuan ini tidak bisa dikoreksi");
   const current = request.steps.find((s) => s.status === "PENDING");
-  const actor = await db.user.findUnique({ where: { id: actorId }, select: { role: true, isActive: true } });
-  if (!current || !actor?.isActive || !canApprove(actor.role) || !current.approverIds.includes(actorId)) throw new ForbiddenError("Anda tidak berhak mengoreksi pengajuan ini");
+  const actor = await db.user.findUnique({ where: { id: actorId }, select: { id: true, role: true, isActive: true, isSuperAdmin: true } });
+  if (!current || !actor?.isActive || !canApprove(actor.role) || !canActOnStep(actor, current, request.requesterId)) throw new ForbiddenError("Anda tidak berhak mengoreksi pengajuan ini");
   return { request, level: current.level };
 }
 

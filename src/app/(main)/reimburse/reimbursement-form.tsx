@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Building2, Loader2, Plus, Send, Trash2 } from "lucide-react";
+import { Building2, Loader2, Plus, Send, Timer, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 import { Controller, FormProvider, useFieldArray, useForm, useFormContext, useWatch } from "react-hook-form";
@@ -15,8 +15,10 @@ import { DraftNotice, useFormDraft, useUnsavedChangesGuard } from "@/components/
 import { useActionSubmit } from "@/components/form/use-action-submit";
 import { useFeedback } from "@/components/shared/feedback";
 import { Button } from "@/components/ui/button";
+import { formatDuration } from "@/lib/attendance";
 import { formatDate, formatRupiah, toJakartaIsoDate } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL, toOptions } from "@/lib/labels";
+import type { ReimbursableOvertime } from "@/lib/services/overtime-queries";
 import type { ReimbursementFormOptions } from "@/lib/services/reimbursement-queries";
 import { cn } from "@/lib/utils";
 import { dailySubtotals, NEW_ACQUISITION, reimbursementFormSchema, reimbursementTotals } from "@/lib/validators/reimbursement";
@@ -39,12 +41,15 @@ export function ReimbursementForm({
   defaultValues,
   options,
   draftKey,
+  overtime = null,
 }: {
   reimbursementId: string | null;
   defaultValues: Input;
   options: ReimbursementFormOptions;
   /** Kunci draft sementara (sessionStorage), unik per user + pengajuan. */
   draftKey: string;
+  /** Overtime yang bisa di-reimburse (divisi Engineer, 2026-10-30); null = bagian Overtime tidak tampil. */
+  overtime?: { rate: number; overtimes: ReimbursableOvertime[] } | null;
 }) {
   const router = useRouter();
   const form = useForm<Input, unknown, Output>({ resolver: zodResolver(reimbursementFormSchema), defaultValues });
@@ -57,7 +62,15 @@ export function ReimbursementForm({
   const { notify } = useFeedback();
 
   const visits = useWatch({ control: form.control, name: "visits" }) ?? [];
-  const lines = visits.flatMap((visit) => (visit.lines ?? []).map((line) => ({ ...line, date: String(visit.date ?? "") })));
+  const overtimeIds = useWatch({ control: form.control, name: "overtimeIds" }) ?? [];
+  // Overtime terpilih ikut subtotal sebagai baris Personal (nominal final dihitung server).
+  const overtimeLines = (overtime?.overtimes ?? [])
+    .filter((o) => overtimeIds.includes(o.id))
+    .map((o) => ({ date: o.date, paymentMethod: "PERSONAL", amount: o.amount }));
+  const lines = [
+    ...visits.flatMap((visit) => (visit.lines ?? []).map((line) => ({ ...line, date: String(visit.date ?? "") }))),
+    ...overtimeLines,
+  ];
   const totals = reimbursementTotals(lines.map((line) => ({ paymentMethod: String(line.paymentMethod), amount: line.amount as number })));
   const perDay = dailySubtotals(lines.map((line) => ({ date: line.date, amount: line.amount as number })));
   const lineCount = lines.length;
@@ -88,7 +101,7 @@ export function ReimbursementForm({
             key={field.id}
             index={index}
             options={options}
-            canRemove={fields.length > 1}
+            canRemove={fields.length > 1 || overtimeIds.length > 0}
             canAddLine={lineCount < MAX_LINES}
             onRemove={() => remove(index)}
           />
@@ -103,6 +116,8 @@ export function ReimbursementForm({
         >
           <Building2 aria-hidden /> Tambah Kunjungan
         </Button>
+
+        {overtime && <OvertimePicker rate={overtime.rate} overtimes={overtime.overtimes} canAdd={lineCount < MAX_LINES} />}
 
         <section className="grid gap-4 rounded-2xl bg-card p-5 shadow-card sm:grid-cols-[1fr_auto]">
           <TextareaField name="note" label="Catatan untuk approver (opsional)" />
@@ -368,6 +383,70 @@ function LineRow({
         </FormField>
       </div>
     </div>
+  );
+}
+
+/**
+ * Pilihan overtime (2026-10-30): centang sesi overtime yang sudah selesai; satu sesi = satu baris reimburse tipe
+ * Overtime dengan tanggal, customer, project & pekerjaan dari sesi itu. Nominal = durasi × tarif per jam.
+ */
+function OvertimePicker({ rate, overtimes, canAdd }: { rate: number; overtimes: ReimbursableOvertime[]; canAdd: boolean }) {
+  const form = useFormContextTyped();
+  return (
+    <section className="rounded-2xl bg-card shadow-card" aria-labelledby="overtime-heading">
+      <div className="flex flex-col gap-1 border-b border-border p-5">
+        <h2 id="overtime-heading" className="flex items-center gap-2 text-sm font-semibold tracking-wider text-muted-foreground uppercase">
+          <Timer className="size-4" aria-hidden /> Overtime
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          {rate
+            ? `Centang overtime yang mau di-reimburse. Nominal = durasi × ${formatRupiah(rate)} per jam.`
+            : "Tarif overtime per jam belum diatur Admin — overtime belum bisa di-reimburse."}
+        </p>
+      </div>
+      {overtimes.length === 0 ? (
+        <p className="p-5 text-sm text-muted-foreground">Belum ada overtime selesai yang bisa di-reimburse.</p>
+      ) : (
+        <Controller
+          control={form.control}
+          name="overtimeIds"
+          render={({ field }) => {
+            const selected: string[] = Array.isArray(field.value) ? field.value : [];
+            return (
+              <ul className="flex flex-col divide-y divide-border">
+                {overtimes.map((o) => {
+                  const checked = selected.includes(o.id);
+                  return (
+                    <li key={o.id}>
+                      <label className={cn("flex cursor-pointer items-start gap-3 p-5", !rate && "cursor-not-allowed opacity-60")}>
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 size-[18px] shrink-0 cursor-pointer accent-primary"
+                          checked={checked}
+                          disabled={!rate || (!checked && !canAdd)}
+                          onChange={(event) => field.onChange(event.target.checked ? [...selected, o.id] : selected.filter((id) => id !== o.id))}
+                        />
+                        <span className="flex min-w-0 flex-1 flex-col gap-0.5 text-sm">
+                          <span className="font-semibold">
+                            {formatDate(`${o.date}T00:00:00Z`, "weekday")} · {o.clockIn}–{o.clockOut}
+                            {o.clockOutDate && ` (${formatDate(`${o.clockOutDate}T00:00:00Z`, "short")})`} · {formatDuration(o.minutes)}
+                          </span>
+                          <span className="text-muted-foreground">
+                            {o.customerName} · {o.projectName}
+                          </span>
+                          <span className="text-muted-foreground">{o.activity}</span>
+                        </span>
+                        <span className="shrink-0 text-sm font-semibold tabular-nums">{formatRupiah(o.amount)}</span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            );
+          }}
+        />
+      )}
+    </section>
   );
 }
 

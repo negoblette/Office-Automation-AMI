@@ -65,7 +65,7 @@ src/
   app/
     (auth)/login/
     (main)/            # layout dengan sidebar, butuh login
-      dashboard/ absensi/ profil/ karyawan/ kandidat/ inventory/ (ditunda)
+      dashboard/ absensi/ overtime/ profil/ karyawan/ kandidat/ inventory/ (ditunda)
       reimburse/ cuti/ kesehatan/ project/ approval/ setting/
     api/files/[key]/   # download file dengan cek hak akses (key = fileKey UUID)
   components/          # ui/ (shadcn), form/, table/, layout/
@@ -146,6 +146,11 @@ Divisi = master `Division` (kode: UMUM, ENGINEER, SALES, DIRECTOR, HR, FINANCE; 
 2026-10-12). Kode disimpan di `Employee.division` dan menentukan approval flow; divisi tanpa flow sendiri memakai flow
 divisi acuannya (`followsCode`, HR & Finance → Umum). Label divisi: server `divisionLabels(db)`, client `useDivisions()`.
 Hak approve ditentukan oleh **Approval Flow**, bukan oleh role saja.
+**Super admin (2026-10-30):** `User.isSuperAdmin` (migrasi: admin.oa@arthamitra.co.id; `seedProduction` menandai akun Admin
+sistem) — Admin yang boleh menyetujui/menolak/mengoreksi pengajuan apa pun walau tidak ada di flow (kecuali miliknya,
+`canActOnStep`), membuka modul yang ditunda (`inventoryEnabled`, `lib/features.ts`), dan tidak bisa diubah role,
+dinonaktifkan, atau di-reset password/MFA-nya oleh Admin lain (`assertNotOtherSuperAdmin`). Tidak diatur dari aplikasi.
+Admin tanpa data karyawan: Absensi langsung ke Rekap, kartu absen & saldo cuti pribadi disembunyikan.
 
 **Approval (dipakai Reimburse, Cuti, Kesehatan, Expense, Sertifikat, Appeal absensi):**
 1. Ambil flow REGULAR sesuai `module` + `division` pemohon (division null = semua).
@@ -273,12 +278,17 @@ karyawan per hari. Terlambat / pulang cepat terhadap jam kerja `AppSetting atten
 **Clock out otomatis (2026-10-30):** job `attendance.auto-clock-out` (tiap 5 menit) mengisi clock out = jam pulang untuk
 yang lupa (`Attendance.autoClockOut`; clock in setelah jam pulang → 23:59). Yang lembur masih bisa clock out sendiri
 sekali di hari yang sama (jam otomatis diganti); koreksi Admin menghapus tanda otomatis.
+**Overtime (2026-10-30):** menu terpisah `/overtime`, hanya karyawan divisi Engineer (Admin: rekap). Boleh beberapa sesi
+per hari (satu baris per sesi), satu sesi berjalan; Clock Out = finalize customer + project + pekerjaan. Sesi selesai
+dipilih di form reimburse (bagian Overtime) → baris tipe `OVERTIME`, nominal = durasi × tarif per jam (Setting → Jam
+Kerja & Absensi). Satu sesi hanya sekali di-reimburse. Detail: Tech Spec §6.4a.
 Appeal (Fase 14): hari kerja tidak hadir → appeal Sakit (wajib surat keterangan sakit PDF, 2026-10-14) / Kunjungan keluar / Lainnya (keterangan wajib, tanpa lampiran, 2026-10-30) maks 7 hari (modul ATTENDANCE_APPEAL,
 `APL/…`, Bu Ika; milik Bu Ika → Fallback). Lewat 7 hari tanpa appeal → job `attendance.deduct` (01:00 WIB) memotong
 1 hari cuti (`LeaveAdjustment` ABSENCE), hanya untuk tanggal ≥ `attendance.deductionStartDate`.
 
 **Modul ditunda:** Inventory / Demo Unit (`FEATURES.inventory = false` di `src/lib/features.ts`) —
-menu, halaman, aksi, dashboard & job `reminder.asset` nonaktif; kode & data tetap ada.
+menu, halaman, aksi, dashboard & job `reminder.asset` nonaktif; kode & data tetap ada. Super admin tetap bisa membuka
+menu, halaman & aksinya (`inventoryEnabled(user)`). Tab "Aset" per karyawan (`EmployeeAsset`) bernama **Asset Kantor**.
 
 **Resign/Rehire:** tombol Resign mengisi `endDate` periode aktif dan status
 RESIGNED (data tidak dihapus). Rehire dari halaman Arsip ("Aktifkan kembali") →

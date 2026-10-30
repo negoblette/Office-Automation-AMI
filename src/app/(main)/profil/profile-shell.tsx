@@ -10,7 +10,7 @@ const TABS = [
   { key: "data-diri", label: "Data Diri", href: "/profil" },
   { key: "dokumen", label: "Dokumen & Keluarga", href: "/profil/dokumen" },
   { key: "sertifikat", label: "Sertifikat & Ijazah", href: "/profil/sertifikat" },
-  { key: "aset", label: "Inventory Kantor", href: "/profil/aset" },
+  { key: "aset", label: "Asset Kantor", href: "/profil/aset" },
   { key: "inventory", label: "Inventory Saya", href: "/profil/inventory" },
 ].filter((tab) => tab.key !== "inventory" || FEATURES.inventory);
 

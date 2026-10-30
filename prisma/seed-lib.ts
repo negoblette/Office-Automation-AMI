@@ -266,11 +266,11 @@ export async function seedAll(prisma: PrismaClient, passwordHash: string, { log 
 export async function seedProduction(prisma: PrismaClient, passwordHash: string, adminEmail: string) {
   await seedLeaveRules(prisma);
   const email = adminEmail.trim().toLowerCase();
-  // Password & status tidak ditimpa saat seed diulang.
+  // Password & status tidak ditimpa saat seed diulang. Akun Admin sistem = super admin (2026-10-30).
   await prisma.user.upsert({
     where: { email },
-    create: { email, passwordHash, role: "ADMIN", mustChangePassword: true },
-    update: {},
+    create: { email, passwordHash, role: "ADMIN", mustChangePassword: true, isSuperAdmin: true },
+    update: { isSuperAdmin: true },
   });
   console.log(`✔ aturan cuti: ${LEAVE_POLICIES.length} jatah, ${Object.keys(APP_SETTINGS).length} setting`);
   console.log(`✔ akun Admin sistem: ${email}`);

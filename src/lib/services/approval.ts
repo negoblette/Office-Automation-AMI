@@ -8,7 +8,7 @@ import { FINAL_EFFECTS, type FinalEffectOptions, REJECT_EFFECTS, REVERT_EFFECTS 
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import type { RequestMeta } from "@/lib/request-meta";
-import { canApprove } from "@/lib/roles";
+import { canActOnStep, canApprove } from "@/lib/roles";
 
 type Tx = Prisma.TransactionClient;
 
@@ -208,9 +208,9 @@ export async function approveRequest(
     const current = request.steps.find((step) => step.status === "PENDING");
     if (!current) throw new ServiceError("Pengajuan ini sudah diproses");
 
-    // 1. Validasi: user ADMIN aktif DAN termasuk approver step PENDING.
-    const actor = await tx.user.findUnique({ where: { id: input.actorId }, select: { role: true, isActive: true } });
-    if (!actor?.isActive || !canApprove(actor.role) || !current.approverIds.includes(input.actorId)) {
+    // 1. Validasi: user ADMIN/APPROVER aktif DAN termasuk approver step PENDING (atau super admin, 2026-10-30).
+    const actor = await tx.user.findUnique({ where: { id: input.actorId }, select: { id: true, role: true, isActive: true, isSuperAdmin: true } });
+    if (!actor?.isActive || !canApprove(actor.role) || !canActOnStep(actor, current, request.requesterId)) {
       throw new ForbiddenError();
     }
 
@@ -406,8 +406,8 @@ export async function rejectRequest(db: PrismaClient, input: { requestId: string
     if (request.status !== "PENDING") throw new ServiceError("Pengajuan ini sudah diproses");
     const current = request.steps.find((step) => step.status === "PENDING");
     if (!current) throw new ServiceError("Pengajuan ini sudah diproses");
-    const actor = await tx.user.findUnique({ where: { id: input.actorId }, select: { role: true, isActive: true } });
-    if (!actor?.isActive || !canApprove(actor.role) || !current.approverIds.includes(input.actorId)) {
+    const actor = await tx.user.findUnique({ where: { id: input.actorId }, select: { id: true, role: true, isActive: true, isSuperAdmin: true } });
+    if (!actor?.isActive || !canApprove(actor.role) || !canActOnStep(actor, current, request.requesterId)) {
       throw new ForbiddenError("Anda tidak berhak menolak pengajuan ini");
     }
 

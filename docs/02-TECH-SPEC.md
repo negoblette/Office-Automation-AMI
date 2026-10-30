@@ -76,7 +76,9 @@ function buildApproval(module, requester):
 ```
 
 ### 4.2 Aksi approve
-1. Validasi: user ADMIN **dan** userId ∈ `approverIds` step PENDING. Selain itu → 403.
+1. Validasi: user ADMIN/APPROVER aktif **dan** userId ∈ `approverIds` step PENDING — atau **super admin**
+   (`User.isSuperAdmin`, 2026-10-30) untuk pengajuan siapa pun kecuali miliknya sendiri (`canActOnStep`, `lib/roles.ts`).
+   Selain itu → 403. Super admin juga melihat semua pengajuan menunggu di antrian Approval & badge.
 2. Step → APPROVED (actedBy, actedAt, note).
 3. Ada step WAITING berikutnya → jadikan PENDING, email ke approver-nya + info ke pemohon.
 4. Tidak ada → request & entitas APPROVED, jalankan **efek final** per modul, email ke pemohon + semua Admin.
@@ -175,6 +177,18 @@ semua direktur auto-approve; bila flow REGULAR tidak ditemukan, engine melempar 
   Engineer → Transport, Allowance; Umum & Direktur → keenam tipe.
 - Total dihitung server-side dari item (jangan percaya nilai dari client).
 - Minimal 1 item untuk submit; hanya DRAFT yang bisa diedit/dihapus pemohon.
+- **Overtime (2026-10-30):** form menerima `overtimeIds` (sesi overtime selesai milik pemohon, belum dipakai reimburse
+  lain). Server membuat satu baris per sesi: tipe `OVERTIME` (`divisions` kosong → tidak ada di dropdown manual; dipilih
+  manual ditolak), tanggal/customer/project/aktivitas dari sesi, payment Personal, nominal = `round(menit × tarif/60)`
+  (`overtime.hourlyRate`), `ReimbursementItem.overtimeId` unik. Hapus draft → tautan overtime dilepas.
+
+### 6.4a Overtime (`services/overtime.ts`, 2026-10-30)
+- Hanya karyawan aktif divisi `ENGINEER` (Admin melihat rekap semua di `/overtime?tab=rekap`). Terpisah dari absensi.
+- Mulai Overtime (clock in, jam server) kapan saja; boleh beberapa sesi per hari, tetapi satu sesi berjalan per karyawan
+  (indeks unik parsial `Overtime_open_key`). Clock out = finalize: customer (master) + project aktif milik customer itu +
+  pekerjaan, semua wajib. Sesi berjalan bisa dibatalkan pemiliknya (dihapus, tercatat audit). Tanpa approval sendiri.
+- Tarif per jam di Setting → Jam Kerja & Absensi (`AppSetting overtime.hourlyRate`; 0 = belum diatur → tidak bisa
+  di-reimburse).
 
 ### 6.5 Project
 - Total expense project = Σ `ReimbursementItem` APPROVED dengan projectId + Σ `ProjectExpense` APPROVED.

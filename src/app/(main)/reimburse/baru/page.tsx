@@ -7,6 +7,8 @@ import { getReimbursementFormOptions } from "@/lib/services/reimbursement-querie
 import { emptyVisit } from "../form-defaults";
 import { ReimbursementForm } from "../reimbursement-form";
 import { canAddCustomerProject } from "@/lib/services/project";
+import { canUseOvertime } from "@/lib/services/overtime";
+import { listReimbursableOvertimes } from "@/lib/services/overtime-queries";
 
 export const metadata: Metadata = { title: "Pengajuan Reimburse" };
 
@@ -27,8 +29,9 @@ export default async function ReimburseBaruPage() {
         <ReimbursementForm
           reimbursementId={null}
           draftKey={`reimburse:${user.id}:baru`}
-          defaultValues={{ note: "", visits: [emptyVisit()] }}
+          defaultValues={{ note: "", visits: [emptyVisit()], overtimeIds: [] }}
           options={await getReimbursementFormOptions(prisma, employee.division, await canAddCustomerProject(prisma, user))}
+          overtime={(await canUseOvertime(prisma, user.employeeId)) ? await listReimbursableOvertimes(prisma, user.employeeId!, null) : null}
         />
       ) : (
         <EmptyState title="Tidak bisa mengajukan" description="Akun Anda belum terhubung ke data karyawan aktif. Hubungi Admin." />

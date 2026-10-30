@@ -30,7 +30,7 @@ function AssetDialog({ employeeId, asset }: { employeeId: string; asset?: Employ
           </Button>
         )
       }
-      title={asset ? `Ubah ${asset.name}` : "Tambah Inventory Kantor"}
+      title={asset ? `Ubah ${asset.name}` : "Tambah Asset Kantor"}
       schema={employeeAssetSchema}
       defaults={{
         name: asset?.name ?? "",
@@ -95,7 +95,7 @@ export function EmployeeAssetsPanel({ employeeId, assets, canEdit }: { employeeI
     <section className="rounded-2xl bg-card p-5 shadow-card sm:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-base font-semibold">Inventory Kantor</h2>
+          <h2 className="text-base font-semibold">Asset Kantor</h2>
           <p className="text-sm text-muted-foreground">Barang kantor yang sedang atau pernah dipegang.{!canEdit && " Dicatat oleh Admin."}</p>
         </div>
         {canEdit && <AssetDialog employeeId={employeeId} />}

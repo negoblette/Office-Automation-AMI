@@ -187,6 +187,11 @@ function ActiveToggle({ user }: { user: UserRow }) {
   );
 }
 
+/** Tempat satu tombol ikon; tetap memakan lebar walau kosong supaya kolom aksi rata antar-baris. */
+function ActionSlot({ children }: { children: React.ReactNode }) {
+  return <div className="flex min-w-9 shrink-0 justify-center">{children}</div>;
+}
+
 const col = dataTableColumnHelper<UserRow>();
 
 export function UserTable({ rows, currentUserId }: { rows: UserRow[]; currentUserId: string }) {
@@ -215,7 +220,11 @@ function buildColumns(currentUserId: string) {
     col.accessor((row) => ROLE_LABEL[row.role], {
       id: "role",
       header: "Role",
-      cell: ({ row }) => <StatusBadge variant={row.original.role === "ADMIN" ? "info" : "neutral"} dot={false}>{ROLE_LABEL[row.original.role]}</StatusBadge>,
+      cell: ({ row }) => (
+        <StatusBadge variant={row.original.role === "ADMIN" ? "info" : "neutral"} dot={false}>
+          {row.original.isSuperAdmin ? "Super Admin" : ROLE_LABEL[row.original.role]}
+        </StatusBadge>
+      ),
     }),
     col.accessor((row) => (row.isActive ? "Aktif" : "Nonaktif"), {
       id: "status",
@@ -244,21 +253,30 @@ function buildColumns(currentUserId: string) {
     col.display({
       id: "actions",
       header: "Aksi",
-      cell: ({ row }) =>
-        row.original.id === currentUserId ? (
-          <div className="flex items-center gap-1">
-            <PasswordDialog user={row.original} />
-            <span className="text-xs text-muted-foreground">Akun Anda</span>
-          </div>
-        ) : (
+      cell: ({ row }) => {
+        const user = row.original;
+        const self = user.id === currentUserId;
+        // Super admin (2026-10-30) hanya bisa diubah dirinya sendiri; Admin lain hanya bisa membuka blokir login.
+        const locked = user.isSuperAdmin && !self;
+        // Slot ikon tetap (role · password · reset MFA · buka blokir) supaya tombol di kanan sejajar di semua baris.
+        return (
           <div className="flex items-start gap-1">
-            <RoleDialog user={row.original} />
-            <PasswordDialog user={row.original} />
-            {row.original.mfaEnabled && <ResetMfaButton user={row.original} />}
-            {row.original.loginLocked && <UnlockLoginButton user={row.original} />}
-            {row.original.employeeStatus !== "RESIGNED" && <ActiveToggle user={row.original} />}
+            <ActionSlot>{!self && !locked && <RoleDialog user={user} />}</ActionSlot>
+            <ActionSlot>{!locked && <PasswordDialog user={user} />}</ActionSlot>
+            <ActionSlot>{!self && !locked && user.mfaEnabled && <ResetMfaButton user={user} />}</ActionSlot>
+            <ActionSlot>{!self && user.loginLocked && <UnlockLoginButton user={user} />}</ActionSlot>
+            <div className="flex min-h-9 items-center pl-1">
+              {self ? (
+                <span className="text-xs whitespace-nowrap text-muted-foreground">Akun Anda</span>
+              ) : locked ? (
+                <span className="text-xs whitespace-nowrap text-muted-foreground">Super admin</span>
+              ) : (
+                user.employeeStatus !== "RESIGNED" && <ActiveToggle user={user} />
+              )}
+            </div>
           </div>
-        ),
+        );
+      },
     }),
   ]);
 }

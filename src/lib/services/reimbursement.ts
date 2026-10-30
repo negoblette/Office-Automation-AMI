@@ -11,6 +11,7 @@ import { type ApprovalNotification, restartApproval } from "./approval";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { nextDocumentNumber } from "./numbering";
+import { OVERTIME_REIMBURSE_TYPE, overtimeReimbursementItems } from "./overtime";
 
 type Tx = Prisma.TransactionClient;
 
@@ -45,7 +46,6 @@ export const PARTICIPANTS_OPTIONAL_TYPE = "TRANSPORT";
 
 async function buildItems(tx: Tx, division: string, input: ReimbursementInput) {
   const types = await tx.reimburseType.findMany({ where: { isActive: true, divisions: { has: division } } });
-  const allowedTypes = new Set(types.map((type) => type.id));
   const typeById = new Map(types.map((type) => [type.id, type]));
   const customers = new Map(
     (await tx.customer.findMany({ where: { id: { in: input.items.map((i) => i.customerId) }, deletedAt: null } })).map((c) => [c.id, c]),
@@ -54,10 +54,10 @@ async function buildItems(tx: Tx, division: string, input: ReimbursementInput) {
   const items = [];
   for (const [index, item] of input.items.entries()) {
     const row = `Baris ${index + 1}`;
-    // RMB-04: tipe harus sesuai divisi pemohon.
-    if (!allowedTypes.has(item.typeId)) throw new ServiceError(`${row}: tipe reimburse tidak tersedia untuk divisi Anda`);
+    // RMB-04: tipe harus sesuai divisi pemohon. Tipe Overtime hanya lewat pilihan overtime (2026-10-30).
+    const type = typeById.get(item.typeId);
+    if (!type || type.code === OVERTIME_REIMBURSE_TYPE) throw new ServiceError(`${row}: tipe reimburse tidak tersedia untuk divisi Anda`);
     // Names – Position wajib untuk semua tipe kecuali Transport (2026-10-12).
-    const type = typeById.get(item.typeId)!;
     if (type.code !== PARTICIPANTS_OPTIONAL_TYPE && item.participants.length < 2) {
       throw new ServiceError(`${row}: Names – Position wajib diisi untuk tipe ${type.name}`);
     }
@@ -82,6 +82,7 @@ async function buildItems(tx: Tx, division: string, input: ReimbursementInput) {
       hasReceipt: item.hasReceipt,
       paymentMethod: item.paymentMethod,
       amount: BigInt(item.amount),
+      overtimeId: null as string | null,
     });
   }
   return items;
@@ -105,7 +106,11 @@ export async function saveReimbursementDraft(
   return db.$transaction(async (tx) => {
     const employee = await getRequester(tx, actor);
     const before = reimbursementId ? await getOwnDraft(tx, actor, reimbursementId) : null;
-    const items = await buildItems(tx, employee.division, input);
+    const items = [
+      ...(await buildItems(tx, employee.division, input)),
+      ...(await overtimeReimbursementItems(tx, employee.id, input.overtimeIds, before?.id ?? null)),
+    ];
+    if (items.length > 50) throw new ServiceError("Maksimal 50 baris per pengajuan");
     const data = { note: input.note, division: employee.division, ...totalsOf(items) };
 
     let id: string;
@@ -155,6 +160,8 @@ export async function deleteReimbursementDraft(db: PrismaClient, actor: Actor, r
   return db.$transaction(async (tx) => {
     const draft = await getOwnDraft(tx, actor, reimbursementId);
     await tx.reimbursement.update({ where: { id: draft.id }, data: { deletedAt: new Date() } });
+    // Overtime di draft yang dihapus bisa dipilih lagi di reimburse lain (2026-10-30).
+    await tx.reimbursementItem.updateMany({ where: { reimbursementId: draft.id, overtimeId: { not: null } }, data: { overtimeId: null } });
     await logAudit(tx, { actorId: actor.id, action: "DELETE", entity: "Reimbursement", entityId: draft.id, before: draft });
   });
 }

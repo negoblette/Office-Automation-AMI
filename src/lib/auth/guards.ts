@@ -16,6 +16,8 @@ export type CurrentUser = {
   mustChangePassword: boolean;
   /** true = role wajib MFA (semua role sejak 2026-10-30) tapi authenticator belum didaftarkan → wajib ke /mfa dulu (hardening Tahap 5). */
   mustSetupMfa: boolean;
+  /** Super admin (2026-10-30): menyetujui semua pengajuan, membuka modul yang ditunda, tidak bisa diubah Admin lain. */
+  isSuperAdmin: boolean;
 };
 
 /**
@@ -39,6 +41,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
       sessionVersion: true,
       mustChangePassword: true,
       mfaSecret: true,
+      isSuperAdmin: true,
       employee: { select: { fullName: true } },
     },
   });
@@ -53,6 +56,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     employeeId: user.employeeId,
     mustChangePassword: user.mustChangePassword,
     mustSetupMfa: mfaRequired(user.role) && !user.mfaSecret,
+    isSuperAdmin: user.role === "ADMIN" && user.isSuperAdmin,
   };
 });
 

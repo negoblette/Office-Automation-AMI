@@ -5,14 +5,25 @@ import { CORRECTABLE_MODULES, type CorrectionView, listCorrections } from "./app
 import { formatDate } from "@/lib/format";
 import { EDUCATION_LEVEL_LABEL, LEAVE_TYPE_LABEL, leaveDeductLabel } from "@/lib/labels";
 import { canRevoke } from "./approval";
+import { canActOnStep } from "@/lib/roles";
 import { appealSummary } from "./attendance-appeal";
 import { approverRoleLabel } from "@/components/shared/approval-status";
 
+/** Super admin (2026-10-30) melihat & boleh memutuskan semua pengajuan yang menunggu, kecuali miliknya sendiri. */
+async function isSuperAdmin(db: PrismaClient, userId: string) {
+  return (await db.user.findUnique({ where: { id: userId }, select: { isSuperAdmin: true } }))?.isSuperAdmin ?? false;
+}
+
+/** Pengajuan yang menunggu keputusan user ini: step PENDING mencantumkan dia (super admin: semua). */
+async function pendingQueueWhere(db: PrismaClient, userId: string): Promise<Prisma.ApprovalRequestWhereInput> {
+  return (await isSuperAdmin(db, userId))
+    ? { status: "PENDING", requesterId: { not: userId } }
+    : { status: "PENDING", steps: { some: { status: "PENDING", approverIds: { has: userId } } } };
+}
+
 /** Jumlah pengajuan yang sedang menunggu persetujuan user ini (step PENDING). */
-export function countPendingApprovals(db: PrismaClient, userId: string): Promise<number> {
-  return db.approvalRequestStep.count({
-    where: { status: "PENDING", approverIds: { has: userId }, request: { status: "PENDING" } },
-  });
+export async function countPendingApprovals(db: PrismaClient, userId: string): Promise<number> {
+  return db.approvalRequest.count({ where: await pendingQueueWhere(db, userId) });
 }
 
 export type ApprovalRow = {
@@ -53,7 +64,7 @@ const include = {
 type RequestWithSteps = Prisma.ApprovalRequestGetPayload<{ include: typeof include }>;
 
 async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: string): Promise<ApprovalRow[]> {
-  const viewer = await db.user.findUnique({ where: { id: viewerId }, select: { id: true, role: true } });
+  const viewer = await db.user.findUnique({ where: { id: viewerId }, select: { id: true, role: true, isSuperAdmin: true } });
   // Nama approver & pelaku untuk semua step sekaligus.
   const userIds = new Set(requests.flatMap((r) => r.steps.flatMap((s) => [...s.approverIds, ...(s.actedById ? [s.actedById] : [])])));
   const users = await db.user.findMany({
@@ -102,7 +113,9 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
       actedAt: step.actedAt?.toISOString() ?? null,
       note: step.status === "REJECTED" ? step.note : null,
     })),
-    canApprove: request.steps.some((step) => step.status === "PENDING" && step.approverIds.includes(viewerId)),
+    canApprove:
+      request.status === "PENDING" &&
+      request.steps.some((step) => step.status === "PENDING" && canActOnStep(viewer ?? { id: viewerId, isSuperAdmin: false }, step, request.requesterId)),
     canRevoke: viewer ? canRevoke(viewer, request) : false,
     requestedAmount: request.module === "HEALTH" ? (claimAmountOf.get(request.entityId) ?? null) : null,
     leaveDeduct: (() => {
@@ -146,10 +159,10 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
   }));
 }
 
-/** Antrian milik Admin yang login: pengajuan dengan step PENDING yang mencantumkan dia. */
+/** Antrian milik user yang login: pengajuan dengan step PENDING yang mencantumkan dia (super admin: semua). */
 export async function listMyApprovalQueue(db: PrismaClient, userId: string): Promise<ApprovalRow[]> {
   const requests = await db.approvalRequest.findMany({
-    where: { status: "PENDING", steps: { some: { status: "PENDING", approverIds: { has: userId } } } },
+    where: await pendingQueueWhere(db, userId),
     orderBy: { createdAt: "asc" },
     include,
   });

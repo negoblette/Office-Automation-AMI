@@ -2,14 +2,16 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/shared/page-header";
 import { requireAdmin } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
+import { formatRupiah } from "@/lib/format";
 import { getWorkHours } from "@/lib/services/attendance";
-import { WorkHoursDialog } from "./work-hours-dialog";
+import { getOvertimeRate } from "@/lib/services/overtime";
+import { OvertimeRateDialog, WorkHoursDialog } from "./work-hours-dialog";
 
 export const metadata: Metadata = { title: "Jam Kerja" };
 
 export default async function SettingAbsensiPage() {
   await requireAdmin();
-  const hours = await getWorkHours(prisma);
+  const [hours, overtimeRate] = await Promise.all([getWorkHours(prisma), getOvertimeRate(prisma)]);
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -32,6 +34,16 @@ export default async function SettingAbsensiPage() {
       </section>
       <p className="max-w-xl text-sm text-muted-foreground">
         Perubahan berlaku untuk absen berikutnya; status absen yang sudah tercatat tidak berubah (kecuali dikoreksi Admin).
+      </p>
+      <section className="flex max-w-xl flex-wrap items-center justify-between gap-4 rounded-2xl bg-card p-5 shadow-card sm:p-6">
+        <dl>
+          <dt className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Tarif overtime per jam</dt>
+          <dd className="text-2xl font-bold tabular-nums">{overtimeRate ? formatRupiah(overtimeRate) : "Belum diatur"}</dd>
+        </dl>
+        <OvertimeRateDialog hourlyRate={overtimeRate} />
+      </section>
+      <p className="max-w-xl text-sm text-muted-foreground">
+        Overtime (divisi Engineer) di-reimburse dengan nominal durasi × tarif ini. Selama belum diatur, overtime belum bisa di-reimburse.
       </p>
     </div>
   );

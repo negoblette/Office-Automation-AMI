@@ -18,7 +18,7 @@ describe("seed produksi (SEED_MODE=production, 2026-10-29)", () => {
 
     const users = await testDb.user.findMany();
     expect(users).toHaveLength(1);
-    expect(users[0]).toMatchObject({ email: "admin-oa@artha-mitra.co.id", role: "ADMIN", employeeId: null, mustChangePassword: true, passwordHash: "hash-awal" });
+    expect(users[0]).toMatchObject({ email: "admin-oa@artha-mitra.co.id", role: "ADMIN", employeeId: null, mustChangePassword: true, passwordHash: "hash-awal", isSuperAdmin: true });
     expect(await testDb.leavePolicy.count()).toBe(4);
     expect(await testDb.appSetting.findUnique({ where: { key: "leave.maxCarryOver" } })).toMatchObject({ value: 3 });
 

@@ -6,6 +6,7 @@ import { serializeMoney, toJakartaIsoDate } from "@/lib/format";
 import { listCorrections } from "./approval-correction";
 import { projectLabel } from "@/lib/labels";
 import { nextProjectCode } from "./project-queries";
+import { OVERTIME_REIMBURSE_TYPE } from "./overtime";
 import { approverRoleLabel } from "@/components/shared/approval-status";
 
 const listInclude = {
@@ -143,6 +144,7 @@ export async function getReimbursementDetail(db: PrismaClient, reimbursementId: 
       hasReceipt: item.hasReceipt,
       paymentMethod: item.paymentMethod,
       amount: Number(item.amount),
+      overtimeId: item.overtimeId,
     })),
   };
 }
@@ -151,7 +153,8 @@ export async function getReimbursementDetail(db: PrismaClient, reimbursementId: 
 /** Pilihan dropdown form: tipe sesuai divisi pemohon (RMB-04), customer, project aktif. */
 export async function getReimbursementFormOptions(db: PrismaClient, division: string, canAddMaster = false) {
   const [types, customers, projects, suggestedProjectCode] = await Promise.all([
-    db.reimburseType.findMany({ where: { isActive: true, divisions: { has: division } }, orderBy: { name: "asc" } }),
+    // Tipe Overtime tidak dipilih manual — barisnya dari pilihan overtime (2026-10-30).
+    db.reimburseType.findMany({ where: { isActive: true, divisions: { has: division }, code: { not: OVERTIME_REIMBURSE_TYPE } }, orderBy: { name: "asc" } }),
     db.customer.findMany({ where: { deletedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     db.project.findMany({
       where: { isActive: true },

@@ -23,7 +23,7 @@ import {
 } from "@/lib/services/employee-queries";
 import { listEmployeeAssets } from "@/lib/services/asset-queries";
 import { RehireButton, ResignButton } from "../employee-status-actions";
-import { FEATURES } from "@/lib/features";
+import { inventoryEnabled } from "@/lib/features";
 import { EmployeeAssetsPanel } from "@/components/employee/employee-assets-panel";
 import { listEmployeeAssetItems } from "@/lib/services/employee-asset";
 import { divisionLabels } from "@/lib/services/division";
@@ -35,11 +35,10 @@ const TABS = [
   { key: "keluarga", label: "Keluarga" },
   { key: "dokumen", label: "Dokumen" },
   { key: "sertifikat", label: "Sertifikat" },
-  { key: "aset", label: "Inventory Kantor" },
+  { key: "aset", label: "Asset Kantor" },
   { key: "inventory", label: "Inventory" },
   { key: "riwayat", label: "Riwayat Kerja" },
 ] as const;
-const VISIBLE_TABS = TABS.filter((t) => t.key !== "inventory" || FEATURES.inventory);
 type TabKey = (typeof TABS)[number]["key"];
 
 const date = (iso: string | null) => (iso ? formatDate(`${iso}T00:00:00Z`) : null);
@@ -51,12 +50,14 @@ export default async function DetailKaryawanPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ tab?: string }>;
 }) {
-  await requireAdmin();
+  const admin = await requireAdmin();
+  // Tab Inventory hanya bila modulnya aktif (super admin tetap bisa, 2026-10-30).
+  const visibleTabs = TABS.filter((t) => t.key !== "inventory" || inventoryEnabled(admin));
   const [{ id }, { tab }] = await Promise.all([params, searchParams]);
   const [employee, documents] = await Promise.all([getEmployeeDetail(prisma, id), getEmployeeDocuments(prisma, id)]);
   if (!employee || !documents) notFound();
 
-  const activeTab: TabKey = VISIBLE_TABS.some((t) => t.key === tab) ? (tab as TabKey) : "data-diri";
+  const activeTab: TabKey = visibleTabs.some((t) => t.key === tab) ? (tab as TabKey) : "data-diri";
   const isActive = employee.status === "ACTIVE";
   const currentPeriod = employee.periods[0];
 
@@ -129,7 +130,7 @@ export default async function DetailKaryawanPage({
       <LinkTabs
         label="Detail karyawan"
         active={activeTab}
-        tabs={VISIBLE_TABS.map((t) => ({ key: t.key, label: t.label, href: `/karyawan/${employee.id}?tab=${t.key}` }))}
+        tabs={visibleTabs.map((t) => ({ key: t.key, label: t.label, href: `/karyawan/${employee.id}?tab=${t.key}` }))}
       />
 
       {activeTab === "data-diri" && <PersonalData employee={employee} />}
