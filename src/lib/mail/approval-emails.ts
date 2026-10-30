@@ -1,8 +1,10 @@
 // Ubah notifikasi approval engine (user id penerima) → email siap kirim (URD NTF-01..03).
 import type { ApprovalModule, PrismaClient } from "@/generated/prisma/client";
-import { formatDate, formatRupiah } from "@/lib/format";
+import { formatDuration } from "@/lib/attendance";
+import { formatDate, formatRupiah, formatTime } from "@/lib/format";
 import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
-import { LEAVE_TYPE_LABEL, leaveDeductLabel } from "@/lib/labels";
+import { LEAVE_TYPE_LABEL, leaveDeductLabel, projectLabel } from "@/lib/labels";
+import { overtimeMinutes } from "@/lib/validators/overtime";
 import type { ApprovalNotification } from "@/lib/services/approval";
 import { appUrl } from "./app-url";
 import { enqueueEmails, type OutgoingEmail } from "./queue";
@@ -24,6 +26,15 @@ async function detailLines(db: PrismaClient, module: ApprovalModule, entityId: s
     case "REIMBURSE": {
       const r = await db.reimbursement.findUnique({ where: { id: entityId }, include: { _count: { select: { items: true } } } });
       return r ? [`Total: ${formatRupiah(Number(r.total))} (${r._count.items} baris)`] : [];
+    }
+    case "OVERTIME": {
+      const o = await db.overtime.findUnique({ where: { id: entityId }, include: { customer: { select: { name: true } }, project: { select: { code: true, name: true } } } });
+      if (!o?.clockOut) return [];
+      return [
+        `Overtime: ${formatDate(o.date)}, ${formatTime(o.clockIn)}–${formatTime(o.clockOut)} (${formatDuration(overtimeMinutes(o.clockIn, o.clockOut))})`,
+        `Customer / project: ${o.customer?.name ?? "—"} · ${o.project ? projectLabel(o.project) : "—"}`,
+        `Pekerjaan: ${o.activity ?? "—"}`,
+      ];
     }
     case "HEALTH": {
       const c = await db.healthClaim.findUnique({ where: { id: entityId }, include: { category: { select: { name: true } } } });

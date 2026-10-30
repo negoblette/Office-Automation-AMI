@@ -65,6 +65,15 @@ export async function createApprovalEntity(module: ApprovalModule, requesterUser
       });
       return certificate.id;
     }
+    case "OVERTIME": {
+      const at = new Date(Date.now() - 86_400_000 * Math.ceil(Math.random() * 300));
+      const overtime = await testDb.overtime.create({
+        data: { employeeId: user.employeeId!, date: at, clockIn: at, clockOut: new Date(at.getTime() + 3_600_000), activity: "uji", status: "PENDING" },
+      });
+      return overtime.id;
+    }
+    case "OVERTIME_REIMBURSE":
+      throw new Error("OVERTIME_REIMBURSE hanya modul Approval Flow; pengajuannya modul REIMBURSE");
     case "ATTENDANCE_APPEAL": {
       const appeal = await testDb.attendanceAppeal.create({
         data: { number: `UJI-${randomUUID()}`, employeeId: user.employeeId!, date: new Date(Date.now() - 86_400_000 * Math.ceil(Math.random() * 300)), reason: "SICK", note: "uji" },

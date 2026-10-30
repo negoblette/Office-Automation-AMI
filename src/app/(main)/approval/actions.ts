@@ -18,19 +18,22 @@ const approveSchema = z.object({
   approvedAmount: z.number().int().positive({ error: "Nominal disetujui harus lebih dari 0" }).nullish(),
   /** Cuti: hari kerja yang dipotong dari saldo (2026-10-30); diabaikan modul lain. */
   deductDays: z.number({ error: "Isi jumlah hari" }).int({ error: "Harus bilangan bulat" }).min(0, { error: "Minimal 0" }).nullish(),
+  /** Reimburse overtime: nominal per baris overtime (2026-10-30). */
+  overtimeAmounts: z.record(z.string(), z.number().int().positive({ error: "Nominal overtime harus lebih dari 0" })).nullish(),
 });
 
 /** Setujui step PENDING. Hak approve dicek engine (approver step, bukan sekadar Admin). */
 export async function approveAction(values: unknown): Promise<ActionResult<{ status: ApproveResult["status"] }>> {
   const admin = await requireApprover();
   try {
-    const { requestId, note, approvedAmount, deductDays } = approveSchema.parse(values);
+    const { requestId, note, approvedAmount, deductDays, overtimeAmounts } = approveSchema.parse(values);
     const result = await approveRequest(prisma, {
       requestId,
       actorId: admin.id,
       note: note || null,
       approvedAmount: approvedAmount ?? null,
       deductDays: deductDays ?? null,
+      overtimeAmounts: overtimeAmounts ?? null,
       meta: requestMeta(await headers()),
     });
     // Email di-enqueue SETELAH transaksi approve commit.

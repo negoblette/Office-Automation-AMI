@@ -2,8 +2,10 @@
 import type { ApprovalModule, Prisma, PrismaClient, RequestStatus } from "@/generated/prisma/client";
 import type { ApprovalStepView } from "@/components/shared/approval-stepper";
 import { CORRECTABLE_MODULES, type CorrectionView, listCorrections } from "./approval-correction";
-import { formatDate } from "@/lib/format";
-import { EDUCATION_LEVEL_LABEL, LEAVE_TYPE_LABEL, leaveDeductLabel } from "@/lib/labels";
+import { formatDuration } from "@/lib/attendance";
+import { formatDate, formatTime } from "@/lib/format";
+import { overtimeMinutes } from "@/lib/validators/overtime";
+import { EDUCATION_LEVEL_LABEL, LEAVE_TYPE_LABEL, leaveDeductLabel, projectLabel } from "@/lib/labels";
 import { canRevoke } from "./approval";
 import { canActOnStep } from "@/lib/roles";
 import { appealSummary } from "./attendance-appeal";
@@ -44,6 +46,8 @@ export type ApprovalRow = {
   requestedAmount: number | null;
   /** LEAVE: hari dipotong dari saldo saat ini & jumlah hari kerja (dasar isian di dialog Setujui); null untuk modul lain. */
   leaveDeduct: { days: number; workingDays: number } | null;
+  /** Reimburse overtime (2026-10-30): baris overtime yang nominalnya diisi approver di dialog Setujui; null = bukan. */
+  overtimeLines: { itemId: string; label: string; amount: number | null }[] | null;
   /** User yang login boleh membatalkan persetujuan terakhir (approver yang menyetujui / Admin). */
   canRevoke: boolean;
   /** Bisa dikoreksi approver (modul dengan nominal/keterangan). */
@@ -92,6 +96,27 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
   const leaveIds = requests.filter((r) => r.module === "LEAVE").map((r) => r.entityId);
   const leaves = leaveIds.length ? await db.leaveRequest.findMany({ where: { id: { in: leaveIds } } }) : [];
   const leaveOf = new Map(leaves.map((l) => [l.id, l]));
+  const reimburseIds = requests.filter((r) => r.module === "REIMBURSE").map((r) => r.entityId);
+  const overtimeItems = reimburseIds.length
+    ? await db.reimbursementItem.findMany({
+        where: { reimbursementId: { in: reimburseIds }, overtimeId: { not: null } },
+        orderBy: { id: "asc" },
+        include: { overtime: { include: { customer: { select: { name: true } } } } },
+      })
+    : [];
+  const overtimeLinesOf = new Map<string, NonNullable<ApprovalRow["overtimeLines"]>>();
+  for (const item of overtimeItems) {
+    const o = item.overtime!;
+    const label = `${formatDate(o.date, "short")} · ${formatTime(o.clockIn)}–${o.clockOut ? formatTime(o.clockOut) : "…"} (${formatDuration(o.clockOut ? overtimeMinutes(o.clockIn, o.clockOut) : 0)}) · ${o.customer?.name ?? "—"}`;
+    const lines = overtimeLinesOf.get(item.reimbursementId) ?? [];
+    lines.push({ itemId: item.id, label, amount: item.amount > 0n ? Number(item.amount) : null });
+    overtimeLinesOf.set(item.reimbursementId, lines);
+  }
+  const overtimeIds = requests.filter((r) => r.module === "OVERTIME").map((r) => r.entityId);
+  const overtimes = overtimeIds.length
+    ? await db.overtime.findMany({ where: { id: { in: overtimeIds } }, include: { customer: { select: { name: true } }, project: { select: { code: true, name: true } } } })
+    : [];
+  const overtimeOf = new Map(overtimes.map((o) => [o.id, o]));
 
   return requests.map((request) => ({
     id: request.id,
@@ -122,12 +147,25 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
       const leave = request.module === "LEAVE" ? leaveOf.get(request.entityId) : undefined;
       return leave ? { days: leave.deductDays, workingDays: leave.workingDays } : null;
     })(),
+    overtimeLines: overtimeLinesOf.get(request.entityId) ?? null,
     correctable: (CORRECTABLE_MODULES as readonly ApprovalModule[]).includes(request.module),
     corrections: correctionsOf.get(request.id) ?? [],
     ...(() => {
       const appeal = appealOf.get(request.entityId);
       if (request.module === "ATTENDANCE_APPEAL" && appeal)
         return { summary: appealSummary(appeal), file: appeal.fileKey ? { key: appeal.fileKey, name: appeal.fileName ?? "Surat sakit" } : null };
+      const overtime = overtimeOf.get(request.entityId);
+      if (request.module === "OVERTIME" && overtime) {
+        const parts = [
+          `${formatDate(overtime.date, "short")} ${formatTime(overtime.clockIn)}–${overtime.clockOut ? formatTime(overtime.clockOut) : "…"}`,
+          overtime.clockOut && formatDuration(overtimeMinutes(overtime.clockIn, overtime.clockOut)),
+          [overtime.customer?.name, overtime.project && projectLabel(overtime.project)].filter(Boolean).join(" · "),
+          overtime.activity,
+        ];
+        return { summary: parts.filter(Boolean).join(" · "), file: null };
+      }
+      const otLines = overtimeLinesOf.get(request.entityId);
+      if (otLines) return { summary: `Reimburse overtime · ${otLines.length} sesi — isi nominal tiap sesi saat menyetujui`, file: null };
       const leave = leaveOf.get(request.entityId);
       if (request.module === "LEAVE" && leave) {
         const start = formatDate(leave.startDate, "short");

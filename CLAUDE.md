@@ -152,7 +152,7 @@ sistem) — Admin yang boleh menyetujui/menolak/mengoreksi pengajuan apa pun wal
 dinonaktifkan, atau di-reset password/MFA-nya oleh Admin lain (`assertNotOtherSuperAdmin`). Tidak diatur dari aplikasi.
 Tampilan menu & halaman super admin sama dengan Admin biasa (walau tanpa data karyawan/divisi).
 
-**Approval (dipakai Reimburse, Cuti, Kesehatan, Expense, Sertifikat, Appeal absensi):**
+**Approval (dipakai Reimburse, Cuti, Kesehatan, Expense, Sertifikat, Appeal absensi, Overtime):**
 1. Ambil flow REGULAR sesuai `module` + `division` pemohon (division null = semua).
 2. Flow tanpa level → langsung APPROVED (mis. cuti divisi Direktur).
 3. Pemohon dikeluarkan dari level yang memuat dirinya (Darwin → Leonard, Ika → Leonard); level tanpa approver lain → SKIPPED.
@@ -176,7 +176,7 @@ Flow awal (seed dev/test, matriks v1.14; produksi diisi Admin di Setting → App
 **Email:** submit → approver step aktif; approve non-final → approver berikutnya
 + info ke pemohon; approve final → pemohon + semua Admin.
 
-**Nomor dokumen:** `PREFIX/YYYY/MM/NNNN` (RMB, LV, HC, EXP, REV), counter per
+**Nomor dokumen:** `PREFIX/YYYY/MM/NNNN` (RMB, LV, HC, EXP, REV, OVT), counter per
 bulan via `NumberSequence` dengan row lock di dalam transaksi.
 
 **Cuti:** periode = **tahun kalender** (Jan–Des, cutoff 31 Des). Cuti bisa dipakai setelah
@@ -279,9 +279,11 @@ karyawan per hari. Terlambat / pulang cepat terhadap jam kerja `AppSetting atten
 yang lupa (`Attendance.autoClockOut`; clock in setelah jam pulang → 23:59). Yang lembur masih bisa clock out sendiri
 sekali di hari yang sama (jam otomatis diganti); koreksi Admin menghapus tanda otomatis.
 **Overtime (2026-10-30):** menu terpisah `/overtime`, hanya karyawan divisi Engineer (Admin: rekap). Boleh beberapa sesi
-per hari (satu baris per sesi), satu sesi berjalan; Clock Out = finalize customer + project + pekerjaan. Sesi selesai
-dipilih di form reimburse (bagian Overtime) → baris tipe `OVERTIME`, nominal = durasi × tarif per jam **weekday** atau
-**weekend & libur** (Sabtu, Minggu, `Holiday`; menurut tanggal mulai sesi) di Setting → Jam Kerja & Absensi. Satu sesi hanya sekali di-reimburse. Detail: Tech Spec §6.4a.
+per hari (satu baris per sesi), satu sesi berjalan; Clock Out = finalize customer + project + pekerjaan → approval modul
+`OVERTIME` (`OVT/…`, Ko Yosep; ditolak → revisi & ajukan ulang). Sesi APPROVED diajukan lewat **Reimburse Overtime**
+(`/reimburse/overtime`, pengajuan terpisah — tidak bisa dicampur baris biasa) → alur modul `OVERTIME_REIMBURSE` (Ci Ika,
+`flowModule` di `buildApproval`; ApprovalRequest tetap REIMBURSE). Nominal tiap sesi = 0 sampai **approver mengisinya di
+dialog Setujui** (`approveRequest({ overtimeAmounts })`, tercatat koreksi). Tidak ada tarif. Detail: Tech Spec §6.4a.
 Appeal (Fase 14): hari kerja tidak hadir → appeal Sakit (wajib surat keterangan sakit PDF, 2026-10-14) / Kunjungan keluar / Lainnya (keterangan wajib, tanpa lampiran, 2026-10-30) maks 7 hari (modul ATTENDANCE_APPEAL,
 `APL/…`, Bu Ika; milik Bu Ika → Fallback). Lewat 7 hari tanpa appeal → job `attendance.deduct` (01:00 WIB) memotong
 1 hari cuti (`LeaveAdjustment` ABSENCE), hanya untuk tanggal ≥ `attendance.deductionStartDate`.

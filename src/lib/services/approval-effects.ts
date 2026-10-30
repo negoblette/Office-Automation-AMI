@@ -3,6 +3,7 @@
 // (bukan registrasi lewat side-effect import, supaya tidak ada efek yang terlewat).
 import type { ApprovalModule, Prisma } from "@/generated/prisma/client";
 import { applyApprovedHealthClaim, revertApprovedHealthClaim } from "./health-payout";
+import { ServiceError } from "./errors";
 import { applyApprovedLeave, revertApprovedLeave } from "./leave-balance";
 
 export type FinalEffectOptions = {
@@ -33,6 +34,10 @@ export const FINAL_EFFECTS: Partial<Record<ApprovalModule, FinalEffect>> = {
   ATTENDANCE_APPEAL: async (tx, entityId, approvedAt) => {
     await tx.attendanceAppeal.update({ where: { id: entityId }, data: { status: "APPROVED", approvedAt } });
   },
+  // 2026-10-30: sesi overtime disetujui (Ko Yosep) → bisa dipilih di Reimburse Overtime.
+  OVERTIME: async (tx, entityId, approvedAt) => {
+    await tx.overtime.update({ where: { id: entityId }, data: { status: "APPROVED", approvedAt } });
+  },
 };
 
 export type RevertEffect = (tx: Prisma.TransactionClient, entityId: string) => Promise<void>;
@@ -55,6 +60,12 @@ export const REVERT_EFFECTS: Partial<Record<ApprovalModule, RevertEffect>> = {
   },
   ATTENDANCE_APPEAL: async (tx, entityId) => {
     await tx.attendanceAppeal.update({ where: { id: entityId }, data: { status: "PENDING", approvedAt: null } });
+  },
+  // Overtime yang sudah dipakai reimburse tidak bisa dibatalkan persetujuannya.
+  OVERTIME: async (tx, entityId) => {
+    const used = await tx.reimbursementItem.findFirst({ where: { overtimeId: entityId, reimbursement: { deletedAt: null } } });
+    if (used) throw new ServiceError("Overtime ini sudah dipakai di reimburse — persetujuannya tidak bisa dibatalkan");
+    await tx.overtime.update({ where: { id: entityId }, data: { status: "PENDING", approvedAt: null } });
   },
 };
 
@@ -82,5 +93,8 @@ export const REJECT_EFFECTS: Partial<Record<ApprovalModule, RejectEffect>> = {
   },
   ATTENDANCE_APPEAL: async (tx, entityId) => {
     await tx.attendanceAppeal.update({ where: { id: entityId }, data: { status: "REJECTED" } });
+  },
+  OVERTIME: async (tx, entityId) => {
+    await tx.overtime.update({ where: { id: entityId }, data: { status: "REJECTED" } });
   },
 };

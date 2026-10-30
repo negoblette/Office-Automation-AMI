@@ -8,4 +8,7 @@ export const APPROVAL_MODULE_META: Record<ApprovalModule, { label: string; path:
   EXPENSE: { label: "Expense Project", path: () => "/project" },
   CERTIFICATE: { label: "Sertifikat", path: () => "/profil/sertifikat" },
   ATTENDANCE_APPEAL: { label: "Appeal Absensi", path: () => "/absensi" },
+  OVERTIME: { label: "Overtime", path: () => "/overtime" },
+  // Hanya untuk Approval Flow (pengajuannya tercatat sebagai Reimburse).
+  OVERTIME_REIMBURSE: { label: "Reimburse Overtime", path: (id) => `/reimburse/${id}` },
 };

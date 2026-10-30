@@ -1,6 +1,7 @@
-// Overtime engineer (2026-10-30): clock out = finalize (customer + project + pekerjaan).
+// Overtime engineer (2026-10-30): clock out = finalize (customer + project + pekerjaan) → approval Ko Yosep.
 import { z } from "zod";
-import { amountSchema, textSchema } from "./common";
+import { optionalField, textSchema } from "./common";
+import type { ReimbursementInput } from "./reimbursement";
 
 export const overtimeFinishSchema = z.object({
   customerId: z.string({ error: "Customer wajib dipilih" }).min(1, { error: "Customer wajib dipilih" }),
@@ -10,23 +11,17 @@ export const overtimeFinishSchema = z.object({
 export type OvertimeFinishInput = z.infer<typeof overtimeFinishSchema>;
 
 /**
- * Tarif overtime per jam (Rupiah), diatur Admin di Setting → Jam Kerja & Absensi. Weekday = Senin–Jumat hari kerja;
- * weekend = Sabtu, Minggu, dan hari libur (`Holiday`), menurut tanggal mulai overtime (2026-10-30).
+ * Form Reimburse Overtime: pengajuan terpisah berisi sesi overtime yang sudah disetujui; nominal diisi approver
+ * (Ci Ika). Output = `reimbursementSchema` tanpa baris biasa.
  */
-export const overtimeRateSchema = z.object({ weekday: amountSchema, weekend: amountSchema });
-export type OvertimeRates = z.infer<typeof overtimeRateSchema>;
-
-/** Tarif yang berlaku untuk sesi di hari kerja (`workday`) atau weekend/libur; 0 = belum diatur. */
-export function overtimeRateFor(rates: OvertimeRates, workday: boolean): number {
-  return workday ? rates.weekday : rates.weekend;
-}
+export const overtimeReimbursementFormSchema = z
+  .object({
+    note: optionalField(textSchema("Catatan", { max: 500 })),
+    overtimeIds: z.array(z.string().min(1)).min(1, { error: "Pilih minimal 1 overtime" }).max(50, { error: "Maksimal 50 overtime per pengajuan" }),
+  })
+  .transform((v): ReimbursementInput => ({ note: v.note, items: [], overtimeIds: v.overtimeIds }));
 
 /** Durasi sesi dalam menit penuh. */
 export function overtimeMinutes(clockIn: Date, clockOut: Date): number {
   return Math.max(0, Math.floor((clockOut.getTime() - clockIn.getTime()) / 60_000));
-}
-
-/** Nominal reimburse overtime = durasi × tarif per jam, dihitung per menit lalu dibulatkan ke rupiah terdekat. */
-export function overtimeAmount(minutes: number, hourlyRate: number): number {
-  return Math.round((minutes * hourlyRate) / 60);
 }

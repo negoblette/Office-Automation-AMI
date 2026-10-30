@@ -1,10 +1,11 @@
-// Query halaman Overtime & pilihan overtime di form reimburse. Hasil aman dikirim ke Client Component (tanpa Date).
+// Query halaman Overtime & pilihan di Reimburse Overtime. Hasil aman dikirim ke Client Component (tanpa Date).
 import type { Prisma, PrismaClient, RequestStatus } from "@/generated/prisma/client";
 import { formatTime, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { projectLabel } from "@/lib/labels";
-import { type OvertimeRates, overtimeMinutes } from "@/lib/validators/overtime";
+import { overtimeMinutes } from "@/lib/validators/overtime";
+import { type RejectionInfo, rejectionsOf } from "./approval";
 import { monthRange } from "./attendance-queries";
-import { getOvertimeRates, overtimeSessionAmount, overtimeWorkdays } from "./overtime";
+import { overtimeWorkdays } from "./overtime";
 
 export type OvertimeRow = {
   id: string;
@@ -19,11 +20,20 @@ export type OvertimeRow = {
   clockOutDate: string | null;
   /** Durasi; untuk sesi berjalan = sampai sekarang. */
   minutes: number;
-  /** Sabtu, Minggu, atau hari libur → tarif weekend (2026-10-30). */
+  /** Sabtu, Minggu, atau hari libur. */
   weekend: boolean;
+  customerId: string | null;
   customerName: string | null;
+  projectId: string | null;
   projectName: string | null;
   activity: string | null;
+  /** Nomor approval OVT/… (setelah finalize). */
+  number: string | null;
+  /** DRAFT = masih berjalan; PENDING/APPROVED/REJECTED = approval (Ko Yosep). */
+  status: RequestStatus;
+  /** Level approval yang sedang menunggu (status PENDING). */
+  currentLevel: number | null;
+  rejection: RejectionInfo | null;
   /** Reimburse yang memakai sesi ini (draft hanya terlihat pemiliknya). */
   reimbursement: { id: string; number: string | null; status: RequestStatus } | null;
 };
@@ -37,48 +47,61 @@ const include = {
 
 type OvertimeWithRelations = Prisma.OvertimeGetPayload<{ include: typeof include }>;
 
-function toRow(o: OvertimeWithRelations, now: Date, workday: (date: Date) => boolean): OvertimeRow {
-  const end = o.clockOut ?? now;
-  const outDate = o.clockOut ? toJakartaIsoDate(o.clockOut) : null;
-  const date = toJakartaIsoDate(o.date);
-  const r = o.reimbursementItem?.reimbursement;
-  return {
-    id: o.id,
-    employeeId: o.employeeId,
-    employeeName: o.employee.fullName,
-    date,
-    clockInAt: o.clockIn.toISOString(),
-    clockIn: formatTime(o.clockIn),
-    clockOut: o.clockOut ? formatTime(o.clockOut) : null,
-    clockOutDate: outDate && outDate !== date ? outDate : null,
-    minutes: overtimeMinutes(o.clockIn, end),
-    weekend: !workday(o.date),
-    customerName: o.customer?.name ?? null,
-    projectName: o.project ? projectLabel(o.project) : null,
-    activity: o.activity,
-    reimbursement: r && !r.deletedAt ? { id: r.id, number: r.status === "DRAFT" ? null : r.number, status: r.status } : null,
-  };
+async function toRows(db: PrismaClient, rows: OvertimeWithRelations[], now = new Date()): Promise<OvertimeRow[]> {
+  const ids = rows.map((o) => o.id);
+  const [workday, rejections, requests] = await Promise.all([
+    overtimeWorkdays(db, rows.map((o) => o.date)),
+    rejectionsOf(db, "OVERTIME", rows.filter((o) => o.status === "REJECTED").map((o) => o.id)),
+    ids.length ? db.approvalRequest.findMany({ where: { module: "OVERTIME", entityId: { in: ids } }, select: { entityId: true, currentLevel: true } }) : [],
+  ]);
+  const levelOf = new Map(requests.map((r) => [r.entityId, r.currentLevel]));
+  return rows.map((o) => {
+    const outDate = o.clockOut ? toJakartaIsoDate(o.clockOut) : null;
+    const date = toJakartaIsoDate(o.date);
+    const r = o.reimbursementItem?.reimbursement;
+    return {
+      id: o.id,
+      employeeId: o.employeeId,
+      employeeName: o.employee.fullName,
+      date,
+      clockInAt: o.clockIn.toISOString(),
+      clockIn: formatTime(o.clockIn),
+      clockOut: o.clockOut ? formatTime(o.clockOut) : null,
+      clockOutDate: outDate && outDate !== date ? outDate : null,
+      minutes: overtimeMinutes(o.clockIn, o.clockOut ?? now),
+      weekend: !workday(o.date),
+      customerId: o.customerId,
+      customerName: o.customer?.name ?? null,
+      projectId: o.projectId,
+      projectName: o.project ? projectLabel(o.project) : null,
+      activity: o.activity,
+      number: o.number,
+      status: o.status,
+      currentLevel: levelOf.get(o.id) ?? null,
+      rejection: rejections.get(o.id) ?? null,
+      reimbursement: r && !r.deletedAt ? { id: r.id, number: r.status === "DRAFT" ? null : r.number, status: r.status } : null,
+    };
+  });
 }
 
 /** Sesi yang masih berjalan milik karyawan (paling banyak satu). */
-export async function getOpenOvertime(db: PrismaClient, employeeId: string, now = new Date()): Promise<OvertimeRow | null> {
+export async function getOpenOvertime(db: PrismaClient, employeeId: string): Promise<OvertimeRow | null> {
   const open = await db.overtime.findFirst({ where: { employeeId, clockOut: null }, include });
-  return open ? toRow(open, now, await overtimeWorkdays(db, [open.date])) : null;
+  return open ? (await toRows(db, [open]))[0] : null;
 }
 
 /**
  * Sesi overtime satu bulan (tanggal clock in), urut tanggal lalu jam — beberapa sesi di hari yang sama tampil sebagai
  * baris berurutan. `employeeId` null = semua karyawan (rekap Admin).
  */
-export async function listOvertimes(db: PrismaClient, employeeId: string | null, yearMonth: string, now = new Date()): Promise<OvertimeRow[]> {
+export async function listOvertimes(db: PrismaClient, employeeId: string | null, yearMonth: string): Promise<OvertimeRow[]> {
   const { start, end } = monthRange(yearMonth);
   const rows = await db.overtime.findMany({
     where: { ...(employeeId ? { employeeId } : {}), date: { gte: fromIsoDate(start), lte: fromIsoDate(end) } },
     orderBy: [{ date: "desc" }, { clockIn: "asc" }],
     include,
   });
-  const workday = await overtimeWorkdays(db, rows.map((row) => row.date));
-  return rows.map((row) => toRow(row, now, workday));
+  return toRows(db, rows);
 }
 
 /** Pilihan di dialog Clock Out: customer master & project aktif (project difilter per customer di form). */
@@ -99,34 +122,19 @@ export async function getOvertimeFinishOptions(db: PrismaClient) {
 
 export type OvertimeFinishOptions = Awaited<ReturnType<typeof getOvertimeFinishOptions>>;
 
-/** `amount` null = tarif untuk jenis harinya (weekday / weekend & libur) belum diatur → belum bisa dipilih. */
-export type ReimbursableOvertime = OvertimeRow & { amount: number | null };
-
 /**
- * Pilihan "Overtime" di form reimburse: sesi selesai milik karyawan yang belum dipakai reimburse lain (sesi yang sudah
- * ada di reimburse yang sedang diubah tetap muncul). Nominal = durasi × tarif per jam saat ini (weekday / weekend & libur).
+ * Pilihan di form Reimburse Overtime: sesi DISETUJUI milik karyawan yang belum dipakai reimburse lain (sesi yang sudah
+ * ada di reimburse yang sedang diubah tetap muncul).
  */
-export async function listReimbursableOvertimes(
-  db: PrismaClient,
-  employeeId: string,
-  reimbursementId: string | null,
-): Promise<{ rates: OvertimeRates; overtimes: ReimbursableOvertime[] }> {
-  const [rates, rows] = await Promise.all([
-    getOvertimeRates(db),
-    db.overtime.findMany({
-      where: {
-        employeeId,
-        clockOut: { not: null },
-        OR: [{ reimbursementItem: null }, ...(reimbursementId ? [{ reimbursementItem: { reimbursementId } }] : [])],
-      },
-      orderBy: [{ date: "asc" }, { clockIn: "asc" }],
-      include,
-    }),
-  ]);
-  const now = new Date();
-  const workday = await overtimeWorkdays(db, rows.map((row) => row.date));
-  return {
-    rates,
-    overtimes: rows.map((row) => ({ ...toRow(row, now, workday), amount: overtimeSessionAmount(rates, workday(row.date), row.clockIn, row.clockOut!) })),
-  };
+export async function listReimbursableOvertimes(db: PrismaClient, employeeId: string, reimbursementId: string | null): Promise<OvertimeRow[]> {
+  const rows = await db.overtime.findMany({
+    where: {
+      employeeId,
+      status: "APPROVED",
+      OR: [{ reimbursementItem: null }, ...(reimbursementId ? [{ reimbursementItem: { reimbursementId } }] : [])],
+    },
+    orderBy: [{ date: "asc" }, { clockIn: "asc" }],
+    include,
+  });
+  return toRows(db, rows);
 }

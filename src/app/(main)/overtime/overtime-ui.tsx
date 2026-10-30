@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, LogIn, LogOut, Timer, X } from "lucide-react";
+import { Loader2, LogIn, LogOut, Pencil, Timer, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
@@ -71,7 +71,8 @@ export function OvertimeClockCard({ open, options }: { open: OvertimeRow | null;
             </>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Tekan Mulai Overtime saat mulai lembur. Saat selesai, Clock Out lalu pilih customer & project. Bisa beberapa kali sehari.
+              Tekan Mulai Overtime saat mulai lembur. Saat selesai, Clock Out lalu pilih customer & project — diajukan ke approver.
+              Bisa beberapa kali sehari.
             </p>
           )}
           {error && (
@@ -111,21 +112,34 @@ export function OvertimeClockCard({ open, options }: { open: OvertimeRow | null;
   );
 }
 
-/** Clock out = finalize: customer, project milik customer itu, dan pekerjaan yang dilakukan. */
-function FinishDialog({ overtime, options }: { overtime: OvertimeRow; options: OvertimeFinishOptions }) {
+/**
+ * Clock out = finalize: customer, project milik customer itu, dan pekerjaan yang dilakukan → diajukan ke approver.
+ * `revise` = sesi yang ditolak: isian diperbaiki lalu diajukan ulang (jam tidak berubah).
+ */
+function FinishDialog({ overtime, options, revise = false }: { overtime: OvertimeRow; options: OvertimeFinishOptions; revise?: boolean }) {
   return (
     <FormDialog
       trigger={
-        <Button size="lg">
-          <LogOut aria-hidden /> Clock Out
-        </Button>
+        revise ? (
+          <Button size="sm" variant="outline">
+            <Pencil aria-hidden /> Revisi
+          </Button>
+        ) : (
+          <Button size="lg">
+            <LogOut aria-hidden /> Clock Out
+          </Button>
+        )
       }
-      title="Selesai Overtime"
-      description={`Overtime mulai ${overtime.clockIn}. Jam selesai dicatat saat Anda menekan Clock Out. Pilih customer & project yang dikerjakan.`}
+      title={revise ? `Revisi Overtime ${overtime.number ?? ""}`.trim() : "Selesai Overtime"}
+      description={
+        revise
+          ? `Overtime ${formatDate(`${overtime.date}T00:00:00Z`, "weekday")} ${overtime.clockIn}–${overtime.clockOut}. Perbaiki isian lalu ajukan ulang ke approver.`
+          : `Overtime mulai ${overtime.clockIn}. Jam selesai dicatat saat Anda menekan Clock Out, lalu diajukan ke approver. Pilih customer & project yang dikerjakan.`
+      }
       schema={overtimeFinishSchema}
-      defaults={{ customerId: "", projectId: "", activity: "" }}
-      submitLabel="Clock Out"
-      successMessage="Overtime selesai"
+      defaults={{ customerId: overtime.customerId ?? "", projectId: overtime.projectId ?? "", activity: overtime.activity ?? "" }}
+      submitLabel={revise ? "Ajukan Ulang" : "Clock Out"}
+      successMessage={revise ? "Overtime diajukan ulang" : "Overtime selesai & diajukan ke approver"}
       action={(values) => finishOvertimeAction(overtime.id, values)}
     >
       <SelectInputField name="customerId" label="Customer" required options={options.customers} placeholder="Pilih customer…" />
@@ -163,21 +177,33 @@ const timeClass = "font-mono text-[13.5px] tabular-nums";
  * Riwayat overtime satu bulan. Beberapa sesi di hari yang sama tampil sebagai baris berurutan; tanggal hanya ditulis
  * di baris pertama. `withEmployee` = kolom nama karyawan (rekap Admin).
  */
-export function OvertimeTable({ rows, withEmployee = false, viewerEmployeeId }: { rows: OvertimeRow[]; withEmployee?: boolean; viewerEmployeeId?: string | null }) {
+export function OvertimeTable({
+  rows,
+  withEmployee = false,
+  viewerEmployeeId,
+  options,
+}: {
+  rows: OvertimeRow[];
+  withEmployee?: boolean;
+  viewerEmployeeId?: string | null;
+  /** Pilihan customer/project untuk tombol Revisi (riwayat milik sendiri). */
+  options?: OvertimeFinishOptions;
+}) {
   if (rows.length === 0) {
     return <p className="py-12 text-center text-sm text-ink-3">Belum ada overtime di bulan ini.</p>;
   }
   return (
-    <Table className={cn("table-fixed", withEmployee ? "min-w-[1040px]" : "min-w-[880px]")} scrollLabel={withEmployee ? "Tabel rekap overtime karyawan" : "Tabel riwayat overtime"}>
+    <Table className={cn("table-fixed", withEmployee ? "min-w-[1180px]" : "min-w-[1020px]")} scrollLabel={withEmployee ? "Tabel rekap overtime karyawan" : "Tabel riwayat overtime"}>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-[17%]">Tanggal</TableHead>
-          {withEmployee && <TableHead className="w-[14%]">Karyawan</TableHead>}
-          <TableHead className="w-[8%]">Mulai</TableHead>
-          <TableHead className="w-[10%]">Selesai</TableHead>
+          <TableHead className="w-[15%]">Tanggal</TableHead>
+          {withEmployee && <TableHead className="w-[12%]">Karyawan</TableHead>}
+          <TableHead className="w-[7%]">Mulai</TableHead>
+          <TableHead className="w-[9%]">Selesai</TableHead>
           <TableHead className="w-[9%]">Durasi</TableHead>
           <TableHead>Customer · Project</TableHead>
-          <TableHead className="w-[14%]">Reimburse</TableHead>
+          <TableHead className="w-[16%]">Approval</TableHead>
+          <TableHead className="w-[13%]">Reimburse</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -224,6 +250,9 @@ export function OvertimeTable({ rows, withEmployee = false, viewerEmployeeId }: 
                   <span className="text-ink-3">—</span>
                 )}
               </TableCell>
+              <TableCell className="h-14 whitespace-normal">
+                <ApprovalCell row={row} options={row.employeeId === viewerEmployeeId ? options : undefined} />
+              </TableCell>
               <TableCell className="h-14">
                 <ReimburseCell row={row} viewerEmployeeId={viewerEmployeeId ?? null} />
               </TableCell>
@@ -235,8 +264,26 @@ export function OvertimeTable({ rows, withEmployee = false, viewerEmployeeId }: 
   );
 }
 
+/** Status approval sesi (Ko Yosep). Ditolak → alasan + tombol Revisi untuk pemiliknya. */
+function ApprovalCell({ row, options }: { row: OvertimeRow; options?: OvertimeFinishOptions }) {
+  if (row.status === "DRAFT") return <span className="text-ink-3">—</span>;
+  const badge = requestStatusBadge(row.status, row.currentLevel);
+  return (
+    <div className="flex flex-col items-start gap-1 py-1.5">
+      <StatusBadge variant={badge.variant}>{badge.label}</StatusBadge>
+      {row.number && <span className="text-xs text-ink-3">{row.number}</span>}
+      {row.rejection && (
+        <span className="text-xs text-red-ink">
+          {row.rejection.by}: {row.rejection.reason}
+        </span>
+      )}
+      {row.status === "REJECTED" && options && <FinishDialog overtime={row} options={options} revise />}
+    </div>
+  );
+}
+
 function ReimburseCell({ row, viewerEmployeeId }: { row: OvertimeRow; viewerEmployeeId: string | null }) {
-  if (!row.clockOut) return <span className="text-ink-3">—</span>;
+  if (row.status !== "APPROVED") return <span className="text-ink-3">—</span>;
   if (!row.reimbursement) return <span className="text-[13px] text-ink-3">Belum di-reimburse</span>;
   const badge = requestStatusBadge(row.reimbursement.status);
   const content = (

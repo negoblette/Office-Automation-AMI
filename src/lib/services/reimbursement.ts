@@ -106,6 +106,11 @@ export async function saveReimbursementDraft(
   return db.$transaction(async (tx) => {
     const employee = await getRequester(tx, actor);
     const before = reimbursementId ? await getOwnDraft(tx, actor, reimbursementId) : null;
+    // Reimburse overtime = pengajuan terpisah (2026-10-30): tidak boleh dicampur baris biasa, dan sebaliknya.
+    if (input.overtimeIds.length && input.items.length) throw new ServiceError("Reimburse overtime tidak bisa dicampur baris reimburse biasa");
+    if (before && before.items.some((i) => i.overtimeId) !== input.overtimeIds.length > 0) {
+      throw new ServiceError("Jenis reimburse (biasa / overtime) tidak bisa diubah setelah disimpan");
+    }
     const items = [
       ...(await buildItems(tx, employee.division, input)),
       ...(await overtimeReimbursementItems(tx, employee.id, input.overtimeIds, before?.id ?? null)),
@@ -148,7 +153,15 @@ export async function submitReimbursement(db: PrismaClient, actor: Actor, reimbu
       where: { id: draft.id },
       data: { number, status: "PENDING", submittedAt: new Date(), division: employee.division },
     });
-    const approval = await restartApproval(tx, { module: "REIMBURSE", entityId: draft.id, entityNumber: number, requesterId: actor.id });
+    // Reimburse overtime memakai alur modul OVERTIME_REIMBURSE (Ci Ika, mengisi nominal), 2026-10-30.
+    const overtime = draft.items.some((item) => item.overtimeId);
+    const approval = await restartApproval(tx, {
+      module: "REIMBURSE",
+      entityId: draft.id,
+      entityNumber: number,
+      requesterId: actor.id,
+      ...(overtime ? { flowModule: "OVERTIME_REIMBURSE" as const } : {}),
+    });
 
     await logAudit(tx, { actorId: actor.id, action: "UPDATE", entity: "Reimbursement", entityId: draft.id, before: { status: draft.status }, after: { status: approval.status, number, resubmit } });
     return { number, status: approval.status, notifications: approval.notifications };

@@ -7,8 +7,8 @@ import { getReimbursementDetail, getReimbursementFormOptions } from "@/lib/servi
 import { itemsToVisits } from "@/lib/validators/reimbursement";
 import { ReimbursementForm } from "../../reimbursement-form";
 import { canAddCustomerProject } from "@/lib/services/project";
-import { canUseOvertime } from "@/lib/services/overtime";
 import { listReimbursableOvertimes } from "@/lib/services/overtime-queries";
+import { OvertimeReimbursementForm } from "../../overtime-reimbursement-form";
 
 export const metadata: Metadata = { title: "Edit Draft Reimburse" };
 
@@ -19,9 +19,23 @@ export default async function EditReimbursePage({ params }: { params: Promise<{ 
   if (!detail) notFound();
   // Hanya pemohon yang boleh mengubah: selama DRAFT, atau setelah ditolak (revisi, 2026-10-12).
   if (detail.employeeId !== user.employeeId || (detail.status !== "DRAFT" && detail.status !== "REJECTED")) redirect(`/reimburse/${id}`);
-  // Baris overtime (2026-10-30) tampil sebagai centang di bagian Overtime, bukan kunjungan.
+  // Reimburse overtime (2026-10-30) punya form sendiri: centang sesi overtime yang disetujui.
   const overtimeIds = detail.items.flatMap((item) => (item.overtimeId ? [item.overtimeId] : []));
-  const overtime = (await canUseOvertime(prisma, detail.employeeId)) || overtimeIds.length ? await listReimbursableOvertimes(prisma, detail.employeeId, id) : null;
+  if (overtimeIds.length) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader
+          title={detail.status === "REJECTED" ? "Revisi Reimburse Overtime" : "Edit Draft Reimburse Overtime"}
+          breadcrumbs={[{ label: "Pengajuan & Keuangan" }, { label: "Reimburse", href: "/reimburse" }, { label: "Draft", href: `/reimburse/${id}` }, { label: "Edit" }]}
+        />
+        <OvertimeReimbursementForm
+          reimbursementId={id}
+          defaultValues={{ note: detail.note ?? "", overtimeIds }}
+          overtimes={await listReimbursableOvertimes(prisma, detail.employeeId, id)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -33,11 +47,9 @@ export default async function EditReimbursePage({ params }: { params: Promise<{ 
         reimbursementId={id}
         draftKey={`reimburse:${user.id}:${id}`}
         options={await getReimbursementFormOptions(prisma, detail.division, await canAddCustomerProject(prisma, user))}
-        overtime={overtime}
         defaultValues={{
           note: detail.note ?? "",
-          overtimeIds,
-          visits: itemsToVisits(detail.items.filter((item) => !item.overtimeId)).map((visit) => ({
+          visits: itemsToVisits(detail.items).map((visit) => ({
             ...visit,
             lines: visit.lines.map((item) => ({
               activity: item.activity,

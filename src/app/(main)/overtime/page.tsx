@@ -9,10 +9,9 @@ import { buttonVariants } from "@/components/ui/button";
 import { formatDuration } from "@/lib/attendance";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
-import { formatRupiah, toJakartaIsoDate } from "@/lib/format";
-import { canUseOvertime, getOvertimeRates } from "@/lib/services/overtime";
-import { getOpenOvertime, getOvertimeFinishOptions, listOvertimes } from "@/lib/services/overtime-queries";
-import type { OvertimeRates } from "@/lib/validators/overtime";
+import { toJakartaIsoDate } from "@/lib/format";
+import { canUseOvertime } from "@/lib/services/overtime";
+import { getOpenOvertime, getOvertimeFinishOptions, listOvertimes, type OvertimeRow } from "@/lib/services/overtime-queries";
 import { MonthNav } from "../absensi/attendance-ui";
 import { OvertimeClockCard, OvertimeTable } from "./overtime-ui";
 
@@ -20,7 +19,10 @@ export const metadata: Metadata = { title: "Overtime" };
 
 const validMonth = (value: string | undefined, max: string) => (value && /^\d{4}-(0[1-9]|1[0-2])$/.test(value) && value <= max ? value : max);
 
-/** Overtime engineer (2026-10-30): karyawan divisi Engineer mencatat sesi lembur; Admin melihat rekap semua. */
+/**
+ * Overtime engineer (2026-10-30): karyawan divisi Engineer mencatat sesi lembur → approval Ko Yosep → Reimburse
+ * Overtime (Ci Ika). Admin melihat rekap semua.
+ */
 export default async function OvertimePage({ searchParams }: { searchParams: Promise<{ tab?: string; bulan?: string }> }) {
   const user = await requireUser();
   const isAdmin = user.role === "ADMIN";
@@ -32,17 +34,16 @@ export default async function OvertimePage({ searchParams }: { searchParams: Pro
   const activeTab = isAdmin && (tab === "rekap" || !canUse) ? "rekap" : "saya";
   const thisMonth = toJakartaIsoDate().slice(0, 7);
   const yearMonth = validMonth(bulan, thisMonth);
-  const rates = await getOvertimeRates(prisma);
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Overtime"
-        description="Catat setiap sesi lembur: Mulai Overtime saat mulai, Clock Out saat selesai lalu pilih customer & project. Sesi yang selesai bisa dipilih di Reimburse."
+        description="Catat setiap sesi lembur: Mulai Overtime saat mulai, Clock Out saat selesai lalu pilih customer & project. Sesi yang disetujui approver bisa diajukan lewat Reimburse Overtime."
         breadcrumbs={[{ label: "Utama" }, { label: "Overtime" }]}
         actions={
           canUse ? (
-            <Link href="/reimburse/baru" className={buttonVariants({ variant: "outline", size: "lg" })}>
+            <Link href="/reimburse/overtime" className={buttonVariants({ variant: "outline", size: "lg" })}>
               <ReceiptText aria-hidden /> Reimburse Overtime
             </Link>
           ) : undefined
@@ -59,17 +60,16 @@ export default async function OvertimePage({ searchParams }: { searchParams: Pro
         />
       )}
       {activeTab === "rekap" ? (
-        <Recap yearMonth={yearMonth} thisMonth={thisMonth} rates={rates} viewerEmployeeId={user.employeeId} />
+        <Recap yearMonth={yearMonth} thisMonth={thisMonth} viewerEmployeeId={user.employeeId} />
       ) : (
-        <Mine employeeId={user.employeeId!} yearMonth={yearMonth} thisMonth={thisMonth} rates={rates} />
+        <Mine employeeId={user.employeeId!} yearMonth={yearMonth} thisMonth={thisMonth} />
       )}
     </div>
   );
 }
 
-async function Mine({ employeeId, yearMonth, thisMonth, rates }: { employeeId: string; yearMonth: string; thisMonth: string; rates: OvertimeRates }) {
+async function Mine({ employeeId, yearMonth, thisMonth }: { employeeId: string; yearMonth: string; thisMonth: string }) {
   const [open, rows, options] = await Promise.all([getOpenOvertime(prisma, employeeId), listOvertimes(prisma, employeeId, yearMonth), getOvertimeFinishOptions(prisma)]);
-  const done = rows.filter((r) => r.clockOut);
   return (
     <>
       <OvertimeClockCard open={open} options={options} />
@@ -77,13 +77,13 @@ async function Mine({ employeeId, yearMonth, thisMonth, rates }: { employeeId: s
         <h2 className="text-base font-semibold">Riwayat Overtime</h2>
         <MonthNav yearMonth={yearMonth} baseHref="/overtime" maxMonth={thisMonth} />
       </div>
-      <Stats rows={done} rates={rates} />
-      <OvertimeTable rows={rows} viewerEmployeeId={employeeId} />
+      <Stats rows={rows} />
+      <OvertimeTable rows={rows} viewerEmployeeId={employeeId} options={options} />
     </>
   );
 }
 
-async function Recap({ yearMonth, thisMonth, rates, viewerEmployeeId }: { yearMonth: string; thisMonth: string; rates: OvertimeRates; viewerEmployeeId: string | null }) {
+async function Recap({ yearMonth, thisMonth, viewerEmployeeId }: { yearMonth: string; thisMonth: string; viewerEmployeeId: string | null }) {
   const rows = await listOvertimes(prisma, null, yearMonth);
   return (
     <>
@@ -91,28 +91,28 @@ async function Recap({ yearMonth, thisMonth, rates, viewerEmployeeId }: { yearMo
         <h2 className="text-base font-semibold">Rekap Overtime Karyawan</h2>
         <MonthNav yearMonth={yearMonth} baseHref="/overtime?tab=rekap" maxMonth={thisMonth} />
       </div>
-      <Stats rows={rows.filter((r) => r.clockOut)} rates={rates} />
+      <Stats rows={rows} />
       <OvertimeTable rows={rows} withEmployee viewerEmployeeId={viewerEmployeeId} />
     </>
   );
 }
 
-function Stats({ rows, rates }: { rows: Awaited<ReturnType<typeof listOvertimes>>; rates: OvertimeRates }) {
-  const rate = (value: number) => (value ? formatRupiah(value) : "belum diatur");
-  const totalMinutes = rows.reduce((sum, r) => sum + r.minutes, 0);
-  const notReimbursed = rows.filter((r) => !r.reimbursement);
+function Stats({ rows }: { rows: OvertimeRow[] }) {
+  const approved = rows.filter((r) => r.status === "APPROVED");
+  const pending = rows.filter((r) => r.status === "PENDING").length;
+  const notReimbursed = approved.filter((r) => !r.reimbursement).length;
   return (
     <div className={`${STAT_GRID} sm:grid-cols-3`}>
-      <StatCard label="Sesi selesai" value={rows.length} unit="sesi" icon={Timer} tone="info" />
-      <StatCard label="Total durasi" value={formatDuration(totalMinutes)} icon={Clock} tone="info" />
       <StatCard
-        label="Belum di-reimburse"
-        value={notReimbursed.length}
+        label="Sesi disetujui"
+        value={approved.length}
         unit="sesi"
-        icon={ReceiptText}
-        tone={notReimbursed.length ? "warning" : "success"}
-        footer={`Tarif per jam: weekday ${rate(rates.weekday)} · weekend & libur ${rate(rates.weekend)}`}
+        icon={Timer}
+        tone="info"
+        footer={pending ? `${pending} sesi menunggu approval` : undefined}
       />
+      <StatCard label="Total durasi disetujui" value={formatDuration(approved.reduce((sum, r) => sum + r.minutes, 0))} icon={Clock} tone="info" />
+      <StatCard label="Belum di-reimburse" value={notReimbursed} unit="sesi" icon={ReceiptText} tone={notReimbursed ? "warning" : "success"} />
     </div>
   );
 }

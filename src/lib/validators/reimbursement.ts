@@ -25,7 +25,7 @@ export const reimbursementItemSchema = z.object({
   amount: amountSchema,
 });
 
-/** Overtime yang di-reimburse (2026-10-30): isi baris & nominal diambil server dari data overtime. */
+/** Overtime yang di-reimburse (2026-10-30): isi baris diambil server dari data overtime, nominal diisi approver. */
 const overtimeIdsSchema = z.array(z.string().min(1)).max(50, { error: "Maksimal 50 overtime per pengajuan" }).default([]);
 
 export const reimbursementSchema = z.object({
@@ -62,17 +62,15 @@ export const reimbursementFormSchema = z
   .object({
     note: optionalField(textSchema("Catatan", { max: 500 })),
     visits: z.array(reimbursementVisitSchema),
-    overtimeIds: overtimeIdsSchema,
   })
   .superRefine((v, ctx) => {
-    if (v.visits.reduce((n, visit) => n + visit.lines.length, 0) + v.overtimeIds.length > 50) {
-      ctx.addIssue({ code: "custom", path: ["visits"], message: "Maksimal 50 baris per pengajuan" });
-    }
+    if (v.visits.reduce((n, visit) => n + visit.lines.length, 0) > 50) ctx.addIssue({ code: "custom", path: ["visits"], message: "Maksimal 50 baris per pengajuan" });
   })
   .transform(
     (v): ReimbursementInput => ({
       note: v.note,
-      overtimeIds: v.overtimeIds,
+      // Overtime diajukan lewat form Reimburse Overtime terpisah (2026-10-30).
+      overtimeIds: [],
       items: v.visits.flatMap((visit) =>
         visit.lines.map((line) => ({
           ...line,

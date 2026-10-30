@@ -1,15 +1,16 @@
 // Overtime engineer (2026-10-30) — terpisah dari absensi. Clock in kapan saja (juga akhir pekan/libur), boleh beberapa
-// sesi per hari, tapi hanya satu sesi berjalan. Clock out = finalize: pilih customer + project dan isi pekerjaan.
-// Sesi yang selesai dipilih di form reimburse (tipe OVERTIME); nominal = durasi × tarif per jam weekday atau
-// weekend/libur (menurut tanggal mulai). Tanpa approval
-// sendiri — approval terjadi lewat reimburse. Jam selalu dari server.
+// sesi per hari, tapi hanya satu sesi berjalan. Clock out = finalize: pilih customer + project, isi pekerjaan, lalu
+// diajukan ke approver (modul OVERTIME, nomor OVT/…, Ko Yosep). Sesi APPROVED bisa dipilih di Reimburse Overtime
+// (pengajuan reimburse terpisah, alur modul OVERTIME_REIMBURSE = Ci Ika, yang mengisi nominalnya). Jam selalu dari server.
 import { Prisma, type PrismaClient } from "@/generated/prisma/client";
 import { isWorkday } from "@/lib/attendance";
 import { fromIsoDate, toJakartaIsoDate } from "@/lib/format";
-import { type OvertimeFinishInput, type OvertimeRates, overtimeAmount, overtimeMinutes, overtimeRateFor } from "@/lib/validators/overtime";
+import type { OvertimeFinishInput } from "@/lib/validators/overtime";
 import type { Actor } from "./access";
+import { type ApprovalNotification, restartApproval } from "./approval";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
+import { nextDocumentNumber } from "./numbering";
 
 type Tx = Prisma.TransactionClient;
 
@@ -17,39 +18,12 @@ type Tx = Prisma.TransactionClient;
 export const OVERTIME_DIVISION = "ENGINEER";
 /** Kode tipe reimburse untuk baris overtime (dibuat migrasi; dibuat ulang bila belum ada). */
 export const OVERTIME_REIMBURSE_TYPE = "OVERTIME";
-export const OVERTIME_RATE_KEY = "overtime.hourlyRate";
 
-const positiveInt = (value: unknown) => (typeof value === "number" && Number.isInteger(value) && value > 0 ? value : 0);
-
-/** Tarif overtime per jam weekday & weekend/libur (Rupiah); 0 = belum diatur Admin. */
-export async function getOvertimeRates(db: Tx | PrismaClient): Promise<OvertimeRates> {
-  const value = (await db.appSetting.findUnique({ where: { key: OVERTIME_RATE_KEY } }))?.value;
-  // Format awal (satu angka untuk semua hari) dipakai untuk keduanya.
-  if (typeof value === "number") return { weekday: positiveInt(value), weekend: positiveInt(value) };
-  const rates = value as Partial<OvertimeRates> | null | undefined;
-  return { weekday: positiveInt(rates?.weekday), weekend: positiveInt(rates?.weekend) };
-}
-
-export async function saveOvertimeRates(db: PrismaClient, actorId: string, rates: OvertimeRates) {
-  return db.$transaction(async (tx) => {
-    const before = await getOvertimeRates(tx);
-    const value = { weekday: rates.weekday, weekend: rates.weekend };
-    await tx.appSetting.upsert({ where: { key: OVERTIME_RATE_KEY }, create: { key: OVERTIME_RATE_KEY, value }, update: { value } });
-    await logAudit(tx, { actorId, action: "UPDATE", entity: "AppSetting", entityId: OVERTIME_RATE_KEY, before, after: value });
-  });
-}
-
-/** Hari kerja (bukan Sabtu/Minggu/libur) untuk tiap tanggal overtime → menentukan tarif weekday/weekend. */
+/** Hari kerja (bukan Sabtu/Minggu/libur) untuk tiap tanggal overtime — penanda "Weekend / libur" untuk approver. */
 export async function overtimeWorkdays(db: Tx | PrismaClient, dates: Date[]): Promise<(date: Date) => boolean> {
   const holidays = dates.length ? await db.holiday.findMany({ where: { date: { in: dates }, deletedAt: null }, select: { date: true } }) : [];
   const set = new Set(holidays.map((h) => toJakartaIsoDate(h.date)));
   return (date) => isWorkday(toJakartaIsoDate(date), set);
-}
-
-/** Nominal satu sesi selesai; null = tarif untuk jenis harinya belum diatur. */
-export function overtimeSessionAmount(rates: OvertimeRates, workday: boolean, clockIn: Date, clockOut: Date): number | null {
-  const rate = overtimeRateFor(rates, workday);
-  return rate ? overtimeAmount(overtimeMinutes(clockIn, clockOut), rate) : null;
 }
 
 /** Karyawan aktif divisi Engineer = boleh overtime. */
@@ -65,10 +39,9 @@ async function requireOvertimeEmployee(tx: Tx, actor: Actor) {
   return actor.employeeId;
 }
 
-async function getOwnOpenOvertime(tx: Tx, actor: Actor, overtimeId: string) {
+async function getOwnOvertime(tx: Tx, actor: Actor, overtimeId: string) {
   const overtime = await tx.overtime.findUnique({ where: { id: overtimeId } });
   if (!overtime || overtime.employeeId !== actor.employeeId) throw new ServiceError("Overtime tidak ditemukan");
-  if (overtime.clockOut) throw new ServiceError("Overtime ini sudah selesai");
   return overtime;
 }
 
@@ -93,33 +66,44 @@ export async function startOvertime(db: PrismaClient, actor: Actor, now = new Da
   }
 }
 
-/** Clock out + finalize: customer (master) dan project aktif milik customer itu wajib, pekerjaan wajib. */
-export async function finishOvertime(db: PrismaClient, actor: Actor, overtimeId: string, input: OvertimeFinishInput, now = new Date()) {
+export type FinishOvertimeResult = { number: string; status: "PENDING" | "APPROVED"; notifications: ApprovalNotification[] };
+
+/**
+ * Clock out + finalize: customer (master), project aktif milik customer itu, dan pekerjaan wajib; lalu diajukan ke
+ * approver (Ko Yosep). Sesi yang DITOLAK direvisi lewat fungsi yang sama: jam tetap, isian diganti, diajukan ulang
+ * dengan nomor yang sama. Email di-enqueue pemanggil setelah commit.
+ */
+export async function finishOvertime(db: PrismaClient, actor: Actor, overtimeId: string, input: OvertimeFinishInput, now = new Date()): Promise<FinishOvertimeResult> {
   return db.$transaction(async (tx) => {
     await requireOvertimeEmployee(tx, actor);
-    const before = await getOwnOpenOvertime(tx, actor, overtimeId);
+    const before = await getOwnOvertime(tx, actor, overtimeId);
+    const revise = before.status === "REJECTED";
+    if (before.clockOut && !revise) throw new ServiceError("Overtime ini sudah selesai");
     const customer = await tx.customer.findUnique({ where: { id: input.customerId, deletedAt: null } });
     if (!customer) throw new ServiceError("Customer tidak ditemukan di master", "customerId");
     const project = await tx.project.findUnique({ where: { id: input.projectId } });
     if (!project?.isActive) throw new ServiceError("Project tidak ditemukan atau sudah tidak aktif", "projectId");
     if (project.customerId !== customer.id) throw new ServiceError(`Project bukan milik ${customer.name}`, "projectId");
 
-    // Bersyarat: dua klik bersamaan tidak menimpa jam clock out pertama.
+    const number = before.number ?? (await nextDocumentNumber(tx, "OVT"));
+    // Bersyarat: dua klik bersamaan tidak menimpa jam clock out / revisi pertama.
     const { count } = await tx.overtime.updateMany({
-      where: { id: before.id, clockOut: null },
-      data: { clockOut: now, customerId: customer.id, projectId: project.id, activity: input.activity },
+      where: { id: before.id, status: before.status, clockOut: before.clockOut },
+      data: { ...(revise ? {} : { clockOut: now }), customerId: customer.id, projectId: project.id, activity: input.activity, number, status: "PENDING" },
     });
     if (count === 0) throw new ServiceError("Overtime ini sudah selesai");
+    const approval = await restartApproval(tx, { module: "OVERTIME", entityId: before.id, entityNumber: number, requesterId: actor.id });
     const after = await tx.overtime.findUniqueOrThrow({ where: { id: before.id } });
-    await logAudit(tx, { actorId: actor.id, action: "UPDATE", entity: "Overtime", entityId: before.id, before, after });
-    return after;
+    await logAudit(tx, { actorId: actor.id, action: "UPDATE", entity: "Overtime", entityId: before.id, before, after: { ...after, resubmit: revise } });
+    return { number, status: approval.status, notifications: approval.notifications };
   });
 }
 
 /** Batalkan sesi yang masih berjalan (salah tekan Clock In). Sesi yang sudah selesai tidak bisa dibatalkan. */
 export async function cancelOvertime(db: PrismaClient, actor: Actor, overtimeId: string) {
   return db.$transaction(async (tx) => {
-    const before = await getOwnOpenOvertime(tx, actor, overtimeId);
+    const before = await getOwnOvertime(tx, actor, overtimeId);
+    if (before.clockOut) throw new ServiceError("Overtime ini sudah selesai");
     await tx.overtime.delete({ where: { id: before.id } });
     await logAudit(tx, { actorId: actor.id, action: "DELETE", entity: "Overtime", entityId: before.id, before });
   });
@@ -135,32 +119,31 @@ export async function overtimeReimburseType(tx: Tx) {
 }
 
 /**
- * Baris reimburse dari overtime yang dipilih: sesi milik pemohon, sudah selesai, dan belum dipakai reimburse lain
- * (`reimbursementId` = reimburse yang sedang diubah, boleh dipakai ulang). Isi baris diambil dari data overtime,
- * nominal = durasi × tarif per jam saat ini (weekday / weekend & libur) — nilai dari client tidak dipercaya.
+ * Baris reimburse dari overtime yang dipilih: sesi milik pemohon, sudah DISETUJUI, dan belum dipakai reimburse lain
+ * (`reimbursementId` = reimburse yang sedang diubah, boleh dipakai ulang). Isi baris diambil dari data overtime; nominal
+ * awal 0 (atau nominal sebelumnya di reimburse yang sama) — diisi approver (Ci Ika) saat menyetujui.
  */
 export async function overtimeReimbursementItems(tx: Tx, employeeId: string, overtimeIds: string[], reimbursementId: string | null) {
   if (overtimeIds.length === 0) return [];
   if (new Set(overtimeIds).size !== overtimeIds.length) throw new ServiceError("Overtime yang sama dipilih lebih dari sekali");
-  const rates = await getOvertimeRates(tx);
   const type = await overtimeReimburseType(tx);
   const overtimes = await tx.overtime.findMany({
     where: { id: { in: overtimeIds } },
-    include: { customer: { select: { name: true } }, reimbursementItem: { select: { reimbursementId: true, reimbursement: { select: { number: true } } } } },
+    include: {
+      customer: { select: { name: true } },
+      reimbursementItem: { select: { reimbursementId: true, amount: true, reimbursement: { select: { number: true } } } },
+    },
     orderBy: { clockIn: "asc" },
   });
   if (overtimes.length !== overtimeIds.length || overtimes.some((o) => o.employeeId !== employeeId)) throw new ServiceError("Overtime tidak ditemukan");
-  const workday = await overtimeWorkdays(tx, overtimes.map((o) => o.date));
   return overtimes.map((overtime) => {
-    if (!overtime.clockOut || !overtime.customerId || !overtime.activity) throw new ServiceError("Overtime yang belum selesai tidak bisa di-reimburse");
+    const label = `Overtime ${toJakartaIsoDate(overtime.clockIn)}`;
+    if (!overtime.clockOut || !overtime.customerId || !overtime.activity) throw new ServiceError(`${label} belum selesai`);
+    if (overtime.status !== "APPROVED") throw new ServiceError(`${label} belum disetujui approver`);
     const usedBy = overtime.reimbursementItem;
     if (usedBy && usedBy.reimbursementId !== reimbursementId) {
       const where = usedBy.reimbursement.number.startsWith("DRAFT-") ? "draft reimburse lain" : `reimburse ${usedBy.reimbursement.number}`;
-      throw new ServiceError(`Overtime ${toJakartaIsoDate(overtime.clockIn)} sudah dipakai di ${where}`);
-    }
-    const amount = overtimeSessionAmount(rates, workday(overtime.date), overtime.clockIn, overtime.clockOut);
-    if (amount === null) {
-      throw new ServiceError(`Tarif overtime ${workday(overtime.date) ? "weekday" : "weekend/libur"} per jam belum diatur Admin (Setting → Jam Kerja & Absensi)`);
+      throw new ServiceError(`${label} sudah dipakai di ${where}`);
     }
     return {
       date: overtime.date,
@@ -173,7 +156,7 @@ export async function overtimeReimbursementItems(tx: Tx, employeeId: string, ove
       typeId: type.id,
       hasReceipt: false,
       paymentMethod: "PERSONAL" as const,
-      amount: BigInt(amount),
+      amount: usedBy?.amount ?? 0n,
       overtimeId: overtime.id,
     };
   });

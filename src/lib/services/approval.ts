@@ -9,6 +9,8 @@ import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import type { RequestMeta } from "@/lib/request-meta";
 import { canActOnStep, canApprove } from "@/lib/roles";
+import { formatRupiah, toJakartaIsoDate } from "@/lib/format";
+import { reimbursementTotals } from "@/lib/validators/reimbursement";
 
 type Tx = Prisma.TransactionClient;
 
@@ -74,6 +76,8 @@ export type BuildApprovalInput = {
   entityId: string;
   entityNumber: string;
   requesterId: string;
+  /** Approval Flow diambil dari modul ini bila berbeda dari `module` (2026-10-30: reimburse overtime → OVERTIME_REIMBURSE). */
+  flowModule?: ApprovalModule;
 };
 
 export type BuildApprovalResult = {
@@ -123,7 +127,7 @@ export async function buildApproval(tx: Tx, input: BuildApprovalInput): Promise<
   const flows = await tx.approvalFlow.findMany({
     where: {
       scope: "REGULAR",
-      module: input.module,
+      module: input.flowModule ?? input.module,
       isActive: true,
       deletedAt: null,
       OR: [{ division }, ...(follows ? [{ division: follows }] : []), { division: null }],
@@ -193,6 +197,8 @@ export async function approveRequest(
     approvedAmount?: number | null;
     /** Cuti: hari kerja yang dipotong dari saldo, isian di dialog Setujui (2026-10-30); null/undefined = tidak diubah. */
     deductDays?: number | null;
+    /** Reimburse overtime: nominal per baris overtime (id baris → Rupiah) yang diisi approver (2026-10-30). */
+    overtimeAmounts?: Record<string, number> | null;
     /** IP & perangkat approver untuk audit (hardening Tahap 6). */
     meta?: RequestMeta;
   },
@@ -264,6 +270,8 @@ export async function approveRequest(
       }
     }
 
+    if (request.module === "REIMBURSE") await applyOvertimeAmounts(tx, request.id, request.entityId, current.level, input.actorId, input.overtimeAmounts ?? {}, input.meta);
+
     // 3. Ada step WAITING berikutnya → PENDING; email ke approver-nya + info ke pemohon.
     const next = request.steps.find((step) => step.level > current.level && step.status === "WAITING");
     if (next) {
@@ -290,6 +298,60 @@ export async function approveRequest(
         { template: "approval-final", recipientIds: unique([request.requesterId, ...(await adminIds(tx))]), requestId: request.id },
       ],
     };
+  });
+}
+
+/**
+ * Reimburse overtime (2026-10-30): approver mengisi nominal tiap baris overtime saat menyetujui; semua baris overtime
+ * wajib bernominal > 0 sebelum lanjut. Perubahan tercatat sebagai koreksi approver (terlihat pemohon) dan total dihitung ulang.
+ */
+async function applyOvertimeAmounts(
+  tx: Tx,
+  requestId: string,
+  reimbursementId: string,
+  level: number,
+  actorId: string,
+  amounts: Record<string, number>,
+  meta?: RequestMeta,
+) {
+  const items = await tx.reimbursementItem.findMany({ where: { reimbursementId }, orderBy: { id: "asc" } });
+  const overtimeItems = items.filter((item) => item.overtimeId);
+  if (!overtimeItems.length) return;
+  let changed = false;
+  for (const item of overtimeItems) {
+    const value = amounts[item.id];
+    if (value === undefined || value === null) continue;
+    if (!Number.isInteger(value) || value <= 0) throw new ServiceError("Nominal overtime harus angka bulat lebih dari 0", "overtimeAmounts");
+    if (BigInt(value) === item.amount) continue;
+    await tx.reimbursementItem.update({ where: { id: item.id }, data: { amount: BigInt(value) } });
+    await tx.approvalCorrection.create({
+      data: {
+        requestId,
+        level,
+        targetId: item.id,
+        label: `Overtime ${toJakartaIsoDate(item.date)} · Nominal`,
+        field: "AMOUNT",
+        before: formatRupiah(item.amount),
+        after: formatRupiah(value),
+        editedById: actorId,
+      },
+    });
+    item.amount = BigInt(value);
+    changed = true;
+  }
+  if (overtimeItems.some((item) => item.amount <= 0n)) throw new ServiceError("Isi nominal semua overtime sebelum menyetujui", "overtimeAmounts");
+  if (!changed) return;
+  const { personal, corporate, total } = reimbursementTotals(items.map((i) => ({ paymentMethod: i.paymentMethod, amount: Number(i.amount) })));
+  const before = await tx.reimbursement.findUniqueOrThrow({ where: { id: reimbursementId }, select: { total: true } });
+  await tx.reimbursement.update({ where: { id: reimbursementId }, data: { totalPersonal: BigInt(personal), totalCorporate: BigInt(corporate), total: BigInt(total) } });
+  await logAudit(tx, {
+    actorId,
+    action: "UPDATE",
+    entity: "Reimbursement",
+    entityId: reimbursementId,
+    before: { total: before.total },
+    after: { total: BigInt(total), overtimeAmounts: amounts },
+    ...meta,
   });
 }
 

@@ -28,7 +28,7 @@ const SETTING_SECTIONS: { title: string; description: string; href: string; icon
   },
   {
     title: "Jam Kerja & Absensi",
-    description: "Jam masuk & pulang untuk menandai terlambat / pulang cepat, dan tarif overtime per jam.",
+    description: "Jam masuk & pulang untuk menandai terlambat / pulang cepat.",
     href: "/setting/absensi",
     icon: Clock,
   },

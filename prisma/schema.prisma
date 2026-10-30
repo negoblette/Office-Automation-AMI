@@ -135,6 +135,9 @@ enum ApprovalModule {
   EXPENSE
   CERTIFICATE // verifikasi sertifikat (Fase 14, 2026-10-05)
   ATTENDANCE_APPEAL // appeal tidak hadir: sakit / kunjungan keluar (Fase 14)
+  OVERTIME // sesi overtime engineer yang sudah di-finalize (2026-10-30, Ko Yosep)
+  /// Hanya untuk memilih Approval Flow reimburse overtime (2026-10-30, Ci Ika); ApprovalRequest-nya tetap modul REIMBURSE.
+  OVERTIME_REIMBURSE
 }
 
 /// Jenis perubahan data karyawan yang menunggu persetujuan (2026-10-12).
@@ -514,7 +517,7 @@ model ReimbursementItem {
   hasReceipt      Boolean
   paymentMethod   PaymentMethod
   amount          BigInt
-  /// Baris dari sesi overtime (2026-10-30): nominal = durasi × tarif per jam; satu overtime hanya bisa di-reimburse sekali.
+  /// Baris dari sesi overtime (2026-10-30): nominal diisi approver (Ci Ika); satu overtime hanya bisa di-reimburse sekali.
   overtimeId      String?       @unique
   overtime        Overtime?     @relation(fields: [overtimeId], references: [id])
 
@@ -848,8 +851,9 @@ model Attendance {
 }
 
 // Overtime engineer (2026-10-30): terpisah dari absensi, boleh beberapa sesi per hari. Clock out sekaligus finalize
-// (customer + project + pekerjaan); sesi yang selesai bisa dipilih di form reimburse (tipe OVERTIME, nominal = durasi ×
-// tarif per jam `AppSetting overtime.hourlyRate`). Satu sesi berjalan per karyawan (indeks unik parsial di migrasi).
+// (customer + project + pekerjaan) dan mengajukan approval modul OVERTIME (Ko Yosep, nomor OVT/…). Sesi APPROVED bisa
+// dipilih di Reimburse Overtime (tipe OVERTIME, approval Ci Ika yang mengisi nominalnya). Satu sesi berjalan per
+// karyawan (indeks unik parsial di migrasi).
 model Overtime {
   id         String    @id @default(cuid())
   employeeId String
@@ -862,6 +866,9 @@ model Overtime {
   projectId  String?
   project    Project?  @relation(fields: [projectId], references: [id])
   activity   String? // pekerjaan yang dilakukan, diisi saat finalize
+  number     String?       @unique // OVT/YYYY/MM/NNNN, dibuat saat finalize
+  status     RequestStatus @default(DRAFT) // DRAFT = masih berjalan; PENDING/APPROVED/REJECTED = approval
+  approvedAt DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 

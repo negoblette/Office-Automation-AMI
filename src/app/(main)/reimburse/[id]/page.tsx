@@ -102,7 +102,10 @@ export default async function DetailReimbursePage({ params }: { params: Promise<
                       {item.hasReceipt ? "Ya" : "Tidak"}
                     </td>
                     <td className="px-4 py-3">{PAYMENT_METHOD_LABEL[item.paymentMethod]}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatRupiah(item.amount)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      {/* Reimburse overtime (2026-10-30): nominal diisi approver saat menyetujui. */}
+                      {item.overtimeId && item.amount === 0 ? <span className="text-xs text-muted-foreground">Diisi approver</span> : formatRupiah(item.amount)}
+                    </td>
                   </tr>
                 ))}
                 <tr className="border-t border-border bg-muted/40 text-sm">

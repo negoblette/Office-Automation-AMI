@@ -206,6 +206,9 @@ export const APPROVAL_FLOWS: SeedFlow[] = [
   { scope: "REGULAR", module: "CERTIFICATE", division: null, steps: [["ika"]] },
   // Appeal absensi (sakit / kunjungan keluar) -> Bu Ika; appeal Bu Ika -> Fallback (Fase 14).
   { scope: "REGULAR", module: "ATTENDANCE_APPEAL", division: null, steps: [["ika"]] },
+  // Overtime engineer (2026-10-30): sesi -> Ko Yosep; reimburse overtime -> Ci Ika (mengisi nominal).
+  { scope: "REGULAR", module: "OVERTIME", division: null, steps: [["yosep"]] },
+  { scope: "REGULAR", module: "OVERTIME_REIMBURSE", division: null, steps: [["ika"]] },
   // Klaim kesehatan -> Bu Ika; klaim Bu Ika sendiri -> Fallback.
   { scope: "REGULAR", module: "HEALTH", division: null, steps: [["ika"]] },
   { scope: "FALLBACK", module: null, division: null, steps: [["rudy", "leonard"]] },

@@ -177,19 +177,22 @@ semua direktur auto-approve; bila flow REGULAR tidak ditemukan, engine melempar 
   Engineer → Transport, Allowance; Umum & Direktur → keenam tipe.
 - Total dihitung server-side dari item (jangan percaya nilai dari client).
 - Minimal 1 item untuk submit; hanya DRAFT yang bisa diedit/dihapus pemohon.
-- **Overtime (2026-10-30):** form menerima `overtimeIds` (sesi overtime selesai milik pemohon, belum dipakai reimburse
-  lain). Server membuat satu baris per sesi: tipe `OVERTIME` (`divisions` kosong → tidak ada di dropdown manual; dipilih
-  manual ditolak), tanggal/customer/project/aktivitas dari sesi, payment Personal, nominal = `round(menit × tarif/60)`
-  (tarif weekday / weekend & libur menurut tanggal mulai sesi), `ReimbursementItem.overtimeId` unik. Hapus draft → tautan overtime dilepas.
+- **Reimburse Overtime (2026-10-30):** pengajuan terpisah (`/reimburse/overtime`, `overtimeIdsSchema`): hanya `overtimeIds`
+  (sesi APPROVED milik pemohon, belum dipakai reimburse lain), tidak boleh dicampur baris biasa. Satu baris per sesi: tipe
+  `OVERTIME` (`divisions` kosong → tidak ada di dropdown manual; dipilih manual ditolak), tanggal/customer/project/aktivitas
+  dari sesi, payment Personal, nominal 0. Submit → flow modul `OVERTIME_REIMBURSE` (Ci Ika). Approver wajib mengisi nominal
+  tiap baris overtime (> 0) di dialog Setujui; perubahan = `ApprovalCorrection` "Overtime YYYY-MM-DD · Nominal", total
+  dihitung ulang. `ReimbursementItem.overtimeId` unik; hapus draft → tautan overtime dilepas.
 
 ### 6.4a Overtime (`services/overtime.ts`, 2026-10-30)
 - Hanya karyawan aktif divisi `ENGINEER` (Admin melihat rekap semua di `/overtime?tab=rekap`). Terpisah dari absensi.
 - Mulai Overtime (clock in, jam server) kapan saja; boleh beberapa sesi per hari, tetapi satu sesi berjalan per karyawan
   (indeks unik parsial `Overtime_open_key`). Clock out = finalize: customer (master) + project aktif milik customer itu +
-  pekerjaan, semua wajib. Sesi berjalan bisa dibatalkan pemiliknya (dihapus, tercatat audit). Tanpa approval sendiri.
-- Tarif per jam di Setting → Jam Kerja & Absensi: `AppSetting overtime.hourlyRate` = `{ weekday, weekend }` (format lama
-  satu angka = keduanya). Weekday = Senin–Jumat hari kerja; weekend = Sabtu, Minggu & `Holiday`, menurut **tanggal mulai**
-  sesi (lewat tengah malam tetap ikut hari mulai). Tarif jenis hari itu 0 = belum diatur → sesi itu tidak bisa di-reimburse.
+  pekerjaan, semua wajib. Sesi berjalan bisa dibatalkan pemiliknya (dihapus, tercatat audit).
+- Finalize → `status` PENDING, nomor `OVT/…`, approval modul `OVERTIME` (seed: semua divisi → Ko Yosep; produksi diatur
+  Admin di Setting → Approval Flow). Disetujui → APPROVED (bisa di-reimburse); ditolak → REJECTED, pemohon merevisi
+  customer/project/pekerjaan (jam tetap) dan mengajukan ulang dengan nomor sama. Batalkan persetujuan ditolak bila sesi
+  sudah dipakai reimburse. Tidak ada tarif (`overtime.hourlyRate` dihapus migrasi); penanda weekend/libur hanya informasi.
 
 ### 6.5 Project
 - Total expense project = Σ `ReimbursementItem` APPROVED dengan projectId + Σ `ProjectExpense` APPROVED.

@@ -25,24 +25,30 @@ import { approveAction } from "./actions";
 /**
  * Tombol "Setujui" + dialog konfirmasi dengan catatan opsional. Klaim kesehatan: isian nominal disetujui.
  * Cuti (2026-10-30): isian "Hari dipotong dari saldo", awalnya sesuai jenis cuti & jenis kelamin.
+ * Reimburse overtime (2026-10-30): approver mengisi nominal tiap sesi overtime.
  */
 export function ApproveButton({
   requestId,
   label,
   requestedAmount = null,
   leaveDeduct = null,
+  overtimeLines = null,
 }: {
   requestId: string;
   label: string;
   requestedAmount?: number | null;
   /** Cuti: hari dipotong dari saldo saat ini & jumlah hari kerja; null = bukan cuti. */
   leaveDeduct?: { days: number; workingDays: number } | null;
+  /** Reimburse overtime: baris yang nominalnya diisi di sini; null = bukan reimburse overtime. */
+  overtimeLines?: { itemId: string; label: string; amount: number | null }[] | null;
 }) {
+  const initialOvertime = () => Object.fromEntries((overtimeLines ?? []).map((line) => [line.itemId, line.amount]));
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
   const [approvedAmount, setApprovedAmount] = useState<number | null>(requestedAmount);
   const [deductDays, setDeductDays] = useState(String(leaveDeduct?.days ?? ""));
+  const [overtimeAmounts, setOvertimeAmounts] = useState<Record<string, number | null>>(initialOvertime);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -58,11 +64,16 @@ export function ApproveButton({
         setError(`Hari dipotong dari saldo harus 0–${leaveDeduct.workingDays}`);
         return;
       }
+      if (overtimeLines && overtimeLines.some((line) => !overtimeAmounts[line.itemId] || overtimeAmounts[line.itemId]! <= 0)) {
+        setError("Isi nominal semua sesi overtime");
+        return;
+      }
       const result = await approveAction({
         requestId,
         note,
         approvedAmount: requestedAmount !== null ? approvedAmount : null,
         deductDays: leaveDeduct ? days : null,
+        overtimeAmounts: overtimeLines ? (overtimeAmounts as Record<string, number>) : null,
       });
       if (result.ok) {
         setOpen(false);
@@ -82,6 +93,7 @@ export function ApproveButton({
           setNote("");
           setApprovedAmount(requestedAmount);
           setDeductDays(String(leaveDeduct?.days ?? ""));
+          setOvertimeAmounts(initialOvertime());
           setError(null);
         }
       }}
@@ -122,6 +134,28 @@ export function ApproveButton({
               className="max-w-32"
             />
           </FormField>
+        )}
+        {overtimeLines && (
+          <fieldset className="flex flex-col gap-3">
+            <legend className="mb-2 text-[13px] font-bold text-ink-2">
+              Nominal overtime <span className="text-red-ink">*</span>
+            </legend>
+            {overtimeLines.map((line) => (
+              <FormField key={line.itemId} label={line.label} htmlFor={`ot-${line.itemId}`}>
+                <RupiahInput
+                  id={`ot-${line.itemId}`}
+                  value={overtimeAmounts[line.itemId] ?? null}
+                  onChange={(value) => setOvertimeAmounts((current) => ({ ...current, [line.itemId]: value }))}
+                />
+              </FormField>
+            ))}
+            <p className="text-sm text-muted-foreground">
+              Total overtime{" "}
+              <span className="font-semibold text-foreground tabular-nums">
+                {formatRupiah(overtimeLines.reduce((sum, line) => sum + (overtimeAmounts[line.itemId] ?? 0), 0))}
+              </span>
+            </p>
+          </fieldset>
         )}
         <FormField label="Catatan (opsional)" htmlFor={`note-${requestId}`}>
           <Textarea id={`note-${requestId}`} value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} />

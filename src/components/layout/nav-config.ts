@@ -29,6 +29,8 @@ export type NavChild = {
   adminOnly?: boolean;
   /** Modul Inventory (ditunda; terbuka untuk super admin). */
   inventory?: boolean;
+  /** Hanya karyawan yang boleh overtime (divisi Engineer). */
+  overtime?: boolean;
 };
 
 export type NavItem = {
@@ -119,6 +121,7 @@ export const NAV_GROUPS: NavGroup[] = [
         children: [
           { label: "Daftar Reimburse", href: "/reimburse" },
           { label: "Pengajuan Baru", href: "/reimburse/baru" },
+          { label: "Reimburse Overtime", href: "/reimburse/overtime", overtime: true },
         ],
       },
       {
@@ -181,7 +184,9 @@ export function getNavFor({ role, isSuperAdmin, canOvertime }: NavViewer): NavGr
           (!item.overtime || canOvertime || isAdmin),
       )
       .map((item) => {
-        const children = item.children?.filter((child) => (isAdmin || !child.adminOnly) && (!child.inventory || inventory));
+        const children = item.children?.filter(
+          (child) => (isAdmin || !child.adminOnly) && (!child.inventory || inventory) && (!child.overtime || canOvertime),
+        );
         // Sub-menu dengan satu isi saja tidak perlu ditampilkan.
         return {
           ...item,

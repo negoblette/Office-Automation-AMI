@@ -11,6 +11,7 @@ export const DOCUMENT_PREFIX = {
   EXPENSE: "EXP",
   CERTIFICATE: "CRT",
   ATTENDANCE_APPEAL: "APL",
+  OVERTIME: "OVT",
 } as const;
 
 export type DocumentPrefix = (typeof DOCUMENT_PREFIX)[keyof typeof DOCUMENT_PREFIX];
