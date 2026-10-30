@@ -44,12 +44,7 @@ export default async function CutiPage({ searchParams }: { searchParams: Promise
         }
       />
       <CutiTabs active="pengajuan" />
-      {balance ? (
-        <LeaveBalanceSpotlight balance={balance} />
-      ) : (
-        // Admin tanpa data karyawan (super admin sistem) cukup melihat pengajuan semua karyawan.
-        !isAdmin && <EmptyState title="Saldo cuti tidak tersedia" description="Akun Anda belum terhubung ke data karyawan." />
-      )}
+      {balance ? <LeaveBalanceSpotlight balance={balance} /> :<EmptyState title="Saldo cuti tidak tersedia" description="Akun Anda belum terhubung ke data karyawan." />}
       <form method="get" className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
           Filter bulan

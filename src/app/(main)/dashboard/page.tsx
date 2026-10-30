@@ -69,8 +69,7 @@ async function AdminDashboard({ user, calendar }: { user: CurrentUser; calendar:
       <ExpiryAlert items={data.alerts} forAdmin />
       <RecoveryKeyReminder email={user.email} />
 
-      {/* Admin tanpa data karyawan (super admin sistem) tidak absen → kartu absensi disembunyikan. */}
-      {today && <AttendanceHero today={today} className={styles.rise} style={riseStyle(3)} />}
+      <AttendanceHero today={today} className={styles.rise} style={riseStyle(3)} />
 
       <StatsBand>
         <StatItem

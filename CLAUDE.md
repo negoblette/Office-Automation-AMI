@@ -150,7 +150,7 @@ Hak approve ditentukan oleh **Approval Flow**, bukan oleh role saja.
 sistem) — Admin yang boleh menyetujui/menolak/mengoreksi pengajuan apa pun walau tidak ada di flow (kecuali miliknya,
 `canActOnStep`), membuka modul yang ditunda (`inventoryEnabled`, `lib/features.ts`), dan tidak bisa diubah role,
 dinonaktifkan, atau di-reset password/MFA-nya oleh Admin lain (`assertNotOtherSuperAdmin`). Tidak diatur dari aplikasi.
-Admin tanpa data karyawan: Absensi langsung ke Rekap, kartu absen & saldo cuti pribadi disembunyikan.
+Tampilan menu & halaman super admin sama dengan Admin biasa (walau tanpa data karyawan/divisi).
 
 **Approval (dipakai Reimburse, Cuti, Kesehatan, Expense, Sertifikat, Appeal absensi):**
 1. Ambil flow REGULAR sesuai `module` + `division` pemohon (division null = semua).
