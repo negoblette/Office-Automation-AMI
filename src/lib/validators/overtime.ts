@@ -9,9 +9,17 @@ export const overtimeFinishSchema = z.object({
 });
 export type OvertimeFinishInput = z.infer<typeof overtimeFinishSchema>;
 
-/** Tarif overtime per jam (Rupiah), diatur Admin di Setting → Jam Kerja & Absensi. */
-export const overtimeRateSchema = z.object({ hourlyRate: amountSchema });
-export type OvertimeRateInput = z.infer<typeof overtimeRateSchema>;
+/**
+ * Tarif overtime per jam (Rupiah), diatur Admin di Setting → Jam Kerja & Absensi. Weekday = Senin–Jumat hari kerja;
+ * weekend = Sabtu, Minggu, dan hari libur (`Holiday`), menurut tanggal mulai overtime (2026-10-30).
+ */
+export const overtimeRateSchema = z.object({ weekday: amountSchema, weekend: amountSchema });
+export type OvertimeRates = z.infer<typeof overtimeRateSchema>;
+
+/** Tarif yang berlaku untuk sesi di hari kerja (`workday`) atau weekend/libur; 0 = belum diatur. */
+export function overtimeRateFor(rates: OvertimeRates, workday: boolean): number {
+  return workday ? rates.weekday : rates.weekend;
+}
 
 /** Durasi sesi dalam menit penuh. */
 export function overtimeMinutes(clockIn: Date, clockOut: Date): number {

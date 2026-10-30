@@ -280,8 +280,8 @@ yang lupa (`Attendance.autoClockOut`; clock in setelah jam pulang → 23:59). Ya
 sekali di hari yang sama (jam otomatis diganti); koreksi Admin menghapus tanda otomatis.
 **Overtime (2026-10-30):** menu terpisah `/overtime`, hanya karyawan divisi Engineer (Admin: rekap). Boleh beberapa sesi
 per hari (satu baris per sesi), satu sesi berjalan; Clock Out = finalize customer + project + pekerjaan. Sesi selesai
-dipilih di form reimburse (bagian Overtime) → baris tipe `OVERTIME`, nominal = durasi × tarif per jam (Setting → Jam
-Kerja & Absensi). Satu sesi hanya sekali di-reimburse. Detail: Tech Spec §6.4a.
+dipilih di form reimburse (bagian Overtime) → baris tipe `OVERTIME`, nominal = durasi × tarif per jam **weekday** atau
+**weekend & libur** (Sabtu, Minggu, `Holiday`; menurut tanggal mulai sesi) di Setting → Jam Kerja & Absensi. Satu sesi hanya sekali di-reimburse. Detail: Tech Spec §6.4a.
 Appeal (Fase 14): hari kerja tidak hadir → appeal Sakit (wajib surat keterangan sakit PDF, 2026-10-14) / Kunjungan keluar / Lainnya (keterangan wajib, tanpa lampiran, 2026-10-30) maks 7 hari (modul ATTENDANCE_APPEAL,
 `APL/…`, Bu Ika; milik Bu Ika → Fallback). Lewat 7 hari tanpa appeal → job `attendance.deduct` (01:00 WIB) memotong
 1 hari cuti (`LeaveAdjustment` ABSENCE), hanya untuk tanggal ≥ `attendance.deductionStartDate`.

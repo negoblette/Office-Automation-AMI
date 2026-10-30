@@ -2,9 +2,9 @@
 import type { Prisma, PrismaClient, RequestStatus } from "@/generated/prisma/client";
 import { formatTime, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { projectLabel } from "@/lib/labels";
-import { overtimeAmount, overtimeMinutes } from "@/lib/validators/overtime";
+import { type OvertimeRates, overtimeMinutes } from "@/lib/validators/overtime";
 import { monthRange } from "./attendance-queries";
-import { getOvertimeRate } from "./overtime";
+import { getOvertimeRates, overtimeSessionAmount, overtimeWorkdays } from "./overtime";
 
 export type OvertimeRow = {
   id: string;
@@ -19,6 +19,8 @@ export type OvertimeRow = {
   clockOutDate: string | null;
   /** Durasi; untuk sesi berjalan = sampai sekarang. */
   minutes: number;
+  /** Sabtu, Minggu, atau hari libur → tarif weekend (2026-10-30). */
+  weekend: boolean;
   customerName: string | null;
   projectName: string | null;
   activity: string | null;
@@ -35,7 +37,7 @@ const include = {
 
 type OvertimeWithRelations = Prisma.OvertimeGetPayload<{ include: typeof include }>;
 
-function toRow(o: OvertimeWithRelations, now: Date): OvertimeRow {
+function toRow(o: OvertimeWithRelations, now: Date, workday: (date: Date) => boolean): OvertimeRow {
   const end = o.clockOut ?? now;
   const outDate = o.clockOut ? toJakartaIsoDate(o.clockOut) : null;
   const date = toJakartaIsoDate(o.date);
@@ -50,6 +52,7 @@ function toRow(o: OvertimeWithRelations, now: Date): OvertimeRow {
     clockOut: o.clockOut ? formatTime(o.clockOut) : null,
     clockOutDate: outDate && outDate !== date ? outDate : null,
     minutes: overtimeMinutes(o.clockIn, end),
+    weekend: !workday(o.date),
     customerName: o.customer?.name ?? null,
     projectName: o.project ? projectLabel(o.project) : null,
     activity: o.activity,
@@ -60,7 +63,7 @@ function toRow(o: OvertimeWithRelations, now: Date): OvertimeRow {
 /** Sesi yang masih berjalan milik karyawan (paling banyak satu). */
 export async function getOpenOvertime(db: PrismaClient, employeeId: string, now = new Date()): Promise<OvertimeRow | null> {
   const open = await db.overtime.findFirst({ where: { employeeId, clockOut: null }, include });
-  return open ? toRow(open, now) : null;
+  return open ? toRow(open, now, await overtimeWorkdays(db, [open.date])) : null;
 }
 
 /**
@@ -74,7 +77,8 @@ export async function listOvertimes(db: PrismaClient, employeeId: string | null,
     orderBy: [{ date: "desc" }, { clockIn: "asc" }],
     include,
   });
-  return rows.map((row) => toRow(row, now));
+  const workday = await overtimeWorkdays(db, rows.map((row) => row.date));
+  return rows.map((row) => toRow(row, now, workday));
 }
 
 /** Pilihan di dialog Clock Out: customer master & project aktif (project difilter per customer di form). */
@@ -95,19 +99,20 @@ export async function getOvertimeFinishOptions(db: PrismaClient) {
 
 export type OvertimeFinishOptions = Awaited<ReturnType<typeof getOvertimeFinishOptions>>;
 
-export type ReimbursableOvertime = OvertimeRow & { amount: number };
+/** `amount` null = tarif untuk jenis harinya (weekday / weekend & libur) belum diatur → belum bisa dipilih. */
+export type ReimbursableOvertime = OvertimeRow & { amount: number | null };
 
 /**
  * Pilihan "Overtime" di form reimburse: sesi selesai milik karyawan yang belum dipakai reimburse lain (sesi yang sudah
- * ada di reimburse yang sedang diubah tetap muncul). Nominal = durasi × tarif per jam saat ini.
+ * ada di reimburse yang sedang diubah tetap muncul). Nominal = durasi × tarif per jam saat ini (weekday / weekend & libur).
  */
 export async function listReimbursableOvertimes(
   db: PrismaClient,
   employeeId: string,
   reimbursementId: string | null,
-): Promise<{ rate: number; overtimes: ReimbursableOvertime[] }> {
-  const [rate, rows] = await Promise.all([
-    getOvertimeRate(db),
+): Promise<{ rates: OvertimeRates; overtimes: ReimbursableOvertime[] }> {
+  const [rates, rows] = await Promise.all([
+    getOvertimeRates(db),
     db.overtime.findMany({
       where: {
         employeeId,
@@ -119,5 +124,9 @@ export async function listReimbursableOvertimes(
     }),
   ]);
   const now = new Date();
-  return { rate, overtimes: rows.map((row) => ({ ...toRow(row, now), amount: overtimeAmount(overtimeMinutes(row.clockIn, row.clockOut!), rate) })) };
+  const workday = await overtimeWorkdays(db, rows.map((row) => row.date));
+  return {
+    rates,
+    overtimes: rows.map((row) => ({ ...toRow(row, now, workday), amount: overtimeSessionAmount(rates, workday(row.date), row.clockIn, row.clockOut!) })),
+  };
 }

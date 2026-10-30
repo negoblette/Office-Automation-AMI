@@ -9,7 +9,7 @@ import { RupiahInput } from "@/components/form/rupiah-input";
 import { Button } from "@/components/ui/button";
 import type { WorkHours } from "@/lib/attendance";
 import { workHoursSchema } from "@/lib/validators/attendance";
-import { overtimeRateSchema } from "@/lib/validators/overtime";
+import { type OvertimeRates, overtimeRateSchema } from "@/lib/validators/overtime";
 import { saveWorkHoursAction } from "../../absensi/actions";
 import { saveOvertimeRateAction } from "../../overtime/actions";
 
@@ -35,8 +35,8 @@ export function WorkHoursDialog({ hours }: { hours: WorkHours }) {
   );
 }
 
-/** Tarif overtime per jam (2026-10-30): nominal reimburse overtime = durasi × tarif ini. */
-export function OvertimeRateDialog({ hourlyRate }: { hourlyRate: number }) {
+/** Tarif overtime per jam (2026-10-30): weekday & weekend/libur; nominal reimburse overtime = durasi × tarif. */
+export function OvertimeRateDialog({ rates }: { rates: OvertimeRates }) {
   return (
     <FormDialog
       trigger={
@@ -47,32 +47,36 @@ export function OvertimeRateDialog({ hourlyRate }: { hourlyRate: number }) {
       title="Ubah Tarif Overtime"
       description="Berlaku untuk overtime yang di-reimburse setelah ini; reimburse yang sudah disimpan tidak berubah."
       schema={overtimeRateSchema}
-      defaults={{ hourlyRate: hourlyRate || (null as unknown as number) }}
+      defaults={{ weekday: rates.weekday || (null as unknown as number), weekend: rates.weekend || (null as unknown as number) }}
       submitLabel="Simpan"
       action={saveOvertimeRateAction}
     >
-      <HourlyRateField />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <HourlyRateField name="weekday" label="Weekday (Senin–Jumat)" />
+        <HourlyRateField name="weekend" label="Weekend & hari libur" />
+      </div>
+      <p className="text-[12.5px] text-ink-3">Tarif per jam, dihitung per menit lalu dibulatkan ke rupiah terdekat. Jenis hari menurut tanggal mulai overtime.</p>
     </FormDialog>
   );
 }
 
-function HourlyRateField() {
+function HourlyRateField({ name, label }: { name: keyof OvertimeRates; label: string }) {
   const { control, formState } = useFormContext();
-  const error = formState.errors.hourlyRate?.message as string | undefined;
+  const error = formState.errors[name]?.message as string | undefined;
   return (
-    <FormField label="Tarif per jam" htmlFor="hourlyRate" required error={error} hint="Dihitung per menit, dibulatkan ke rupiah terdekat.">
+    <FormField label={label} htmlFor={name} required error={error}>
       <Controller
         control={control}
-        name="hourlyRate"
+        name={name}
         render={({ field }) => (
           <RupiahInput
-            id="hourlyRate"
+            id={name}
             value={field.value as number | null}
             onChange={field.onChange}
             onBlur={field.onBlur}
             aria-required
             aria-invalid={error ? true : undefined}
-            aria-describedby={fieldDescriptionId("hourlyRate")}
+            aria-describedby={fieldDescriptionId(name)}
           />
         )}
       />

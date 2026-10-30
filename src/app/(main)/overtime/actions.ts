@@ -5,7 +5,7 @@ import { z } from "zod";
 import { type ActionResult, toActionError } from "@/lib/actions";
 import { requireAdmin, requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
-import { cancelOvertime, finishOvertime, saveOvertimeRate, startOvertime } from "@/lib/services/overtime";
+import { cancelOvertime, finishOvertime, saveOvertimeRates, startOvertime } from "@/lib/services/overtime";
 import { overtimeFinishSchema, overtimeRateSchema } from "@/lib/validators/overtime";
 
 function revalidateOvertime() {
@@ -49,11 +49,11 @@ export async function cancelOvertimeAction(overtimeId: string): Promise<ActionRe
   }
 }
 
-/** Tarif overtime per jam (Admin). */
+/** Tarif overtime per jam weekday & weekend/libur (Admin). */
 export async function saveOvertimeRateAction(values: unknown): Promise<ActionResult> {
   const admin = await requireAdmin();
   try {
-    await saveOvertimeRate(prisma, admin.id, overtimeRateSchema.parse(values).hourlyRate);
+    await saveOvertimeRates(prisma, admin.id, overtimeRateSchema.parse(values));
     revalidatePath("/setting/absensi");
     revalidateOvertime();
     return { ok: true, data: undefined };

@@ -19,6 +19,7 @@ import { formatDuration } from "@/lib/attendance";
 import { formatDate, formatRupiah, toJakartaIsoDate } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL, toOptions } from "@/lib/labels";
 import type { ReimbursableOvertime } from "@/lib/services/overtime-queries";
+import type { OvertimeRates } from "@/lib/validators/overtime";
 import type { ReimbursementFormOptions } from "@/lib/services/reimbursement-queries";
 import { cn } from "@/lib/utils";
 import { dailySubtotals, NEW_ACQUISITION, reimbursementFormSchema, reimbursementTotals } from "@/lib/validators/reimbursement";
@@ -49,7 +50,7 @@ export function ReimbursementForm({
   /** Kunci draft sementara (sessionStorage), unik per user + pengajuan. */
   draftKey: string;
   /** Overtime yang bisa di-reimburse (divisi Engineer, 2026-10-30); null = bagian Overtime tidak tampil. */
-  overtime?: { rate: number; overtimes: ReimbursableOvertime[] } | null;
+  overtime?: { rates: OvertimeRates; overtimes: ReimbursableOvertime[] } | null;
 }) {
   const router = useRouter();
   const form = useForm<Input, unknown, Output>({ resolver: zodResolver(reimbursementFormSchema), defaultValues });
@@ -66,7 +67,7 @@ export function ReimbursementForm({
   // Overtime terpilih ikut subtotal sebagai baris Personal (nominal final dihitung server).
   const overtimeLines = (overtime?.overtimes ?? [])
     .filter((o) => overtimeIds.includes(o.id))
-    .map((o) => ({ date: o.date, paymentMethod: "PERSONAL", amount: o.amount }));
+    .map((o) => ({ date: o.date, paymentMethod: "PERSONAL", amount: o.amount ?? 0 }));
   const lines = [
     ...visits.flatMap((visit) => (visit.lines ?? []).map((line) => ({ ...line, date: String(visit.date ?? "") }))),
     ...overtimeLines,
@@ -117,7 +118,7 @@ export function ReimbursementForm({
           <Building2 aria-hidden /> Tambah Kunjungan
         </Button>
 
-        {overtime && <OvertimePicker rate={overtime.rate} overtimes={overtime.overtimes} canAdd={lineCount < MAX_LINES} />}
+        {overtime && <OvertimePicker rates={overtime.rates} overtimes={overtime.overtimes} canAdd={lineCount < MAX_LINES} />}
 
         <section className="grid gap-4 rounded-2xl bg-card p-5 shadow-card sm:grid-cols-[1fr_auto]">
           <TextareaField name="note" label="Catatan untuk approver (opsional)" />
@@ -388,9 +389,11 @@ function LineRow({
 
 /**
  * Pilihan overtime (2026-10-30): centang sesi overtime yang sudah selesai; satu sesi = satu baris reimburse tipe
- * Overtime dengan tanggal, customer, project & pekerjaan dari sesi itu. Nominal = durasi × tarif per jam.
+ * Overtime dengan tanggal, customer, project & pekerjaan dari sesi itu. Nominal = durasi × tarif per jam weekday atau
+ * weekend & libur (menurut tanggal mulai); sesi yang tarifnya belum diatur tidak bisa dicentang.
  */
-function OvertimePicker({ rate, overtimes, canAdd }: { rate: number; overtimes: ReimbursableOvertime[]; canAdd: boolean }) {
+function OvertimePicker({ rates, overtimes, canAdd }: { rates: OvertimeRates; overtimes: ReimbursableOvertime[]; canAdd: boolean }) {
+  const rate = (value: number) => (value ? formatRupiah(value) : "belum diatur");
   const form = useFormContextTyped();
   return (
     <section className="rounded-2xl bg-card shadow-card" aria-labelledby="overtime-heading">
@@ -399,9 +402,8 @@ function OvertimePicker({ rate, overtimes, canAdd }: { rate: number; overtimes: 
           <Timer className="size-4" aria-hidden /> Overtime
         </h2>
         <p className="text-sm text-muted-foreground">
-          {rate
-            ? `Centang overtime yang mau di-reimburse. Nominal = durasi × ${formatRupiah(rate)} per jam.`
-            : "Tarif overtime per jam belum diatur Admin — overtime belum bisa di-reimburse."}
+          Centang overtime yang mau di-reimburse. Nominal = durasi × tarif per jam: weekday {rate(rates.weekday)}, weekend & libur{" "}
+          {rate(rates.weekend)}.
         </p>
       </div>
       {overtimes.length === 0 ? (
@@ -416,27 +418,31 @@ function OvertimePicker({ rate, overtimes, canAdd }: { rate: number; overtimes: 
               <ul className="flex flex-col divide-y divide-border">
                 {overtimes.map((o) => {
                   const checked = selected.includes(o.id);
+                  const priced = o.amount !== null;
                   return (
                     <li key={o.id}>
-                      <label className={cn("flex cursor-pointer items-start gap-3 p-5", !rate && "cursor-not-allowed opacity-60")}>
+                      <label className={cn("flex cursor-pointer items-start gap-3 p-5", !priced && "cursor-not-allowed opacity-60")}>
                         <input
                           type="checkbox"
                           className="mt-0.5 size-[18px] shrink-0 cursor-pointer accent-primary"
                           checked={checked}
-                          disabled={!rate || (!checked && !canAdd)}
+                          disabled={(!priced && !checked) || (!checked && !canAdd)}
                           onChange={(event) => field.onChange(event.target.checked ? [...selected, o.id] : selected.filter((id) => id !== o.id))}
                         />
                         <span className="flex min-w-0 flex-1 flex-col gap-0.5 text-sm">
                           <span className="font-semibold">
                             {formatDate(`${o.date}T00:00:00Z`, "weekday")} · {o.clockIn}–{o.clockOut}
                             {o.clockOutDate && ` (${formatDate(`${o.clockOutDate}T00:00:00Z`, "short")})`} · {formatDuration(o.minutes)}
+                            <span className="ml-2 text-xs font-medium text-muted-foreground">{o.weekend ? "Weekend / libur" : "Weekday"}</span>
                           </span>
                           <span className="text-muted-foreground">
                             {o.customerName} · {o.projectName}
                           </span>
                           <span className="text-muted-foreground">{o.activity}</span>
                         </span>
-                        <span className="shrink-0 text-sm font-semibold tabular-nums">{formatRupiah(o.amount)}</span>
+                        <span className="shrink-0 text-sm font-semibold tabular-nums">
+                          {priced ? formatRupiah(o.amount!) : <span className="text-xs font-medium text-muted-foreground">Tarif belum diatur</span>}
+                        </span>
                       </label>
                     </li>
                   );

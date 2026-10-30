@@ -208,7 +208,10 @@ export function OvertimeTable({ rows, withEmployee = false, viewerEmployeeId }: 
                   <StatusBadge variant="warning">Berjalan</StatusBadge>
                 )}
               </TableCell>
-              <TableCell className="h-14 text-[13.5px]">{formatDuration(row.minutes)}</TableCell>
+              <TableCell className="h-14 text-[13.5px]">
+                {formatDuration(row.minutes)}
+                {row.weekend && <span className="block text-xs text-ink-3">Weekend / libur</span>}
+              </TableCell>
               <TableCell className="h-14 whitespace-normal">
                 {row.customerName ? (
                   <div className="flex min-w-0 flex-col gap-0.5 py-1.5 text-[13.5px]">

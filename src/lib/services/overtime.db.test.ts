@@ -1,10 +1,11 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { Actor } from "@/lib/services/access";
-import { cancelOvertime, finishOvertime, overtimeReimburseType, saveOvertimeRate, startOvertime } from "@/lib/services/overtime";
+import { cancelOvertime, finishOvertime, overtimeReimburseType, saveOvertimeRates, startOvertime } from "@/lib/services/overtime";
 import { listOvertimes, listReimbursableOvertimes } from "@/lib/services/overtime-queries";
 import { saveCustomer, saveProject } from "@/lib/services/project";
 import { deleteReimbursementDraft, saveReimbursementDraft, submitReimbursement } from "@/lib/services/reimbursement";
 import { getReimbursementFormOptions } from "@/lib/services/reimbursement-queries";
+import { fromIsoDate } from "@/lib/format";
 import { overtimeAmount, overtimeFinishSchema } from "@/lib/validators/overtime";
 import { projectSchema } from "@/lib/validators/project";
 import { reimbursementSchema } from "@/lib/validators/reimbursement";
@@ -87,11 +88,39 @@ describe("reimburse overtime (2026-10-30)", () => {
 
   it("tarif belum diatur → ditolak", async () => {
     const done = await session("2026-10-20T18:00", "2026-10-20T19:30");
-    await expect(saveReimbursementDraft(testDb, actors.andi, null, withOvertime([done.id]))).rejects.toThrow("Tarif overtime per jam belum diatur Admin");
+    await expect(saveReimbursementDraft(testDb, actors.andi, null, withOvertime([done.id]))).rejects.toThrow("Tarif overtime weekday per jam belum diatur Admin");
+  });
+
+  it("tarif weekday vs weekend: Sabtu/Minggu & hari libur memakai tarif weekend (menurut tanggal mulai)", async () => {
+    await saveOvertimeRates(testDb, u.ika, { weekday: 50_000, weekend: 100_000 });
+    await testDb.holiday.create({ data: { date: fromIsoDate("2026-10-22"), name: "Libur Uji" } });
+    const weekday = await session("2026-10-21T18:00", "2026-10-21T20:00"); // Rabu
+    const saturday = await session("2026-10-24T10:00", "2026-10-24T12:00");
+    const holiday = await session("2026-10-22T10:00", "2026-10-22T11:30"); // Kamis libur
+    const fridayNight = await session("2026-10-23T23:00", "2026-10-24T01:00"); // mulai Jumat → weekday
+
+    const { overtimes } = await listReimbursableOvertimes(testDb, actors.andi.employeeId!, null);
+    expect(Object.fromEntries(overtimes.map((o) => [o.id, [o.weekend, o.amount]]))).toEqual({
+      [weekday.id]: [false, 100_000],
+      [holiday.id]: [true, 150_000],
+      [fridayNight.id]: [false, 100_000],
+      [saturday.id]: [true, 200_000],
+    });
+    const { reimbursementId } = await saveReimbursementDraft(testDb, actors.andi, null, withOvertime([weekday.id, saturday.id, holiday.id, fridayNight.id]));
+    expect((await testDb.reimbursement.findUniqueOrThrow({ where: { id: reimbursementId } })).total).toBe(550_000n);
+  });
+
+  it("tarif weekend belum diatur → sesi weekend tidak bisa di-reimburse, weekday tetap bisa", async () => {
+    await testDb.appSetting.create({ data: { key: "overtime.hourlyRate", value: { weekday: 50_000, weekend: 0 } } });
+    const weekday = await session("2026-10-21T18:00", "2026-10-21T19:00");
+    const sunday = await session("2026-10-25T10:00", "2026-10-25T11:00");
+    expect((await listReimbursableOvertimes(testDb, actors.andi.employeeId!, null)).overtimes.map((o) => o.amount)).toEqual([50_000, null]);
+    await expect(saveReimbursementDraft(testDb, actors.andi, null, withOvertime([sunday.id]))).rejects.toThrow("Tarif overtime weekend/libur per jam belum diatur Admin");
+    await expect(saveReimbursementDraft(testDb, actors.andi, null, withOvertime([weekday.id]))).resolves.toBeDefined();
   });
 
   it("overtime terpilih jadi baris tipe Overtime dari data sesi; satu sesi hanya sekali; draft dihapus → bisa dipilih lagi", async () => {
-    await saveOvertimeRate(testDb, u.ika, 50_000);
+    await saveOvertimeRates(testDb, u.ika, { weekday: 50_000, weekend: 100_000 });
     const done = await session("2026-10-20T18:00", "2026-10-20T19:30");
 
     const { reimbursementId } = await saveReimbursementDraft(testDb, actors.andi, null, withOvertime([done.id]));
@@ -112,7 +141,7 @@ describe("reimburse overtime (2026-10-30)", () => {
   });
 
   it("overtime orang lain / masih berjalan ditolak; tipe Overtime tidak bisa dipilih manual", async () => {
-    await saveOvertimeRate(testDb, u.ika, 50_000);
+    await saveOvertimeRates(testDb, u.ika, { weekday: 50_000, weekend: 100_000 });
     const open = await startOvertime(testDb, actors.andi);
     await expect(saveReimbursementDraft(testDb, actors.andi, null, withOvertime([open.id]))).rejects.toThrow("Overtime yang belum selesai tidak bisa di-reimburse");
     await expect(saveReimbursementDraft(testDb, actors.yosep, null, withOvertime([open.id]))).rejects.toThrow("Overtime tidak ditemukan");
@@ -128,7 +157,7 @@ describe("reimburse overtime (2026-10-30)", () => {
   });
 
   it("diajukan → status reimburse tampil di riwayat overtime", async () => {
-    await saveOvertimeRate(testDb, u.ika, 60_000);
+    await saveOvertimeRates(testDb, u.ika, { weekday: 60_000, weekend: 100_000 });
     const done = await session("2026-10-21T18:00", "2026-10-21T19:00");
     const { reimbursementId } = await saveReimbursementDraft(testDb, actors.andi, null, withOvertime([done.id]));
     const { number } = await submitReimbursement(testDb, actors.andi, reimbursementId);

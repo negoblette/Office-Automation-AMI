@@ -180,15 +180,16 @@ semua direktur auto-approve; bila flow REGULAR tidak ditemukan, engine melempar 
 - **Overtime (2026-10-30):** form menerima `overtimeIds` (sesi overtime selesai milik pemohon, belum dipakai reimburse
   lain). Server membuat satu baris per sesi: tipe `OVERTIME` (`divisions` kosong → tidak ada di dropdown manual; dipilih
   manual ditolak), tanggal/customer/project/aktivitas dari sesi, payment Personal, nominal = `round(menit × tarif/60)`
-  (`overtime.hourlyRate`), `ReimbursementItem.overtimeId` unik. Hapus draft → tautan overtime dilepas.
+  (tarif weekday / weekend & libur menurut tanggal mulai sesi), `ReimbursementItem.overtimeId` unik. Hapus draft → tautan overtime dilepas.
 
 ### 6.4a Overtime (`services/overtime.ts`, 2026-10-30)
 - Hanya karyawan aktif divisi `ENGINEER` (Admin melihat rekap semua di `/overtime?tab=rekap`). Terpisah dari absensi.
 - Mulai Overtime (clock in, jam server) kapan saja; boleh beberapa sesi per hari, tetapi satu sesi berjalan per karyawan
   (indeks unik parsial `Overtime_open_key`). Clock out = finalize: customer (master) + project aktif milik customer itu +
   pekerjaan, semua wajib. Sesi berjalan bisa dibatalkan pemiliknya (dihapus, tercatat audit). Tanpa approval sendiri.
-- Tarif per jam di Setting → Jam Kerja & Absensi (`AppSetting overtime.hourlyRate`; 0 = belum diatur → tidak bisa
-  di-reimburse).
+- Tarif per jam di Setting → Jam Kerja & Absensi: `AppSetting overtime.hourlyRate` = `{ weekday, weekend }` (format lama
+  satu angka = keduanya). Weekday = Senin–Jumat hari kerja; weekend = Sabtu, Minggu & `Holiday`, menurut **tanggal mulai**
+  sesi (lewat tengah malam tetap ikut hari mulai). Tarif jenis hari itu 0 = belum diatur → sesi itu tidak bisa di-reimburse.
 
 ### 6.5 Project
 - Total expense project = Σ `ReimbursementItem` APPROVED dengan projectId + Σ `ProjectExpense` APPROVED.

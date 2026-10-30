@@ -4,14 +4,15 @@ import { requireAdmin } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { formatRupiah } from "@/lib/format";
 import { getWorkHours } from "@/lib/services/attendance";
-import { getOvertimeRate } from "@/lib/services/overtime";
+import { getOvertimeRates } from "@/lib/services/overtime";
 import { OvertimeRateDialog, WorkHoursDialog } from "./work-hours-dialog";
 
 export const metadata: Metadata = { title: "Jam Kerja" };
 
 export default async function SettingAbsensiPage() {
   await requireAdmin();
-  const [hours, overtimeRate] = await Promise.all([getWorkHours(prisma), getOvertimeRate(prisma)]);
+  const [hours, overtimeRates] = await Promise.all([getWorkHours(prisma), getOvertimeRates(prisma)]);
+  const rate = (value: number) => (value ? formatRupiah(value) : "Belum diatur");
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -36,14 +37,22 @@ export default async function SettingAbsensiPage() {
         Perubahan berlaku untuk absen berikutnya; status absen yang sudah tercatat tidak berubah (kecuali dikoreksi Admin).
       </p>
       <section className="flex max-w-xl flex-wrap items-center justify-between gap-4 rounded-2xl bg-card p-5 shadow-card sm:p-6">
-        <dl>
-          <dt className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Tarif overtime per jam</dt>
-          <dd className="text-2xl font-bold tabular-nums">{overtimeRate ? formatRupiah(overtimeRate) : "Belum diatur"}</dd>
+        <dl className="grid grid-cols-2 gap-6">
+          <div>
+            <dt className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Overtime weekday / jam</dt>
+            <dd className="text-2xl font-bold tabular-nums">{rate(overtimeRates.weekday)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Weekend & libur / jam</dt>
+            <dd className="text-2xl font-bold tabular-nums">{rate(overtimeRates.weekend)}</dd>
+          </div>
         </dl>
-        <OvertimeRateDialog hourlyRate={overtimeRate} />
+        <OvertimeRateDialog rates={overtimeRates} />
       </section>
       <p className="max-w-xl text-sm text-muted-foreground">
-        Overtime (divisi Engineer) di-reimburse dengan nominal durasi × tarif ini. Selama belum diatur, overtime belum bisa di-reimburse.
+        Overtime (divisi Engineer) di-reimburse dengan nominal durasi × tarif per jam. Weekday = Senin–Jumat; weekend = Sabtu,
+        Minggu, dan hari libur di Kalender Libur, menurut tanggal mulai overtime. Selama tarifnya belum diatur, overtime di
+        jenis hari itu belum bisa di-reimburse.
       </p>
     </div>
   );

@@ -10,8 +10,9 @@ import { formatDuration } from "@/lib/attendance";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { formatRupiah, toJakartaIsoDate } from "@/lib/format";
-import { canUseOvertime, getOvertimeRate } from "@/lib/services/overtime";
+import { canUseOvertime, getOvertimeRates } from "@/lib/services/overtime";
 import { getOpenOvertime, getOvertimeFinishOptions, listOvertimes } from "@/lib/services/overtime-queries";
+import type { OvertimeRates } from "@/lib/validators/overtime";
 import { MonthNav } from "../absensi/attendance-ui";
 import { OvertimeClockCard, OvertimeTable } from "./overtime-ui";
 
@@ -31,7 +32,7 @@ export default async function OvertimePage({ searchParams }: { searchParams: Pro
   const activeTab = isAdmin && (tab === "rekap" || !canUse) ? "rekap" : "saya";
   const thisMonth = toJakartaIsoDate().slice(0, 7);
   const yearMonth = validMonth(bulan, thisMonth);
-  const rate = await getOvertimeRate(prisma);
+  const rates = await getOvertimeRates(prisma);
 
   return (
     <div className="flex flex-col gap-6">
@@ -58,15 +59,15 @@ export default async function OvertimePage({ searchParams }: { searchParams: Pro
         />
       )}
       {activeTab === "rekap" ? (
-        <Recap yearMonth={yearMonth} thisMonth={thisMonth} rate={rate} viewerEmployeeId={user.employeeId} />
+        <Recap yearMonth={yearMonth} thisMonth={thisMonth} rates={rates} viewerEmployeeId={user.employeeId} />
       ) : (
-        <Mine employeeId={user.employeeId!} yearMonth={yearMonth} thisMonth={thisMonth} rate={rate} />
+        <Mine employeeId={user.employeeId!} yearMonth={yearMonth} thisMonth={thisMonth} rates={rates} />
       )}
     </div>
   );
 }
 
-async function Mine({ employeeId, yearMonth, thisMonth, rate }: { employeeId: string; yearMonth: string; thisMonth: string; rate: number }) {
+async function Mine({ employeeId, yearMonth, thisMonth, rates }: { employeeId: string; yearMonth: string; thisMonth: string; rates: OvertimeRates }) {
   const [open, rows, options] = await Promise.all([getOpenOvertime(prisma, employeeId), listOvertimes(prisma, employeeId, yearMonth), getOvertimeFinishOptions(prisma)]);
   const done = rows.filter((r) => r.clockOut);
   return (
@@ -76,13 +77,13 @@ async function Mine({ employeeId, yearMonth, thisMonth, rate }: { employeeId: st
         <h2 className="text-base font-semibold">Riwayat Overtime</h2>
         <MonthNav yearMonth={yearMonth} baseHref="/overtime" maxMonth={thisMonth} />
       </div>
-      <Stats rows={done} rate={rate} />
+      <Stats rows={done} rates={rates} />
       <OvertimeTable rows={rows} viewerEmployeeId={employeeId} />
     </>
   );
 }
 
-async function Recap({ yearMonth, thisMonth, rate, viewerEmployeeId }: { yearMonth: string; thisMonth: string; rate: number; viewerEmployeeId: string | null }) {
+async function Recap({ yearMonth, thisMonth, rates, viewerEmployeeId }: { yearMonth: string; thisMonth: string; rates: OvertimeRates; viewerEmployeeId: string | null }) {
   const rows = await listOvertimes(prisma, null, yearMonth);
   return (
     <>
@@ -90,13 +91,14 @@ async function Recap({ yearMonth, thisMonth, rate, viewerEmployeeId }: { yearMon
         <h2 className="text-base font-semibold">Rekap Overtime Karyawan</h2>
         <MonthNav yearMonth={yearMonth} baseHref="/overtime?tab=rekap" maxMonth={thisMonth} />
       </div>
-      <Stats rows={rows.filter((r) => r.clockOut)} rate={rate} />
+      <Stats rows={rows.filter((r) => r.clockOut)} rates={rates} />
       <OvertimeTable rows={rows} withEmployee viewerEmployeeId={viewerEmployeeId} />
     </>
   );
 }
 
-function Stats({ rows, rate }: { rows: Awaited<ReturnType<typeof listOvertimes>>; rate: number }) {
+function Stats({ rows, rates }: { rows: Awaited<ReturnType<typeof listOvertimes>>; rates: OvertimeRates }) {
+  const rate = (value: number) => (value ? formatRupiah(value) : "belum diatur");
   const totalMinutes = rows.reduce((sum, r) => sum + r.minutes, 0);
   const notReimbursed = rows.filter((r) => !r.reimbursement);
   return (
@@ -109,7 +111,7 @@ function Stats({ rows, rate }: { rows: Awaited<ReturnType<typeof listOvertimes>>
         unit="sesi"
         icon={ReceiptText}
         tone={notReimbursed.length ? "warning" : "success"}
-        footer={rate ? `Tarif ${formatRupiah(rate)} per jam` : "Tarif per jam belum diatur Admin"}
+        footer={`Tarif per jam: weekday ${rate(rates.weekday)} · weekend & libur ${rate(rates.weekend)}`}
       />
     </div>
   );
