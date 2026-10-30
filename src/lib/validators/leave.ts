@@ -1,9 +1,19 @@
 import { z } from "zod";
+import type { LeaveType } from "@/generated/prisma/enums";
 import { isoDateSchema, textSchema, withDateRange } from "./common";
+
+/** Jenis cuti (2026-10-30). Urutan = urutan di dropdown form. */
+export const LEAVE_TYPES = ["ANNUAL", "MATERNITY", "BEREAVEMENT"] as const satisfies readonly LeaveType[];
+
+/** Potong saldo awal per jenis: hanya cuti tahunan. Approver bisa mengubahnya saat menyetujui. */
+export function defaultDeductBalance(type: LeaveType): boolean {
+  return type === "ANNUAL";
+}
 
 /** Pengajuan cuti (LV-05..08). */
 export const leaveRequestSchema = withDateRange(
   z.object({
+    type: z.enum(LEAVE_TYPES, { error: "Pilih jenis cuti" }).default("ANNUAL"),
     startDate: isoDateSchema,
     endDate: isoDateSchema,
     reason: textSchema("Alasan", { min: 3, max: 500 }),

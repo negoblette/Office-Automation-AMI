@@ -27,7 +27,7 @@ function RowActions({ row }: { row: ApprovalRow }) {
       {row.canRevoke && <RevokeButton requestId={row.id} label={label} final={row.status === "APPROVED"} />}
       {row.canApprove && row.correctable && <CorrectionButton requestId={row.id} label={label} />}
       {row.canApprove && <RejectButton requestId={row.id} label={label} />}
-      {row.canApprove && <ApproveButton requestId={row.id} label={label} requestedAmount={row.requestedAmount} />}
+      {row.canApprove && <ApproveButton requestId={row.id} label={label} requestedAmount={row.requestedAmount} deductBalance={row.leaveDeductBalance} />}
     </div>
   );
 }

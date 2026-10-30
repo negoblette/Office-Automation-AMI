@@ -1,12 +1,12 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { isEncryptedValue } from "@/lib/crypto/field-encryption";
+import { mfaRequired } from "@/lib/roles";
 import {
   BACKUP_CODE_COUNT,
   MFA_PERIOD_SECONDS,
   confirmMfaSetup,
   currentTotp,
   getMfaStatus,
-  mfaRequired,
   regenerateBackupCodes,
   resetUserMfa,
   startMfaSetup,
@@ -34,8 +34,8 @@ async function enroll(userId: string) {
 }
 
 describe("MFA / verifikasi dua langkah (hardening Tahap 5)", () => {
-  it("wajib untuk Admin & Approver, tidak untuk Staf", () => {
-    expect([mfaRequired("ADMIN"), mfaRequired("APPROVER"), mfaRequired("STAFF")]).toEqual([true, true, false]);
+  it("wajib untuk semua role, termasuk Staf (2026-10-30)", () => {
+    expect([mfaRequired("ADMIN"), mfaRequired("APPROVER"), mfaRequired("STAFF")]).toEqual([true, true, true]);
   });
 
   it("pendaftaran: QR tetap sama saat refresh, kode salah ditolak, kode benar → aktif + 10 kode cadangan, rahasia terenkripsi", async () => {

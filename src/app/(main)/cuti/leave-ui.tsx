@@ -44,7 +44,9 @@ function OverdraftNote({ remaining }: { remaining: number }) {
  * biru = sisa, kuning = menunggu approval, abu = terpakai. Angka dari saldo yang sama dengan kartu lama.
  */
 export function LeaveBalanceSpotlight({ balance, title = "Saldo Cuti Saya" }: { balance: LeaveBalanceView; title?: string }) {
-  const total = balance.entitlement + balance.carriedOver + balance.adjustment;
+  // Pembagi "sisa / N hari" = saldo awal (jatah + carry over), tanpa penyesuaian Admin (2026-10-30): setelah Admin
+  // mengatur sisa cuti, angkanya tetap "sisa / saldo awal", bukan "sisa / sisa".
+  const total = balance.entitlement + balance.carriedOver;
   // Hanya tampilan: sisa + menunggu + terpakai = total. Saldo minus → tanpa ruas biru, plus ruas merah per hari minus.
   const slots = Math.max(0, total);
   const remainingSlots = Math.min(Math.max(0, balance.remaining), slots);
@@ -117,8 +119,9 @@ export function LeaveBalanceSpotlight({ balance, title = "Saldo Cuti Saya" }: { 
 
 /** Saldo cuti (LV-07): jatah, carry over, terpakai, menunggu, sisa. Tampilan lama, dipakai Dashboard (dikunci). */
 export function LeaveBalanceCard({ balance, title = "Saldo Cuti Saya" }: { balance: LeaveBalanceView; title?: string }) {
-  const total = balance.entitlement + balance.carriedOver + balance.adjustment;
-  const usedPercent = total ? ((balance.used + balance.pending) / total) * 100 : 0;
+  const total = balance.entitlement + balance.carriedOver; // saldo awal, lihat LeaveBalanceSpotlight
+  // Bagian saldo awal yang sudah tidak tersisa (terpakai, menunggu, atau dikurangi Admin) — sejalan dengan "sisa / saldo awal".
+  const usedPercent = total ? Math.min(100, Math.max(0, ((total - balance.remaining) / total) * 100)) : 0;
   return (
     <section className="rounded-2xl bg-card p-5 shadow-card">
       <div className="flex flex-wrap items-start justify-between gap-2">

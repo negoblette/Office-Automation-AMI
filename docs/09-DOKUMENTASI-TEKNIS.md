@@ -182,7 +182,7 @@ Bayangkan aplikasi ini sebagai sebuah kantor kecil:
 | Approver | Menyetujui, menolak, atau mengoreksi pengajuan yang ditugaskan kepadanya |
 | Admin (HRD & Direktur) | Mengelola semua data dan pengaturan |
 | Server SMTP kantor | Menerima email dari worker (wajib TLS di produksi) |
-| Aplikasi authenticator di HP | Google/Microsoft Authenticator, menghasilkan kode MFA untuk Admin & Approver |
+| Aplikasi authenticator di HP | Google/Microsoft Authenticator, menghasilkan kode MFA untuk semua karyawan |
 
 ---
 
@@ -352,13 +352,14 @@ docker-compose.prod.yml produksi: db, migrate, app, worker, proxy, backup
 | `APPROVER` | Ko Darwin (Sales), Ko Yosep (Engineer) | Data sendiri + halaman Approval untuk pengajuan yang ditugaskan kepadanya |
 | `STAFF` | Karyawan lain | Hanya data sendiri |
 
-> **Penting:** Admin dan Approver **wajib** memakai MFA (kode dari aplikasi authenticator di HP). Mereka memegang
-> akses paling luas, sehingga menjadi sasaran utama bila ada yang mencoba membobol akun.
+> **Penting:** semua akun **wajib** memakai MFA (kode dari aplikasi authenticator di HP). Awalnya hanya Admin dan
+> Approver, yang memegang akses paling luas; sejak 2026-10-30 Staf juga wajib, karena akun Staf menyimpan data
+> pribadinya sendiri (NIK, rekening, keluarga) dan bisa mengajukan reimburse.
 
 ### 7.2 Penjaga pintu di kode (guard)
 | Guard | Dipakai di | Fungsinya |
 |---|---|---|
-| `requireUser()` | Semua halaman & action yang butuh login | Wajib login, akun aktif, sudah ganti password awal, dan (untuk Admin/Approver) sudah daftar MFA |
+| `requireUser()` | Semua halaman & action yang butuh login | Wajib login, akun aktif, sudah ganti password awal, dan sudah daftar MFA |
 | `requireApprover()` | Halaman & aksi Approval | Hanya Admin atau Approver |
 | `requireAdmin()` | Halaman karyawan, kandidat, setting, dll. | Hanya Admin; selain itu diarahkan ke halaman "Akses ditolak" |
 | `getReadyUser()` | Route API (unduh file, export) | Seperti `requireUser`, tapi mengembalikan 401 alih-alih mengalihkan halaman |
@@ -400,7 +401,7 @@ staf mengetik alamat halaman Admin secara manual, server tetap menolaknya.
 **Alur pemakaian**
 1. Buka aplikasi → halaman **Login** → isi email & password.
 2. Akun baru (atau yang baru di-reset Admin) langsung diarahkan ke **Ganti Password** sebelum bisa memakai aplikasi.
-3. Admin & Approver yang belum punya MFA diarahkan ke halaman **MFA**: memindai QR dengan aplikasi authenticator,
+3. User yang belum punya MFA diarahkan ke halaman **MFA**: memindai QR dengan aplikasi authenticator,
    memasukkan kode 6 digit, lalu menyimpan **10 kode cadangan** yang hanya ditampilkan sekali.
 4. Login berikutnya untuk Admin & Approver menjadi dua langkah: password dulu, lalu kode dari HP.
 
@@ -950,7 +951,7 @@ ke server email **wajib terenkripsi (TLS)**; server email tanpa TLS akan ditolak
 ### 14.1 Ancaman & pengamannya
 | Kalau penyerang mencoba… | Yang menghalangi |
 |---|---|
-| Menebak password | Kebijakan password panjang, batas percobaan login, MFA untuk Admin & Approver |
+| Menebak password | Kebijakan password panjang, batas percobaan login, MFA untuk semua akun |
 | Memakai sesi yang tertinggal di komputer orang lain | Sesi habis setelah 1 jam tidak aktif / 12 jam; ganti password mencabut semua sesi |
 | Menyisipkan script jahat ke halaman (XSS) | Content Security Policy bernonce, React yang otomatis "meng-escape" teks |
 | Mengakses aplikasi dari luar kantor | nginx hanya menerima jaringan kantor/VPN, HTTPS wajib |
@@ -1211,7 +1212,7 @@ Format email `<nama>@artha-mitra.local`, password sesuai `SEED_PASSWORD`:
 | Approver | yosep, darwin |
 | Staf | andi, sinta, devi |
 
-Admin & Approver akan diminta mendaftarkan MFA saat login pertama.
+Semua akun akan diminta mendaftarkan MFA saat login pertama.
 
 ### 17.4 Perintah yang sering dipakai
 | Perintah | Fungsi |
@@ -1398,7 +1399,7 @@ Supaya riwayatnya mudah dilacak: satu nomor untuk satu pengajuan, sejak pertama 
 | 7 | Sidik jari NIK (HMAC) untuk cek unik | Bisa mengecek NIK ganda tanpa menyimpan NIK terbuka | Mengganti `DATA_INDEX_KEY` berarti menghitung ulang `nikHash` |
 | 8 | Akun database terpisah, aplikasi tanpa hak mengubah struktur | Aplikasi yang dibobol tidak bisa menghapus tabel | Migrasi memakai `MIGRATE_DATABASE_URL`; skema `pgboss` milik `oa_app` |
 | 9 | Audit log permanen | Jejak tidak bisa dihapus penyerang maupun aplikasi | User dengan riwayat audit hanya bisa dinonaktifkan |
-| 10 | MFA wajib untuk Admin & Approver | Akun dengan akses terluas adalah sasaran utama | Perlu prosedur reset dan kode cadangan |
+| 10 | MFA wajib untuk semua akun (Staf sejak 2026-10-30) | Akun dengan akses terluas adalah sasaran utama; akun Staf juga memegang data pribadi & pengajuan uang | Perlu prosedur reset dan kode cadangan; semua karyawan butuh HP dengan aplikasi authenticator |
 | 11 | Tanpa masking data pribadi di layar | Yang melihat hanya Admin (HRD & Direktur) yang berwenang | Pengamanan dialihkan ke MFA dan alarm |
 | 12 | Modul Inventory ditunda lewat saklar | Prioritas bisnis | Kode & data tetap ada; aktifkan lewat `FEATURES.inventory` |
 | 13 | Kunci pemulihan dibuat lewat aplikasi (kata sandi Direktur), bukan perintah `age` di laptop Direktur | Direktur tidak perlu menjalankan perintah teknis; petugas IT tetap tidak bisa membuka backup sendirian | Kata sandi pemulihan wajib kuat & diuji berkala; file kuncinya ikut setiap backup, bukan di database |
@@ -1479,3 +1480,4 @@ Supaya riwayatnya mudah dilacak: satu nomor untuk satu pengajuan, sejak pertama 
 | 1.3 | 2026-10-21 | Bab 15 ditulis ulang: kunci pemulihan dibuat Direktur lewat aplikasi (kata sandi pemulihan), tanpa perintah teknis; salinan backup ke luar server & rujukan ke `docs/07-DEPLOYMENT.md`; ADR 13–14; konfigurasi, status, risiko, dan glosarium diperbarui |
 | 1.4 | 2026-10-21 | Status hardening: Tahap 8 dilewati atas keputusan pemilik project; Tahap 9 dokumen deployment lengkap (tanpa firewall server, gladi resik 18 uji, serah terima) |
 | 1.5 | 2026-10-22 | Gladi resik emulasi 18/18 lulus; update aplikasi memakai `--force-recreate`; status & risiko diperbarui |
+| 1.6 | 2026-10-30 | MFA wajib untuk semua akun, termasuk Staf |

@@ -56,6 +56,8 @@ export function AttendanceHero({ today, className, style }: { today: TodayAttend
     ? [
         today.lateMinutes > 0 ? `terlambat ${formatDuration(today.lateMinutes)}` : null,
         today.earlyLeaveMinutes > 0 ? `pulang cepat ${formatDuration(today.earlyLeaveMinutes)}` : null,
+        // Clock out otomatis di jam pulang (2026-10-30): yang masih lembur menekan Clock Out untuk jam sebenarnya.
+        today.autoClockOut ? "masih bekerja? tekan Clock Out" : null,
       ].filter((note): note is string => note !== null)
     : [];
 
@@ -79,13 +81,20 @@ export function AttendanceHero({ today, className, style }: { today: TodayAttend
         {today?.clockIn && (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5">
             <span className={styles.punch}>MASUK {today.clockIn}</span>
-            {today.clockOut && <span className={cn(styles.punch, styles.punchOut)}>PULANG {today.clockOut}</span>}
+            {today.clockOut && (
+              <span className={cn(styles.punch, styles.punchOut)}>
+                PULANG {today.clockOut}
+                {today.autoClockOut && " · OTOMATIS"}
+              </span>
+            )}
           </div>
         )}
 
         <div className="flex w-full flex-wrap items-center justify-between gap-x-5 gap-y-3 sm:ml-auto sm:w-auto sm:justify-end">
           <p className="flex flex-col leading-snug sm:items-end sm:text-right">
-            <span className="text-[15px] font-bold">{state ? STATUS_LABEL[state] : "Akun belum terhubung ke data karyawan."}</span>
+            <span className="text-[15px] font-bold">
+              {today?.autoClockOut ? "Clock out otomatis" : state ? STATUS_LABEL[state] : "Akun belum terhubung ke data karyawan."}
+            </span>
             {today && (
               <span className="text-[13.5px] text-on-hero-2">
                 Jam kerja {today.hours.workStart}–{today.hours.workEnd}

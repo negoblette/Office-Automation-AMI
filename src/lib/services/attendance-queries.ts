@@ -14,6 +14,8 @@ export type AttendanceDay = {
   clockOut: string | null;
   /** Tanggal clock out bila berbeda hari (lewat tengah malam). */
   clockOutDate: string | null;
+  /** Clock out diisi sistem di jam pulang (2026-10-30). */
+  autoClockOut: boolean;
   lateMinutes: number;
   earlyLeaveMinutes: number;
   workedMinutes: number | null;
@@ -34,6 +36,8 @@ export type TodayAttendance = {
   hours: WorkHours;
   clockIn: string | null;
   clockOut: string | null;
+  /** Clock out otomatis di jam pulang — karyawan yang lembur masih bisa clock out sendiri hari ini. */
+  autoClockOut: boolean;
   lateMinutes: number;
   earlyLeaveMinutes: number;
   canClockIn: boolean;
@@ -44,6 +48,7 @@ type AttendanceRow = {
   date: Date;
   clockIn: Date;
   clockOut: Date | null;
+  autoClockOut?: boolean;
   lateMinutes: number;
   earlyLeaveMinutes: number;
   correctionNote: string | null;
@@ -67,6 +72,7 @@ function toDay(dateIso: string, status: DayStatus, row: AttendanceRow | undefine
     clockIn: row ? formatTime(row.clockIn) : null,
     clockOut: row?.clockOut ? formatTime(row.clockOut) : null,
     clockOutDate: row?.clockOut && toJakartaIsoDate(row.clockOut) !== dateIso ? toJakartaIsoDate(row.clockOut) : null,
+    autoClockOut: row?.autoClockOut ?? false,
     lateMinutes: row?.lateMinutes ?? 0,
     earlyLeaveMinutes: row?.earlyLeaveMinutes ?? 0,
     workedMinutes: row?.clockOut ? Math.floor((row.clockOut.getTime() - row.clockIn.getTime()) / 60000) : null,
@@ -164,10 +170,11 @@ export async function getTodayAttendance(db: PrismaClient, employeeId: string, n
     hours,
     clockIn: row ? formatTime(row.clockIn) : null,
     clockOut: row?.clockOut ? formatTime(row.clockOut) : null,
+    autoClockOut: row?.autoClockOut ?? false,
     lateMinutes: row?.lateMinutes ?? 0,
     earlyLeaveMinutes: row?.earlyLeaveMinutes ?? 0,
     canClockIn: !row,
-    canClockOut: Boolean(row && !row.clockOut),
+    canClockOut: Boolean(row && (!row.clockOut || row.autoClockOut)),
   };
 }
 

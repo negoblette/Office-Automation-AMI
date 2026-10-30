@@ -4,8 +4,7 @@ import { cache } from "react";
 import type { Role } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { auth } from "./index";
-import { canApprove } from "@/lib/roles";
-import { mfaRequired } from "@/lib/services/mfa";
+import { canApprove, mfaRequired } from "@/lib/roles";
 
 export type CurrentUser = {
   id: string;
@@ -15,7 +14,7 @@ export type CurrentUser = {
   employeeId: string | null;
   /** true = wajib ganti password dulu (akun baru / habis di-reset Admin). */
   mustChangePassword: boolean;
-  /** true = role wajib MFA (Admin/Approver) tapi authenticator belum didaftarkan → wajib ke /mfa dulu (hardening Tahap 5). */
+  /** true = role wajib MFA (semua role sejak 2026-10-30) tapi authenticator belum didaftarkan → wajib ke /mfa dulu (hardening Tahap 5). */
   mustSetupMfa: boolean;
 };
 
@@ -76,7 +75,7 @@ export function homePathFor(user: CurrentUser): string {
 /**
  * Wajib login. Dipakai di setiap page `(main)` dan Server Action. Akun yang wajib ganti
  * password diarahkan ke /ganti-password, kecuali halaman & aksi ganti password itu sendiri.
- * Setelah itu, Admin/Approver yang belum mendaftarkan MFA diarahkan ke /mfa (hardening Tahap 5).
+ * Setelah itu, user yang belum mendaftarkan MFA diarahkan ke /mfa (hardening Tahap 5; semua role sejak 2026-10-30).
  */
 export async function requireUser({
   allowPasswordChange = false,

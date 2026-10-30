@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { FormProvider, useForm, useWatch } from "react-hook-form";
 import type { z } from "zod";
-import { DateInputField, TextareaField } from "@/components/form/fields";
+import { DateInputField, SelectInputField, TextareaField } from "@/components/form/fields";
 import { FormAlert } from "@/components/form/form-actions";
 import { useActionSubmit } from "@/components/form/use-action-submit";
 import { Button } from "@/components/ui/button";
@@ -20,10 +20,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import type { LeaveType } from "@/generated/prisma/enums";
 import { formatDate, toJakartaIsoDate } from "@/lib/format";
+import { LEAVE_TYPE_LABEL } from "@/lib/labels";
 import { countWorkingDays } from "@/lib/leave";
 import { cn } from "@/lib/utils";
-import { leaveRequestSchema } from "@/lib/validators/leave";
+import { defaultDeductBalance, LEAVE_TYPES, leaveRequestSchema } from "@/lib/validators/leave";
 import { submitLeaveAction } from "./actions";
 
 type Input = z.input<typeof leaveRequestSchema>;
@@ -44,24 +46,30 @@ export function LeaveRequestDialog({
   /** Tanggal paling awal cuti boleh dimulai (genap 1 tahun masa kerja). */
   eligibleFrom: string;
   /** Revisi cuti yang ditolak (2026-10-12): isi awal + diajukan ulang dengan nomor yang sama. */
-  revise?: { id: string; number: string; startDate: string; endDate: string; reason: string };
+  revise?: { id: string; number: string; type: LeaveType; startDate: string; endDate: string; reason: string };
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const today = toJakartaIsoDate();
   const defaults: Input = revise
-    ? { startDate: revise.startDate, endDate: revise.endDate, reason: revise.reason }
-    : { startDate: today, endDate: today, reason: "" };
+    ? { type: revise.type, startDate: revise.startDate, endDate: revise.endDate, reason: revise.reason }
+    : { type: "ANNUAL", startDate: today, endDate: today, reason: "" };
   const form = useForm<Input, unknown, Output>({ resolver: zodResolver(leaveRequestSchema), defaultValues: defaults });
   const { serverError, pending, submit } = useActionSubmit(form);
 
-  const [startDate, endDate] = useWatch({ control: form.control, name: ["startDate", "endDate"] });
+  const [type, startDate, endDate] = useWatch({ control: form.control, name: ["type", "startDate", "endDate"] });
   const holidaySet = useMemo(() => new Set(holidays), [holidays]);
-  const tooEarly = typeof startDate === "string" && startDate !== "" && startDate < eligibleFrom;
+  // Cuti melahirkan & kematian tidak memotong saldo → tanpa syarat 1 tahun masa kerja & sisa saldo (dicek ulang server).
+  const deducts = defaultDeductBalance(type ?? "ANNUAL");
+  const tooEarly = deducts && typeof startDate === "string" && startDate !== "" && startDate < eligibleFrom;
+  const overBalance = (days: number | null) => deducts && days !== null && days > remaining;
   const preview =
     typeof startDate === "string" && typeof endDate === "string" && startDate && endDate && endDate >= startDate
       ? countWorkingDays(startDate, endDate, holidaySet)
       : null;
+  // Saldo tidak cukup / belum genap 1 tahun → tombol Ajukan nonaktif (2026-10-30); server tetap mengecek ulang.
+  // Cuti melahirkan & kematian tidak terkena karena tidak memotong saldo.
+  const blocked = tooEarly || overBalance(preview);
 
   const onSubmit = form.handleSubmit((values) =>
     submit(
@@ -98,6 +106,7 @@ export function LeaveRequestDialog({
               <DialogDescription>Durasi dihitung dalam hari kerja (tanpa Sabtu, Minggu, dan hari libur).</DialogDescription>
             </DialogHeader>
             <FormAlert message={serverError} />
+            <SelectInputField name="type" label="Jenis cuti" required options={LEAVE_TYPES.map((value) => ({ value, label: LEAVE_TYPE_LABEL[value] }))} />
             <div className="grid gap-4 sm:grid-cols-2">
               <DateInputField name="startDate" label="Mulai" required />
               <DateInputField name="endDate" label="Sampai" required />
@@ -106,19 +115,21 @@ export function LeaveRequestDialog({
               role="status"
               className={cn(
                 "rounded-lg px-3 py-2 text-sm",
-                tooEarly || (preview !== null && preview > remaining) ? "bg-danger-soft text-danger" : "bg-info-soft text-foreground",
+                blocked ? "bg-danger-soft text-danger" : "bg-info-soft text-foreground",
               )}
             >
               {tooEarly
                 ? `Cuti baru bisa dipakai mulai ${formatDate(`${eligibleFrom}T00:00:00Z`)} (setelah genap 1 tahun masa kerja)`
                 : preview === null
                 ? "Pilih rentang tanggal."
-                : `${preview} hari kerja · sisa saldo ${remaining} hari${preview > remaining ? " — melebihi saldo" : ""}`}
+                : deducts
+                ? `${preview} hari kerja · sisa saldo ${remaining} hari${overBalance(preview) ? " — saldo tidak cukup, kurangi tanggal cuti" : ""}`
+                : `${preview} hari kerja · tidak memotong saldo cuti (approver dapat menentukan lain)`}
             </p>
             <TextareaField name="reason" label="Alasan / delegasi tugas" required />
             <DialogFooter>
               <DialogClose render={<Button type="button" variant="outline" />}>Batal</DialogClose>
-              <Button type="submit" disabled={pending}>
+              <Button type="submit" disabled={pending || blocked}>
                 {pending && <Loader2 className="animate-spin" aria-hidden />}
                 {revise ? "Ajukan Ulang" : "Ajukan"}
               </Button>

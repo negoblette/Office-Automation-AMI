@@ -191,6 +191,8 @@ export async function approveRequest(
     note?: string | null;
     /** Klaim kesehatan: nominal disetujui approver final (default = nominal diajukan). */
     approvedAmount?: number | null;
+    /** Cuti: centang "Potong saldo cuti" di dialog Setujui (2026-10-30); null/undefined = tidak diubah. */
+    deductBalance?: boolean | null;
     /** IP & perangkat approver untuk audit (hardening Tahap 6). */
     meta?: RequestMeta;
   },
@@ -228,6 +230,37 @@ export async function approveRequest(
       after: { module: request.module, entityNumber: request.entityNumber, level: current.level, note: input.note ?? null },
       ...input.meta,
     });
+
+    // Cuti: approver menentukan potong saldo atau tidak. Disimpan di setiap level (level berikutnya melihat pilihan ini),
+    // dipakai efek final; perubahan tercatat sebagai koreksi approver supaya terlihat pemohon.
+    if (request.module === "LEAVE" && typeof input.deductBalance === "boolean") {
+      const leave = await tx.leaveRequest.findUniqueOrThrow({ where: { id: request.entityId } });
+      if (leave.deductBalance !== input.deductBalance) {
+        await tx.leaveRequest.update({ where: { id: leave.id }, data: { deductBalance: input.deductBalance } });
+        const yesNo = (value: boolean) => (value ? "Ya" : "Tidak");
+        await tx.approvalCorrection.create({
+          data: {
+            requestId: request.id,
+            level: current.level,
+            targetId: leave.id,
+            label: "Cuti · Potong saldo cuti",
+            field: "DEDUCT_BALANCE",
+            before: yesNo(leave.deductBalance),
+            after: yesNo(input.deductBalance),
+            editedById: input.actorId,
+          },
+        });
+        await logAudit(tx, {
+          actorId: input.actorId,
+          action: "UPDATE",
+          entity: "LeaveRequest",
+          entityId: leave.id,
+          before: { deductBalance: leave.deductBalance },
+          after: { deductBalance: input.deductBalance },
+          ...input.meta,
+        });
+      }
+    }
 
     // 3. Ada step WAITING berikutnya → PENDING; email ke approver-nya + info ke pemohon.
     const next = request.steps.find((step) => step.level > current.level && step.status === "WAITING");

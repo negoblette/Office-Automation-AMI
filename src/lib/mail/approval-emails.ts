@@ -2,6 +2,7 @@
 import type { ApprovalModule, PrismaClient } from "@/generated/prisma/client";
 import { formatDate, formatRupiah } from "@/lib/format";
 import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
+import { LEAVE_TYPE_LABEL } from "@/lib/labels";
 import type { ApprovalNotification } from "@/lib/services/approval";
 import { appUrl } from "./app-url";
 import { enqueueEmails, type OutgoingEmail } from "./queue";
@@ -14,7 +15,11 @@ async function detailLines(db: PrismaClient, module: ApprovalModule, entityId: s
       if (!leave) return [];
       const start = formatDate(leave.startDate);
       const end = formatDate(leave.endDate);
-      return [`Tanggal cuti: ${start === end ? start : `${start} – ${end}`} (${leave.workingDays} hari kerja)`, `Alasan: ${leave.reason}`];
+      return [
+        `Jenis: ${LEAVE_TYPE_LABEL[leave.type]}${leave.deductBalance ? "" : " (tidak memotong saldo cuti)"}`,
+        `Tanggal cuti: ${start === end ? start : `${start} – ${end}`} (${leave.workingDays} hari kerja)`,
+        `Alasan: ${leave.reason}`,
+      ];
     }
     case "REIMBURSE": {
       const r = await db.reimbursement.findUnique({ where: { id: entityId }, include: { _count: { select: { items: true } } } });

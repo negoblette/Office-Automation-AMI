@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { jakartaDateTime } from "@/lib/attendance";
 import type { Actor } from "@/lib/services/access";
-import { clockIn, clockOut, correctAttendance, getWorkHours, saveWorkHours } from "@/lib/services/attendance";
+import { autoClockOut, clockIn, clockOut, correctAttendance, getWorkHours, saveWorkHours } from "@/lib/services/attendance";
 import { getTodayAttendance, listMonthDays, monthSummary } from "@/lib/services/attendance-queries";
 import { testDb } from "@/test/db";
 import { resetAndSeed } from "@/test/seed";
@@ -112,5 +112,40 @@ describe("rekap", () => {
     const summary = (await monthSummary(testDb, "2026-09", "2026-09-25")).find((row) => row.employeeId === andi.employeeId)!;
     expect(summary).toMatchObject({ present: 2, late: 1, noClockOut: 1, leave: 1, lateMinutes: 10 });
     expect(summary.today?.status).toBe("NOT_YET");
+  });
+});
+
+describe("clock out otomatis di jam pulang (2026-10-30)", () => {
+  it("sebelum jam pulang tidak disentuh; setelahnya clock out = jam pulang, ditandai otomatis & tercatat audit", async () => {
+    await clockIn(testDb, andi, jakartaDateTime("2026-09-25", "08:00"));
+    expect(await autoClockOut(testDb, jakartaDateTime("2026-09-25", "16:55"))).toBe(0);
+    expect(await autoClockOut(testDb, jakartaDateTime("2026-09-25", "17:05"))).toBe(1);
+    expect(await autoClockOut(testDb, jakartaDateTime("2026-09-25", "17:10"))).toBe(0); // sekali saja
+
+    const today = await getTodayAttendance(testDb, andi.employeeId!, jakartaDateTime("2026-09-25", "17:10"));
+    expect(today).toMatchObject({ clockOut: "17:00", autoClockOut: true, earlyLeaveMinutes: 0, canClockOut: true });
+    expect(await testDb.auditLog.count({ where: { entity: "Attendance", userId: null } })).toBe(1);
+  });
+
+  it("lembur: karyawan masih bisa clock out sendiri di hari yang sama, sekali saja; besoknya tidak bisa", async () => {
+    await clockIn(testDb, andi, jakartaDateTime("2026-09-25", "08:00"));
+    await autoClockOut(testDb, jakartaDateTime("2026-09-25", "17:05"));
+    const out = await clockOut(testDb, andi, jakartaDateTime("2026-09-25", "19:30"));
+    expect(out).toMatchObject({ autoClockOut: false, earlyLeaveMinutes: 0 });
+    expect(out.clockOut).toEqual(jakartaDateTime("2026-09-25", "19:30"));
+    await expect(clockOut(testDb, andi, jakartaDateTime("2026-09-25", "20:00"))).rejects.toThrow("sudah clock out");
+  });
+
+  it("memakai jam pulang dari Setting; hari yang terlewat (worker mati) ikut ditutup; clock in setelah jam pulang → 23:59", async () => {
+    await saveWorkHours(testDb, yosepId, { workStart: "09:00", workEnd: "18:00" });
+    await clockIn(testDb, andi, jakartaDateTime("2026-09-24", "09:00"));
+    await clockIn(testDb, andi, jakartaDateTime("2026-09-26", "19:00")); // Sabtu, masuk setelah jam pulang
+    expect(await autoClockOut(testDb, jakartaDateTime("2026-09-26", "20:00"))).toBe(1);
+    const thursday = await testDb.attendance.findFirstOrThrow({ where: { date: d("2026-09-24") } });
+    expect(thursday.clockOut).toEqual(jakartaDateTime("2026-09-24", "18:00"));
+
+    expect(await autoClockOut(testDb, jakartaDateTime("2026-09-27", "00:05"))).toBe(1);
+    const saturday = await testDb.attendance.findFirstOrThrow({ where: { date: d("2026-09-26") } });
+    expect(saturday.clockOut).toEqual(jakartaDateTime("2026-09-26", "23:59"));
   });
 });

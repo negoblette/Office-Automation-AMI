@@ -11,6 +11,7 @@ import type { NavBadges } from "./sidebar-nav";
 import { SubmitRequestMenu } from "./submit-request-menu";
 import { NotificationBell } from "./notification-bell";
 import type { NotificationItem } from "@/lib/services/notifications";
+import { mfaRequired } from "@/lib/roles";
 
 type AppTopbarProps = {
   user: { name: string; role: AppRole };
@@ -40,7 +41,7 @@ export function AppTopbar({ user, badges, notifications = [] }: AppTopbarProps) 
 
           {/* HP (< 640 px): avatar membuka menu akun berisi MFA, Ganti password, Keluar (audit UI 2026-10-27). */}
           <div className="sm:hidden">
-            <AccountMenu name={user.name} roleLabel={ROLE_LABELS[user.role]} showMfa={user.role !== "STAFF"} />
+            <AccountMenu name={user.name} roleLabel={ROLE_LABELS[user.role]} showMfa={mfaRequired(user.role)} />
           </div>
 
           <div className="hidden h-7 w-px bg-line sm:block" aria-hidden />
@@ -54,7 +55,7 @@ export function AppTopbar({ user, badges, notifications = [] }: AppTopbarProps) 
           </div>
 
           <div className="hidden items-center gap-1 sm:flex">
-            {user.role !== "STAFF" && (
+            {mfaRequired(user.role) && (
               <Link href="/mfa" className={buttonVariants({ variant: "ghost", size: "icon" })} aria-label="Keamanan akun (MFA)" title="Keamanan akun (MFA)">
                 <ShieldCheck className="size-5" aria-hidden />
               </Link>

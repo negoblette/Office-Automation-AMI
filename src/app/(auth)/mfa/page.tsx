@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Keamanan Akun (MFA)" };
 
 /**
  * Verifikasi dua langkah (hardening Tahap 5). Di luar layout `(main)` karena `requireUser()` di layout itu
- * mengarahkan Admin/Approver yang belum mendaftarkan MFA ke sini (akan berputar bila di dalamnya).
+ * mengarahkan user yang belum mendaftarkan MFA ke sini (akan berputar bila di dalamnya).
  */
 export default async function MfaPage() {
   const user = await requireUser({ allowMfaSetup: true });
@@ -28,10 +28,10 @@ export default async function MfaPage() {
             <h1 className="text-lg font-semibold text-foreground">Verifikasi Dua Langkah (MFA)</h1>
             <p className="text-sm text-muted-foreground">
               {setup
-                ? "Akun Admin & Approver wajib memakai kode dari HP saat login. Daftarkan aplikasi authenticator Anda sebelum melanjutkan."
+                ? "Semua akun wajib memakai kode dari HP saat login. Daftarkan aplikasi authenticator Anda sebelum melanjutkan."
                 : status.enabled
                   ? "Setiap login meminta kode 6 digit dari aplikasi authenticator di HP Anda."
-                  : "MFA saat ini wajib untuk akun Admin & Approver."}
+                  : "MFA tidak diwajibkan untuk akun ini."}
             </p>
           </div>
 

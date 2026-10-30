@@ -1,7 +1,7 @@
 // Worker pg-boss (`npm run worker`) — Tech Spec §7. Proses terpisah dari aplikasi web.
 // Job: `email.send` (on-demand), `leave.rollover` (harian 00:30 WIB),
 // `reminder.certificate`, `reminder.document` & `reminder.asset` (harian 07:00 WIB, H-30), `attendance.deduct` (harian 01:00 WIB),
-// `storage.orphan-purge` (harian 03:00 WIB, hardening Tahap 7).
+// `storage.orphan-purge` (harian 03:00 WIB, hardening Tahap 7), `attendance.auto-clock-out` (tiap 5 menit, 2026-10-30).
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PgBoss } from "pg-boss";
@@ -11,6 +11,7 @@ import { createSmtpTransport, processEmailJob } from "@/lib/mail/send-email";
 import { rolloverLeaveBalances } from "@/lib/services/leave-balance";
 import { FEATURES } from "@/lib/features";
 import { deductUnexcusedAbsences } from "@/lib/services/attendance-appeal";
+import { autoClockOut } from "@/lib/services/attendance";
 import { purgeOrphanFiles } from "@/lib/services/upload";
 // Adapter langsung (bukan "@/lib/storage" yang ber-"server-only" & tidak bisa dimuat di Node biasa).
 import { LocalStorage } from "@/lib/storage/local";
@@ -59,6 +60,16 @@ async function main() {
     console.log(`[worker] ${ATTENDANCE_DEDUCT_QUEUE}: ${result.deducted} hari tidak hadir dipotong dari saldo cuti`);
   });
 
+  // 2026-10-30: yang belum clock out setelah lewat jam pulang diisi clock out otomatis = jam pulang. Tiap 5 menit
+  // (bukan sekali di jam pulang) karena jam pulang bisa diubah Admin di Setting → Absensi.
+  const AUTO_CLOCK_OUT_QUEUE = "attendance.auto-clock-out";
+  await boss.createQueue(AUTO_CLOCK_OUT_QUEUE);
+  await boss.schedule(AUTO_CLOCK_OUT_QUEUE, "*/5 * * * *", null, { tz: "Asia/Jakarta" });
+  await boss.work(AUTO_CLOCK_OUT_QUEUE, async () => {
+    const closed = await autoClockOut(db);
+    if (closed) console.log(`[worker] ${AUTO_CLOCK_OUT_QUEUE}: ${closed} absen di-clock out otomatis`);
+  });
+
   // Hardening Tahap 7: file yatim (ter-upload ≥ 24 jam tapi tidak dipakai data apa pun) dihapus (harian 03:00 WIB).
   const ORPHAN_PURGE_QUEUE = "storage.orphan-purge";
   await boss.createQueue(ORPHAN_PURGE_QUEUE);
@@ -84,7 +95,7 @@ async function main() {
   }
 
   console.log(
-    `[worker] siap. Queue: ${EMAIL_QUEUE}, ${LEAVE_ROLLOVER_QUEUE} (00:30 WIB), ${Object.keys(REMINDER_JOBS).join(", ")} (07:00 WIB), ${ATTENDANCE_DEDUCT_QUEUE} (01:00 WIB), ${ORPHAN_PURGE_QUEUE} (03:00 WIB)`,
+    `[worker] siap. Queue: ${EMAIL_QUEUE}, ${LEAVE_ROLLOVER_QUEUE} (00:30 WIB), ${Object.keys(REMINDER_JOBS).join(", ")} (07:00 WIB), ${ATTENDANCE_DEDUCT_QUEUE} (01:00 WIB), ${ORPHAN_PURGE_QUEUE} (03:00 WIB), ${AUTO_CLOCK_OUT_QUEUE} (tiap 5 menit)`,
   );
 
   const shutdown = async () => {

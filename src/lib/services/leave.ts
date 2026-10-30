@@ -2,7 +2,7 @@
 import type { PrismaClient } from "@/generated/prisma/client";
 import { formatDate, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { countWorkingDays, firstUsableDate, leaveYear, remainingDays } from "@/lib/leave";
-import type { HolidayInput, LeavePolicySettingInput, LeaveRequestInput } from "@/lib/validators/leave";
+import { defaultDeductBalance, type HolidayInput, type LeavePolicySettingInput, type LeaveRequestInput } from "@/lib/validators/leave";
 import type { Actor } from "./access";
 import { type ApprovalNotification, restartApproval } from "./approval";
 import { logAudit } from "./audit";
@@ -40,15 +40,19 @@ export async function submitLeaveRequest(db: PrismaClient, actor: Actor, input: 
     const employee = await tx.employee.findUnique({ where: { id: employeeId }, select: { status: true } });
     if (employee?.status !== "ACTIVE") throw new ServiceError("Hanya karyawan aktif yang bisa mengajukan cuti");
 
+    // Cuti melahirkan & kematian (2026-10-30) tidak memotong saldo, jadi tidak terikat syarat 1 tahun masa kerja,
+    // sisa saldo, maupun batas tahun kalender. Bila approver memilih "potong saldo", yang dipotong saldo tahun tanggal mulai.
+    const deductBalance = defaultDeductBalance(input.type);
+
     // Satu pengajuan harus berada dalam satu tahun kalender (saldo per tahun, cutoff 31 Des).
     const employmentStart = await currentEmploymentStart(tx, employeeId);
     if (input.startDate < employmentStart) throw new ServiceError("Tanggal cuti sebelum tanggal masuk kerja", "startDate");
     const period = leaveYear(employmentStart, input.startDate);
-    if (!period.eligibleFrom || input.startDate < period.eligibleFrom) {
+    if (deductBalance && (!period.eligibleFrom || input.startDate < period.eligibleFrom)) {
       const from = firstUsableDate(employmentStart);
       throw new ServiceError(`Cuti baru bisa dipakai setelah genap 1 tahun masa kerja (mulai ${formatDate(`${from}T00:00:00Z`)})`, "startDate");
     }
-    if (input.endDate > period.end) {
+    if (deductBalance && input.endDate > period.end) {
       throw new ServiceError(`Pengajuan melewati akhir tahun (${period.end}). Pisahkan menjadi dua pengajuan.`, "endDate");
     }
 
@@ -65,25 +69,30 @@ export async function submitLeaveRequest(db: PrismaClient, actor: Actor, input: 
     });
     if (overlap) throw new ServiceError(`Tanggal bertabrakan dengan cuti ${overlap.number}`, "startDate");
 
-    // Kunci baris saldo supaya dua pengajuan bersamaan tidak melewati sisa saldo.
-    const balance = await ensureLeaveBalance(tx, employeeId, input.startDate);
-    await tx.$queryRaw`SELECT id FROM "LeaveBalance" WHERE id = ${balance.id} FOR UPDATE`;
-    const pending = await tx.leaveRequest.aggregate({
-      _sum: { workingDays: true },
-      where: {
-        employeeId,
-        status: "PENDING",
-        startDate: { gte: fromIsoDate(period.start), lte: fromIsoDate(period.end) },
-      },
-    });
-    const fresh = await tx.leaveBalance.findUniqueOrThrow({ where: { id: balance.id } });
-    const remaining = remainingDays(fresh, pending._sum.workingDays ?? 0);
-    if (workingDays > remaining) {
-      throw new ServiceError(`Sisa saldo cuti ${Math.max(0, remaining)} hari, pengajuan ${workingDays} hari kerja (LV-08)`, "endDate");
+    if (deductBalance) {
+      // Kunci baris saldo supaya dua pengajuan bersamaan tidak melewati sisa saldo.
+      const balance = await ensureLeaveBalance(tx, employeeId, input.startDate);
+      await tx.$queryRaw`SELECT id FROM "LeaveBalance" WHERE id = ${balance.id} FOR UPDATE`;
+      const pending = await tx.leaveRequest.aggregate({
+        _sum: { workingDays: true },
+        where: {
+          employeeId,
+          status: "PENDING",
+          deductBalance: true,
+          startDate: { gte: fromIsoDate(period.start), lte: fromIsoDate(period.end) },
+        },
+      });
+      const fresh = await tx.leaveBalance.findUniqueOrThrow({ where: { id: balance.id } });
+      const remaining = remainingDays(fresh, pending._sum.workingDays ?? 0);
+      if (workingDays > remaining) {
+        throw new ServiceError(`Sisa saldo cuti ${Math.max(0, remaining)} hari, pengajuan ${workingDays} hari kerja (LV-08)`, "endDate");
+      }
     }
 
     const number = revised ? revised.number : await nextDocumentNumber(tx, "LV");
     const data = {
+      type: input.type,
+      deductBalance,
       startDate: fromIsoDate(input.startDate),
       endDate: fromIsoDate(input.endDate),
       workingDays,

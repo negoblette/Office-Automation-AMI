@@ -6,6 +6,7 @@ import { PersonCell } from "@/components/shared/person-cell";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { DataTable, type DataTableColumn, dataTableColumnHelper } from "@/components/table/data-table";
 import { formatDate } from "@/lib/format";
+import { LEAVE_TYPE_LABEL } from "@/lib/labels";
 import type { LeaveRequestRow } from "@/lib/services/leave-queries";
 import { LeaveRequestDialog } from "./leave-form";
 
@@ -21,6 +22,16 @@ const requesterColumn = col.accessor("employeeName", {
   cell: ({ row }) => <PersonCell name={row.original.employeeName} subtitle={row.original.employeePosition} />,
 });
 const restColumns = [
+  col.accessor((row) => LEAVE_TYPE_LABEL[row.type], {
+    id: "type",
+    header: "Jenis",
+    cell: ({ row }) => (
+      <div className="flex flex-col">
+        <span className="whitespace-nowrap">{LEAVE_TYPE_LABEL[row.original.type]}</span>
+        {!row.original.deductBalance && <span className="text-xs whitespace-nowrap text-muted-foreground">Tidak potong saldo</span>}
+      </div>
+    ),
+  }),
   col.accessor("startDate", {
     header: "Tanggal",
     enableGlobalFilter: false,
@@ -74,7 +85,14 @@ export function LeaveTable({ rows, showRequester, revise }: { rows: LeaveRequest
                   row.original.own && row.original.status === "REJECTED" ? (
                     <LeaveRequestDialog
                       {...revise}
-                      revise={{ id: row.original.id, number: row.original.number, startDate: row.original.startDate, endDate: row.original.endDate, reason: row.original.reason }}
+                      revise={{
+                        id: row.original.id,
+                        number: row.original.number,
+                        type: row.original.type,
+                        startDate: row.original.startDate,
+                        endDate: row.original.endDate,
+                        reason: row.original.reason,
+                      }}
                     />
                   ) : null,
               }),

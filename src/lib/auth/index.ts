@@ -63,7 +63,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         const userId = result.user.id;
-        // Langkah kedua: MFA (hardening Tahap 5). Belum aktif → login lanjut; Admin/Approver lalu dipaksa
+        // Langkah kedua: MFA (hardening Tahap 5). Belum aktif → login lanjut; user lalu dipaksa
         // mendaftarkan authenticator di /mfa oleh requireUser.
         const mfa = await verifyLoginMfa(prisma, userId, parsed.data.code, meta);
         if (mfa.status === "REQUIRED") throw new MfaRequiredError();

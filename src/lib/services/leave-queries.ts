@@ -1,5 +1,5 @@
 // Query halaman Cuti. Saldo periode berjalan dibuat otomatis bila belum ada (ensureLeaveBalance).
-import type { Role } from "@/generated/prisma/enums";
+import type { LeaveType, Role } from "@/generated/prisma/enums";
 import type { PrismaClient, RequestStatus } from "@/generated/prisma/client";
 import { fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { addDays, firstUsableDate, leaveYear, remainingDays } from "@/lib/leave";
@@ -40,7 +40,7 @@ export async function getCurrentBalances(db: PrismaClient, employeeIds: string[]
       db.employee.findUniqueOrThrow({ where: { id: employeeId }, select: { fullName: true, position: true } }),
       db.leaveRequest.aggregate({
         _sum: { workingDays: true },
-        where: { employeeId, status: "PENDING", startDate: { gte: balance.periodStart, lte: balance.periodEnd } },
+        where: { employeeId, status: "PENDING", deductBalance: true, startDate: { gte: balance.periodStart, lte: balance.periodEnd } },
       }),
     ]);
     const pendingDays = pending._sum.workingDays ?? 0;
@@ -77,6 +77,9 @@ export type LeaveRequestRow = {
   endDate: string;
   workingDays: number;
   reason: string;
+  type: LeaveType;
+  /** Dipotong dari saldo cuti (awal sesuai jenis; approver bisa mengubah). */
+  deductBalance: boolean;
   status: RequestStatus;
   currentLevel: number | null;
   submittedAt: string | null;
@@ -117,6 +120,8 @@ export async function listLeaveRequests(db: PrismaClient, viewer: { role: Role; 
     endDate: toJakartaIsoDate(request.endDate),
     workingDays: request.workingDays,
     reason: request.reason,
+    type: request.type,
+    deductBalance: request.deductBalance,
     status: request.status,
     currentLevel: levelOf.get(request.id) ?? null,
     submittedAt: request.submittedAt?.toISOString() ?? null,

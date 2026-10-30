@@ -78,7 +78,7 @@ describe("rincian pengajuan di email (2026-10-12)", () => {
     const [email] = await buildApprovalEmails(testDb, result.notifications[0]);
     const props = email.props as ApprovalEmailProps;
     expect(email.to).toBe("rudy@artha-mitra.local");
-    expect(props.details).toEqual(["Tanggal cuti: 5 Oktober 2026 – 6 Oktober 2026 (2 hari kerja)", "Alasan: Acara keluarga"]);
+    expect(props.details).toEqual(["Jenis: Cuti tahunan", "Tanggal cuti: 5 Oktober 2026 – 6 Oktober 2026 (2 hari kerja)", "Alasan: Acara keluarga"]);
     const { text } = await renderEmail("approval-requested", props);
     expect(text).toContain("Alasan: Acara keluarga");
   });

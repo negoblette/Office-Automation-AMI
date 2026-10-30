@@ -54,25 +54,64 @@ export async function clockIn(db: PrismaClient, actor: Actor, now = new Date()) 
   });
 }
 
-/** Clock out: untuk absen hari ini yang belum clock out; sekali saja. */
+/**
+ * Clock out: untuk absen hari ini yang belum clock out; sekali saja. Clock out otomatis (jam pulang) boleh diganti
+ * sekali oleh karyawan yang lembur di hari yang sama (2026-10-30).
+ */
 export async function clockOut(db: PrismaClient, actor: Actor, now = new Date()) {
   return db.$transaction(async (tx) => {
     const employeeId = await requireActiveEmployee(tx, actor);
     const dateIso = toJakartaIsoDate(now);
     const record = await tx.attendance.findUnique({ where: { employeeId_date: { employeeId, date: fromIsoDate(dateIso) } } });
     if (!record) throw new ServiceError("Anda belum clock in hari ini");
-    if (record.clockOut) throw new ServiceError("Anda sudah clock out hari ini");
+    if (record.clockOut && !record.autoClockOut) throw new ServiceError("Anda sudah clock out hari ini");
     const [hours, workday] = await Promise.all([getWorkHours(tx), isWorkdayAt(tx, dateIso)]);
     // Update bersyarat: dua klik bersamaan tidak menimpa jam clock out pertama.
     const { count } = await tx.attendance.updateMany({
-      where: { id: record.id, clockOut: null },
-      data: { clockOut: now, earlyLeaveMinutes: earlyLeaveMinutes(now, dateIso, hours, workday) },
+      where: { id: record.id, OR: [{ clockOut: null }, { autoClockOut: true }] },
+      data: { clockOut: now, autoClockOut: false, earlyLeaveMinutes: earlyLeaveMinutes(now, dateIso, hours, workday) },
     });
     if (count === 0) throw new ServiceError("Anda sudah clock out hari ini");
     const after = await tx.attendance.findUniqueOrThrow({ where: { id: record.id } });
     await logAudit(tx, { actorId: actor.id, action: "UPDATE", entity: "Attendance", entityId: record.id, before: record, after });
     return after;
   });
+}
+
+/** Jam clock out otomatis untuk absen tanggal `dateIso`: jam pulang; clock in setelah jam pulang → 23:59 hari itu. */
+export function autoClockOutTime(dateIso: string, clockInAt: Date, hours: WorkHours): Date {
+  const workEnd = jakartaDateTime(dateIso, hours.workEnd);
+  return clockInAt < workEnd ? workEnd : jakartaDateTime(dateIso, "23:59");
+}
+
+/**
+ * Job `attendance.auto-clock-out` (tiap 5 menit, 2026-10-30): absen yang belum clock out setelah lewat jam pulang
+ * diisi clock out = jam pulang (`autoClockOut`), supaya tidak ada yang lupa clock out. Termasuk hari-hari sebelumnya
+ * bila worker sempat mati. Karyawan yang lembur menimpanya lewat `clockOut` di hari yang sama.
+ */
+export async function autoClockOut(db: PrismaClient, now = new Date()): Promise<number> {
+  const open = await db.attendance.findMany({ where: { clockOut: null, date: { lte: fromIsoDate(toJakartaIsoDate(now)) } } });
+  if (!open.length) return 0;
+  const hours = await getWorkHours(db);
+  let closed = 0;
+  for (const record of open) {
+    const dateIso = toJakartaIsoDate(record.date);
+    const at = autoClockOutTime(dateIso, record.clockIn, hours);
+    if (at > now) continue;
+    await db.$transaction(async (tx) => {
+      const workday = await isWorkdayAt(tx, dateIso);
+      // Bersyarat: karyawan yang clock out sendiri bersamaan tidak tertimpa.
+      const { count } = await tx.attendance.updateMany({
+        where: { id: record.id, clockOut: null },
+        data: { clockOut: at, autoClockOut: true, earlyLeaveMinutes: earlyLeaveMinutes(at, dateIso, hours, workday) },
+      });
+      if (!count) return;
+      const after = await tx.attendance.findUniqueOrThrow({ where: { id: record.id } });
+      await logAudit(tx, { actorId: null, action: "UPDATE", entity: "Attendance", entityId: record.id, before: record, after });
+      closed++;
+    });
+  }
+  return closed;
 }
 
 /**
@@ -97,6 +136,7 @@ export async function correctAttendance(db: PrismaClient, actorId: string, emplo
       clockOut: clockOutAt,
       lateMinutes: lateMinutes(clockInAt, hours, workday),
       earlyLeaveMinutes: earlyLeaveMinutes(clockOutAt, input.date, hours, workday),
+      autoClockOut: false,
       correctedById: actorId,
       correctedAt: new Date(),
       correctionNote: input.note,

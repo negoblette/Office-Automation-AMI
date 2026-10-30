@@ -3,7 +3,7 @@ import type { ApprovalModule, Prisma, PrismaClient, RequestStatus } from "@/gene
 import type { ApprovalStepView } from "@/components/shared/approval-stepper";
 import { CORRECTABLE_MODULES, type CorrectionView, listCorrections } from "./approval-correction";
 import { formatDate } from "@/lib/format";
-import { EDUCATION_LEVEL_LABEL } from "@/lib/labels";
+import { EDUCATION_LEVEL_LABEL, LEAVE_TYPE_LABEL } from "@/lib/labels";
 import { canRevoke } from "./approval";
 import { appealSummary } from "./attendance-appeal";
 import { approverRoleLabel } from "@/components/shared/approval-status";
@@ -31,6 +31,8 @@ export type ApprovalRow = {
   canApprove: boolean;
   /** HEALTH: nominal diajukan (dasar isian "nominal disetujui"); null untuk modul lain. */
   requestedAmount: number | null;
+  /** LEAVE: nilai "Potong saldo cuti" saat ini (dasar centang di dialog Setujui); null untuk modul lain. */
+  leaveDeductBalance: boolean | null;
   /** User yang login boleh membatalkan persetujuan terakhir (approver yang menyetujui / Admin). */
   canRevoke: boolean;
   /** Bisa dikoreksi approver (modul dengan nominal/keterangan). */
@@ -76,6 +78,9 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
     ? await db.attendanceAppeal.findMany({ where: { id: { in: appealIds } }, include: { employee: { select: { fullName: true } } } })
     : [];
   const appealOf = new Map(appeals.map((a) => [a.id, a]));
+  const leaveIds = requests.filter((r) => r.module === "LEAVE").map((r) => r.entityId);
+  const leaves = leaveIds.length ? await db.leaveRequest.findMany({ where: { id: { in: leaveIds } } }) : [];
+  const leaveOf = new Map(leaves.map((l) => [l.id, l]));
 
   return requests.map((request) => ({
     id: request.id,
@@ -100,12 +105,24 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
     canApprove: request.steps.some((step) => step.status === "PENDING" && step.approverIds.includes(viewerId)),
     canRevoke: viewer ? canRevoke(viewer, request) : false,
     requestedAmount: request.module === "HEALTH" ? (claimAmountOf.get(request.entityId) ?? null) : null,
+    leaveDeductBalance: request.module === "LEAVE" ? (leaveOf.get(request.entityId)?.deductBalance ?? null) : null,
     correctable: (CORRECTABLE_MODULES as readonly ApprovalModule[]).includes(request.module),
     corrections: correctionsOf.get(request.id) ?? [],
     ...(() => {
       const appeal = appealOf.get(request.entityId);
       if (request.module === "ATTENDANCE_APPEAL" && appeal)
         return { summary: appealSummary(appeal), file: appeal.fileKey ? { key: appeal.fileKey, name: appeal.fileName ?? "Surat sakit" } : null };
+      const leave = leaveOf.get(request.entityId);
+      if (request.module === "LEAVE" && leave) {
+        const start = formatDate(leave.startDate, "short");
+        const end = formatDate(leave.endDate, "short");
+        const parts = [
+          LEAVE_TYPE_LABEL[leave.type],
+          `${start === end ? start : `${start} – ${end}`} (${leave.workingDays} hari kerja)`,
+          leave.deductBalance ? "potong saldo" : "tidak potong saldo",
+        ];
+        return { summary: parts.join(" · "), file: null };
+      }
       const c = certOf.get(request.entityId);
       if (request.module !== "CERTIFICATE" || !c) return { summary: null, file: null };
       const parts = [

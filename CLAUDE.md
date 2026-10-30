@@ -184,6 +184,10 @@ masuk Des → 0, baru dapat Januari berikutnya). Tahun-tahun berikutnya jatah me
 Saldo minus tampil merah "−N" + keterangan di kartu saldo (2026-10-28). Admin bisa **edit sisa cuti** di Cuti → Saldo:
 "Atur sisa cuti menjadi X" (`mode: SET`, selisihnya jadi satu `LeaveAdjustment` MANUAL, `services/leave-adjust.ts`) atau tambah/kurangi.
 Kalender cuti bulanan (`LeaveCalendar`) tampil di dashboard & `/cuti/kalender`; semua karyawan melihat cuti semua karyawan.
+**Jenis cuti (2026-10-30):** Tahunan / Melahirkan / Kematian (`LeaveRequest.type`). `deductBalance` awal = Tahunan saja;
+yang tidak memotong saldo bebas dari syarat 1 tahun, batas 31 Des & cek saldo. Approver menentukan lewat centang
+"Potong saldo cuti" di dialog Setujui (`approveRequest({ deductBalance })`, dicatat `ApprovalCorrection`); efek final &
+revoke memotong/mengembalikan saldo hanya bila `deductBalance` (`leave-balance.ts`).
 
 **Kesehatan:** plafon **hanya tahunan** per karyawan per tahun (tidak ada plafon bulanan). Klaim >
 sisa plafon tahunan ditolak saat submit. Approver mengisi nominal disetujui (≤ diajukan, `approvedAmount`);
@@ -252,7 +256,8 @@ berjalan tidak bisa dinonaktifkan, diturunkan ke Staf, atau di-resign (`assertCa
 dari email+IP yang sama, 20 gagal ke satu email, atau 20 gagal dari satu IP (`login-throttle.ts`). Password baru 15–128
 karakter (`lib/password-policy.ts`); akun baru & hasil reset Admin wajib ganti password (`/ganti-password`). Sesi: idle
 1 jam, absolut 12 jam; ganti/reset password mencabut semua sesi (`User.sessionVersion`). **MFA (hardening Tahap 5,
-2026-10-20):** Admin & Approver wajib kode TOTP authenticator (`services/mfa.ts`, halaman `/mfa`, kode cadangan sekali
+2026-10-20):** semua role wajib kode TOTP authenticator (Admin & Approver sejak Tahap 5, Staf sejak 2026-10-30;
+`mfaRequired` di `lib/roles.ts`, `services/mfa.ts`, halaman `/mfa`, kode cadangan sekali
 pakai, reset MFA oleh Admin lain di Setting → User); email `security-notice` saat password/MFA berubah. Detail: Tech Spec §9. Kode verifikasi = 6 kotak
 (`components/form/otp-input.tsx`), langsung dikirim saat lengkap; kode cadangan lewat tombol "Pakai kode cadangan".
 **Audit & alarm (hardening Tahap 6, 2026-10-21):** AuditLog **permanen** (trigger menolak UPDATE/DELETE — jangan menulis
@@ -263,6 +268,9 @@ kode yang mengubah/menghapus baris audit; buka blokir login = entri `LOGIN_UNLOC
 **Absensi:** clock in / clock out oleh tiap karyawan, jam dari server (WIB), satu baris `Attendance` per
 karyawan per hari. Terlambat / pulang cepat terhadap jam kerja `AppSetting attendance.workHours`
 (default 08:00–17:00), tidak dihitung di akhir pekan & libur. Admin mengoreksi dengan alasan wajib (audit).
+**Clock out otomatis (2026-10-30):** job `attendance.auto-clock-out` (tiap 5 menit) mengisi clock out = jam pulang untuk
+yang lupa (`Attendance.autoClockOut`; clock in setelah jam pulang → 23:59). Yang lembur masih bisa clock out sendiri
+sekali di hari yang sama (jam otomatis diganti); koreksi Admin menghapus tanda otomatis.
 Appeal (Fase 14): hari kerja tidak hadir → appeal Sakit (wajib surat keterangan sakit PDF, 2026-10-14) / Kunjungan keluar maks 7 hari (modul ATTENDANCE_APPEAL,
 `APL/…`, Bu Ika; milik Bu Ika → Fallback). Lewat 7 hari tanpa appeal → job `attendance.deduct` (01:00 WIB) memotong
 1 hari cuti (`LeaveAdjustment` ABSENCE), hanya untuk tanggal ≥ `attendance.deductionStartDate`.

@@ -1,12 +1,13 @@
 // MFA / verifikasi dua langkah (hardening Tahap 5; NIST SP 800-63B §5.1.4–5.1.5, OWASP MFA Cheat Sheet).
-// Kode 6 digit TOTP (RFC 6238: SHA-1, 30 detik) dari Google / Microsoft Authenticator, wajib untuk Admin & Approver.
+// Kode 6 digit TOTP (RFC 6238: SHA-1, 30 detik) dari Google / Microsoft Authenticator, wajib untuk semua role
+// (`mfaRequired` di lib/roles.ts; Staf ikut wajib sejak 2026-10-30).
 // Rahasia disimpan terenkripsi (encryptText). Kode cadangan sekali pakai untuk HP hilang; hanya hash-nya yang disimpan.
 import { createHash, randomInt } from "node:crypto";
 import { Secret, TOTP } from "otpauth";
-import type { Prisma, PrismaClient, Role } from "@/generated/prisma/client";
+import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { decryptText, encryptText } from "@/lib/crypto/field-encryption";
 import type { RequestMeta } from "@/lib/request-meta";
-import { canApprove } from "@/lib/roles";
+import { mfaRequired } from "@/lib/roles";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 
@@ -17,11 +18,6 @@ export const BACKUP_CODE_COUNT = 10;
 const BACKUP_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
 type Tx = Prisma.TransactionClient;
-
-/** Role yang wajib memakai MFA. */
-export function mfaRequired(role: Role): boolean {
-  return canApprove(role);
-}
 
 function totpFor(secretBase32: string, label = "akun") {
   return new TOTP({ issuer: MFA_ISSUER, label, algorithm: "SHA1", digits: 6, period: MFA_PERIOD_SECONDS, secret: Secret.fromBase32(secretBase32) });

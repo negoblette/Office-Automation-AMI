@@ -113,6 +113,14 @@ enum CandidateStatus {
   REJECTED
 }
 
+/// Jenis cuti (2026-10-30). Tahunan memotong saldo; Melahirkan & Kematian tidak (approver bisa mengubah lewat
+/// `LeaveRequest.deductBalance`).
+enum LeaveType {
+  ANNUAL // cuti tahunan
+  MATERNITY // cuti melahirkan
+  BEREAVEMENT // cuti kematian (keluarga meninggal)
+}
+
 enum RequestStatus {
   DRAFT
   PENDING
@@ -552,19 +560,22 @@ model LeaveAdjustment {
 }
 
 model LeaveRequest {
-  id          String        @id @default(cuid())
-  number      String        @unique // LV/YYYY/MM/NNNN
-  employeeId  String
-  employee    Employee      @relation(fields: [employeeId], references: [id])
-  startDate   DateTime      @db.Date
-  endDate     DateTime      @db.Date
-  workingDays Int // tanpa Sabtu/Minggu/Holiday
-  reason      String
-  status      RequestStatus @default(DRAFT)
-  submittedAt DateTime?
-  approvedAt  DateTime?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id            String        @id @default(cuid())
+  number        String        @unique // LV/YYYY/MM/NNNN
+  employeeId    String
+  employee      Employee      @relation(fields: [employeeId], references: [id])
+  startDate     DateTime      @db.Date
+  endDate       DateTime      @db.Date
+  workingDays   Int // tanpa Sabtu/Minggu/Holiday
+  reason        String
+  type          LeaveType     @default(ANNUAL)
+  /// Dipotong dari saldo saat APPROVED final. Awal = jenis cuti (Tahunan saja); approver bisa mengubah saat menyetujui.
+  deductBalance Boolean       @default(true)
+  status        RequestStatus @default(DRAFT)
+  submittedAt   DateTime?
+  approvedAt    DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   @@index([employeeId, status])
 }
@@ -603,19 +614,19 @@ model HealthPlafond {
 }
 
 model HealthClaim {
-  id              String         @id @default(cuid())
-  number          String         @unique // HC/YYYY/MM/NNNN
-  employeeId      String
-  employee        Employee       @relation(fields: [employeeId], references: [id])
-  categoryId      String
-  category        HealthCategory @relation(fields: [categoryId], references: [id])
-  claimDate       DateTime       @db.Date
-  amount          BigInt
-  note            String?
-  status          RequestStatus  @default(DRAFT)
-  submittedAt     DateTime?
-  approvedAt      DateTime?
-  createdAt       DateTime       @default(now())
+  id          String         @id @default(cuid())
+  number      String         @unique // HC/YYYY/MM/NNNN
+  employeeId  String
+  employee    Employee       @relation(fields: [employeeId], references: [id])
+  categoryId  String
+  category    HealthCategory @relation(fields: [categoryId], references: [id])
+  claimDate   DateTime       @db.Date
+  amount      BigInt
+  note        String?
+  status      RequestStatus  @default(DRAFT)
+  submittedAt DateTime?
+  approvedAt  DateTime?
+  createdAt   DateTime       @default(now())
 
   payouts        HealthPayout[]
   /// Nominal disetujui approver (≤ nominal diajukan `amount`); null selama belum disetujui.
@@ -811,6 +822,9 @@ model Attendance {
   clockOut          DateTime?
   lateMinutes       Int       @default(0)
   earlyLeaveMinutes Int       @default(0)
+  /// Clock out diisi sistem di jam pulang (2026-10-30, job attendance.auto-clock-out). Karyawan yang lembur masih bisa
+  /// clock out sendiri di hari yang sama (jam otomatis diganti jam sebenarnya).
+  autoClockOut      Boolean   @default(false)
   correctedById     String?
   correctedBy       User?     @relation("AttendanceCorrector", fields: [correctedById], references: [id])
   correctedAt       DateTime?

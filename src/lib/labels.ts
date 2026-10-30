@@ -1,5 +1,11 @@
 // Label Bahasa Indonesia untuk enum database. Aman dipakai di Client Component.
-import type { AssetCategory, CandidateStatus, CertificateType, DocumentType, EducationLevel, FamilyRelation, Gender, MaritalStatus, PaymentMethod, ProjectType, Role } from "@/generated/prisma/enums";
+import type { AssetCategory, CandidateStatus, CertificateType, DocumentType, EducationLevel, FamilyRelation, Gender, LeaveType, MaritalStatus, PaymentMethod, ProjectType, Role } from "@/generated/prisma/enums";
+
+export const LEAVE_TYPE_LABEL: Record<LeaveType, string> = {
+  ANNUAL: "Cuti tahunan",
+  MATERNITY: "Cuti melahirkan",
+  BEREAVEMENT: "Cuti kematian",
+};
 
 export const ROLE_LABEL: Record<Role, string> = {
   ADMIN: "Admin",

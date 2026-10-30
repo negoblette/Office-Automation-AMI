@@ -13,6 +13,7 @@ import { DataTable, dataTableColumnHelper } from "@/components/table/data-table"
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/format";
 import { ROLE_LABEL, toOptions } from "@/lib/labels";
+import { mfaRequired } from "@/lib/roles";
 import type { UserRow } from "@/lib/services/user-admin";
 import { resetPasswordSchema, userRoleSchema } from "@/lib/validators/setting";
 import { resetMfaAction, resetPasswordAction, setUserActiveAction, setUserRoleAction, unlockLoginAction } from "./actions";
@@ -227,7 +228,7 @@ function buildColumns(currentUserId: string) {
           {row.original.mfaEnabled ? (
             <StatusBadge variant="info" dot={false}>MFA</StatusBadge>
           ) : (
-            row.original.role !== "STAFF" && row.original.isActive && <StatusBadge variant="warning" dot={false}>MFA belum</StatusBadge>
+            mfaRequired(row.original.role) && row.original.isActive && <StatusBadge variant="warning" dot={false}>MFA belum</StatusBadge>
           )}
         </div>
       ),

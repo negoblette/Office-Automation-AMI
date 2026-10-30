@@ -153,6 +153,13 @@ semua direktur auto-approve; bila flow REGULAR tidak ditemukan, engine melempar 
 - `workingDays` = hari dalam rentang − Sabtu/Minggu − `Holiday`.
 - Submit ditolak jika sebelum genap 1 tahun masa kerja, melewati 31 Des, atau `workingDays > entitlement + carriedOver − used − (pending lain)`.
 - Carry over dipakai lebih dulu sebelum jatah periode berjalan.
+- **Jenis cuti (2026-10-30):** `LeaveRequest.type` = `ANNUAL` (Tahunan), `MATERNITY` (Melahirkan), `BEREAVEMENT`
+  (Kematian). `deductBalance` awal = `type === ANNUAL`. Hanya pengajuan yang memotong saldo yang terkena syarat 1 tahun
+  masa kerja, batas 31 Des, dan cek sisa saldo; pengajuan menunggu dihitung ke "pending" hanya bila `deductBalance`.
+  Approver mencentang/menghapus centang **"Potong saldo cuti"** di dialog Setujui (setiap level; pilihan tersimpan &
+  tercatat sebagai `ApprovalCorrection` "Cuti · Potong saldo cuti" yang terlihat pemohon). Efek final menambah
+  `LeaveBalance.used` (saldo tahun tanggal mulai) hanya bila `deductBalance`; batalkan approval membaliknya. Tanpa
+  lampiran dan tanpa batas lama cuti (dihitung hari kerja).
 
 ### 6.3 Kesehatan
 - `HealthPlafond` per karyawan per tahun, diisi Admin.
@@ -178,6 +185,7 @@ semua direktur auto-approve; bila flow REGULAR tidak ditemukan, engine melempar 
 | `leave.rollover` | harian 00:30 | buat `LeaveBalance` periode baru |
 | `reminder.certificate` | harian 07:00 | sertifikat kadaluarsa H-30 |
 | `reminder.asset` | harian 07:00 | support/warranty berakhir H-30 |
+| `attendance.auto-clock-out` | tiap 5 menit | absen tanpa clock out yang sudah lewat jam pulang (`attendance.workHours`) → clock out = jam pulang, `Attendance.autoClockOut = true` (clock in setelah jam pulang → 23:59). Karyawan yang lembur masih bisa clock out sendiri sekali di hari yang sama (2026-10-30) |
 
 Template email: `approval-requested`, `approval-progress`, `approval-final`, `reminder-expiry`. Semua berisi nomor dokumen, ringkasan, dan link ke halaman detail.
 
@@ -198,7 +206,8 @@ Route `/api/files/[key]` (key, bukan id, karena file tersimpan sebagai `fileKey`
 - Guard `requireUser()` / `requireAdmin()` di setiap Server Action & page.
 - Rate limit login (`LOGIN_FAILED` di AuditLog, dengan IP): ditahan 15 menit bila 5 gagal dari email+IP yang sama,
   20 gagal ke satu email, atau 20 gagal dari satu IP. Email tak terdaftar tetap menjalankan argon2 (anti enumerasi akun).
-- **MFA (hardening Tahap 5, 2026-10-20):** Admin & Approver wajib kode 6 digit TOTP (Google/Microsoft Authenticator;
+- **MFA (hardening Tahap 5, 2026-10-20):** semua role wajib kode 6 digit TOTP (awalnya Admin & Approver; Staf ikut
+  wajib sejak 2026-10-30 — `mfaRequired` di `lib/roles.ts`) (Google/Microsoft Authenticator;
   RFC 6238, SHA-1, 30 detik, toleransi ±1 langkah) — `services/mfa.ts`, library `otpauth` + `qrcode`. Belum terdaftar →
   setelah login (dan setelah ganti password awal) diarahkan ke `/mfa` sebelum bisa memakai aplikasi; route API memakai
   `getReadyUser()`. Login dua langkah: password benar → form meminta kode (`mfa_required`); kode salah dihitung

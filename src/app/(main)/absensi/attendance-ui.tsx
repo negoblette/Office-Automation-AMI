@@ -103,6 +103,7 @@ export function ClockCard({ today, className }: { today: TodayAttendance | null;
               {today.clockOut && (
                 <>
                   {" · "}Pulang <span className="font-semibold text-foreground">{today.clockOut}</span>
+                  {today.autoClockOut && <span> (otomatis — masih bekerja? tekan Clock Out)</span>}
                   {today.earlyLeaveMinutes > 0 && <span className="text-warning"> (pulang cepat {formatDuration(today.earlyLeaveMinutes)})</span>}
                 </>
               )}
@@ -329,6 +330,7 @@ export function AttendanceDaysTable({ days, correctFor, appealable = false }: { 
               <TableCell className="h-14">
                 {day.clockOut ? <span className={timeClass}>{day.clockOut}</span> : <EmptyValue />}
                 {day.clockOutDate && <span className="ml-1.5 text-xs text-ink-3">({formatDate(`${day.clockOutDate}T00:00:00Z`, "short")})</span>}
+                {day.autoClockOut && <span className="ml-1.5 text-xs text-ink-3">otomatis</span>}
                 {day.earlyLeaveMinutes > 0 && <span className="ml-1.5 text-xs font-semibold text-amber-ink">−{day.earlyLeaveMinutes}m</span>}
               </TableCell>
 
