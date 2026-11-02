@@ -206,6 +206,9 @@ Holiday, Reimbursement (draft), ApprovalFlow, Asset. Setiap query WAJIB memfilte
 include relasi); file di storage tidak dihapus. Tambah ulang libur/customer yang pernah dihapus → dipulihkan.
 Reimburse: 6 tipe untuk semua divisi. Dokumen: Kelompok I & II (`DOCUMENT_GROUP_I/II`).
 
+**Tampilan approval (2026-11-02):** tabel antrian/monitor hanya ringkasan satu baris (`ApprovalRow.headline`); rincian,
+alasan/catatan, koreksi & alasan tolak muncul saat kursor di atasnya; klik nomor → halaman detail `/approval/[id]`
+(`getApprovalDetail`: rincian lengkap, file, alur, koreksi, aksi).
 **Koreksi approver:** approver step aktif boleh mengoreksi isi pengajuan sebelum menyetujui — reimburse per baris
 (tanggal, company, project/New Acquisition, tipe, payment, nominal, lokasi, aktivitas, nama – jabatan, kwitansi),
 expense (tanggal, payment, nominal, keterangan), keterangan klaim → `ApprovalCorrection` (sebelum → sesudah),
@@ -220,9 +223,11 @@ REJECTED) yang memanggil `restartApproval` (approval lama dihapus, mulai lagi da
 **Invoice/kwitansi:** tidak ada upload (Fase 14); reimburse hanya mencatat ada/tidaknya kwitansi (`hasReceipt`). Kolom
 file invoice/kwitansi & job `invoice.purge` dihapus 2026-10-29.
 
-**Sertifikat:** setiap sertifikat **profesional** baru diverifikasi (ijazah langsung tersimpan, 2026-10-16) lewat approval engine (modul CERTIFICATE, `CRT/…`, flow
-Ci Ika sejak 2026-10-12); terverifikasi → hanya Admin yang bisa mengubah. Profesional: Level 1–3, masa berlaku wajib kecuali dicentang "Permanent" (`endDate` null). Ijazah: Gelar, Lembaga,
-Jenjang (`EducationLevel`), `graduationDate` (tanpa tanggal mulai; `startDate` = tanggal lulus), tanpa masa berlaku (2026-10-12). Upload file **hanya PDF**.
+**Sertifikat:** hanya sertifikat **profesional** (menu "Sertifikat"), setiap yang baru diverifikasi lewat approval engine (modul
+CERTIFICATE, `CRT/…`, flow Ci Ika sejak 2026-10-12); terverifikasi → hanya Admin yang bisa mengubah. Level 1–3, masa berlaku
+wajib kecuali dicentang "Permanent" (`endDate` null). Upload file **hanya PDF**. **Ijazah (2026-11-02)** bukan sertifikat lagi:
+diunggah sebagai Dokumen "Ijazah + Transkrip" (`IJAZAH_TRANSKRIP`); schema menolak `type: IJAZAH`; migrasi
+`20261102090000_ijazah_to_documents` memindahkan ijazah lama yang ber-file ke Dokumen dan soft-delete semua sertifikat IJAZAH.
 
 **Data milik sendiri** (data diri, keluarga, dokumen, ijazah) langsung tersimpan; approval hanya untuk sertifikat
 profesional. Fitur "permintaan perubahan data" lewat approval (`ProfileChangeRequest`, modul `PROFILE_CHANGE`) dihapus
@@ -284,13 +289,17 @@ per hari (satu baris per sesi), satu sesi berjalan; Clock Out = finalize custome
 (`/reimburse/overtime`, pengajuan terpisah — tidak bisa dicampur baris biasa) → alur modul `OVERTIME_REIMBURSE` (Ci Ika,
 `flowModule` di `buildApproval`; ApprovalRequest tetap REIMBURSE). Nominal tiap sesi = 0 sampai **approver mengisinya di
 dialog Setujui** (`approveRequest({ overtimeAmounts })`, tercatat koreksi). Tidak ada tarif. Detail: Tech Spec §6.4a.
-Appeal (Fase 14): hari kerja tidak hadir → appeal Sakit (wajib surat keterangan sakit PDF, 2026-10-14) / Kunjungan keluar / Lainnya (keterangan wajib, tanpa lampiran, 2026-10-30) maks 7 hari (modul ATTENDANCE_APPEAL,
+Appeal (Fase 14; 2026-11-02: kartu **daftar tanggal** yang masih bisa di-appeal, centang beberapa sekaligus — `submitAppeals`
+menggabungkan tanggal yang hanya dipisah akhir pekan/libur jadi satu appeal rentang, sisanya appeal sendiri; satu surat sakit
+untuk semuanya): hari kerja tidak hadir → appeal Sakit (wajib surat keterangan sakit PDF, 2026-10-14) / Kunjungan keluar / Lainnya (keterangan wajib, tanpa lampiran, 2026-10-30) maks 7 hari (modul ATTENDANCE_APPEAL,
 `APL/…`, Bu Ika; milik Bu Ika → Fallback). Lewat 7 hari tanpa appeal → job `attendance.deduct` (01:00 WIB) memotong
 1 hari cuti (`LeaveAdjustment` ABSENCE), hanya untuk tanggal ≥ `attendance.deductionStartDate`.
 
 **Modul ditunda:** Inventory / Demo Unit (`FEATURES.inventory = false` di `src/lib/features.ts`) —
 menu, halaman, aksi, dashboard & job `reminder.asset` nonaktif; kode & data tetap ada. Super admin tetap bisa membuka
-menu, halaman & aksinya (`inventoryEnabled(user)`). Tab "Aset" per karyawan (`EmployeeAsset`) bernama **Asset Kantor**.
+menu, halaman & aksinya (`inventoryEnabled(user)`). **Asset Kantor** (Profil & tab karyawan, 2026-11-02 satu tampilan) =
+catatan langsung Admin (`EmployeeAsset`) + unit Inventory yang diserahkan ke karyawan (`AssetAssignment`, read-only di sana);
+"Inventory Saya" / tab Inventory terpisah dihapus (`/profil/inventory` → redirect).
 
 **Resign/Rehire:** tombol Resign mengisi `endDate` periode aktif dan status
 RESIGNED (data tidak dihapus). Rehire dari halaman Arsip ("Aktifkan kembali") →

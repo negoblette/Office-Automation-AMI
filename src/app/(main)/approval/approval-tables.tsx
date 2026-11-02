@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ApprovalStepper } from "@/components/shared/approval-stepper";
 import { requestStatusBadge } from "@/components/shared/approval-status";
-import { FileChip } from "@/components/shared/file-chip";
 import { FilterPills } from "@/components/shared/filter-pills";
 import { PersonCell } from "@/components/shared/person-cell";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -19,7 +18,7 @@ import { CorrectionButton, CorrectionList, RejectButton, RevokeButton } from "./
 const col = dataTableColumnHelper<ApprovalRow>();
 
 /** Aksi per baris: Koreksi + Setujui (approver step aktif), Batalkan Approval (yang menyetujui / Admin). */
-function RowActions({ row }: { row: ApprovalRow }) {
+export function RowActions({ row }: { row: ApprovalRow }) {
   if (!row.canApprove && !row.canRevoke) return null;
   const label = `${APPROVAL_MODULE_META[row.module].label} ${row.entityNumber}`;
   return (
@@ -49,19 +48,24 @@ const moduleColumn = col.accessor((row) => APPROVAL_MODULE_META[row.module].labe
   ),
 });
 
-const numberColumn = col.accessor("entityNumber", {
+/**
+ * Nomor + ringkasan satu baris (2026-11-02). Rincian lengkap (alasan, catatan) muncul saat kursor di atas ringkasan;
+ * klik nomor → halaman detail `/approval/[id]` (rincian, file, alur, koreksi, aksi).
+ */
+const numberColumn = col.accessor((row) => `${row.entityNumber} ${row.summary ?? ""}`, {
+  id: "number",
   header: "Nomor",
+  sortFn: (a, b) => a.original.entityNumber.localeCompare(b.original.entityNumber),
   cell: ({ row }) => (
-    <div className="flex max-w-72 flex-col gap-1">
-      {row.original.module === "CERTIFICATE" || row.original.module === "ATTENDANCE_APPEAL" ? (
-        <span className="font-medium whitespace-nowrap">{row.original.entityNumber}</span>
-      ) : (
-        <Link href={APPROVAL_MODULE_META[row.original.module].path(row.original.entityId)} className="font-medium whitespace-nowrap hover:underline">
-          {row.original.entityNumber}
-        </Link>
+    <div className="flex max-w-64 flex-col gap-0.5">
+      <Link href={`/approval/${row.original.id}`} className="font-medium whitespace-nowrap text-primary hover:underline">
+        {row.original.entityNumber}
+      </Link>
+      {row.original.headline && (
+        <span className="line-clamp-1 cursor-help text-xs text-muted-foreground" title={row.original.summary ?? row.original.headline}>
+          {row.original.headline}
+        </span>
       )}
-      {row.original.summary && <span className="text-xs text-muted-foreground">{row.original.summary}</span>}
-      {row.original.file && <FileChip fileKey={row.original.file.key} fileName={row.original.file.name} className="max-w-60" />}
     </div>
   ),
 });
@@ -78,7 +82,7 @@ const flowColumn = col.display({
   cell: ({ row }) => (
     <div className="flex flex-col gap-1">
       <ApprovalStepper compact steps={row.original.steps} requestStatus={row.original.status} />
-      <CorrectionList corrections={row.original.corrections} />
+      <CorrectionList compact corrections={row.original.corrections} />
     </div>
   ),
 });

@@ -2,7 +2,7 @@
 import type { ApprovalModule, Prisma, PrismaClient, RequestStatus } from "@/generated/prisma/client";
 import type { ApprovalStepView } from "@/components/shared/approval-stepper";
 import { CORRECTABLE_MODULES, type CorrectionView, listCorrections } from "./approval-correction";
-import { formatDuration } from "@/lib/attendance";
+import { APPEAL_REASON_LABEL, formatDuration } from "@/lib/attendance";
 import { formatDate, formatTime } from "@/lib/format";
 import { overtimeMinutes } from "@/lib/validators/overtime";
 import { EDUCATION_LEVEL_LABEL, LEAVE_TYPE_LABEL, leaveDeductLabel, projectLabel } from "@/lib/labels";
@@ -54,7 +54,9 @@ export type ApprovalRow = {
   correctable: boolean;
   /** Riwayat koreksi approver (Fase 14). */
   corrections: CorrectionView[];
-  /** Ringkasan isi pengajuan untuk approver (mis. sertifikat yang diverifikasi). */
+  /** Ringkasan singkat satu baris untuk tabel (2026-11-02); rincian lengkap di `summary` (tooltip & halaman detail). */
+  headline: string | null;
+  /** Rincian isi pengajuan untuk approver (mis. sertifikat yang diverifikasi, alasan appeal). */
   summary: string | null;
   /** File pendukung (mis. scan sertifikat) — approver boleh mengunduhnya. */
   file: { key: string; name: string } | null;
@@ -152,8 +154,14 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
     corrections: correctionsOf.get(request.id) ?? [],
     ...(() => {
       const appeal = appealOf.get(request.entityId);
-      if (request.module === "ATTENDANCE_APPEAL" && appeal)
-        return { summary: appealSummary(appeal), file: appeal.fileKey ? { key: appeal.fileKey, name: appeal.fileName ?? "Surat sakit" } : null };
+      if (request.module === "ATTENDANCE_APPEAL" && appeal) {
+        const when = appeal.endDate ? `${formatDate(appeal.date, "short")} – ${formatDate(appeal.endDate, "short")}` : formatDate(appeal.date, "short");
+        return {
+          headline: `${APPEAL_REASON_LABEL[appeal.reason]} · ${when}`,
+          summary: appealSummary(appeal),
+          file: appeal.fileKey ? { key: appeal.fileKey, name: appeal.fileName ?? "Surat sakit" } : null,
+        };
+      }
       const overtime = overtimeOf.get(request.entityId);
       if (request.module === "OVERTIME" && overtime) {
         const parts = [
@@ -162,10 +170,12 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
           [overtime.customer?.name, overtime.project && projectLabel(overtime.project)].filter(Boolean).join(" · "),
           overtime.activity,
         ];
-        return { summary: parts.filter(Boolean).join(" · "), file: null };
+        return { headline: parts.slice(0, 2).filter(Boolean).join(" · "), summary: parts.filter(Boolean).join(" · "), file: null };
       }
       const otLines = overtimeLinesOf.get(request.entityId);
-      if (otLines) return { summary: `Reimburse overtime · ${otLines.length} sesi — isi nominal tiap sesi saat menyetujui`, file: null };
+      if (otLines) {
+        return { headline: `Reimburse overtime · ${otLines.length} sesi`, summary: `Reimburse overtime · ${otLines.length} sesi — isi nominal tiap sesi saat menyetujui`, file: null };
+      }
       const leave = leaveOf.get(request.entityId);
       if (request.module === "LEAVE" && leave) {
         const start = formatDate(leave.startDate, "short");
@@ -175,10 +185,10 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
           `${start === end ? start : `${start} – ${end}`} (${leave.workingDays} hari kerja)`,
           leaveDeductLabel(leave.deductDays, leave.workingDays),
         ];
-        return { summary: parts.join(" · "), file: null };
+        return { headline: parts.slice(0, 2).join(" · "), summary: parts.join(" · "), file: null };
       }
       const c = certOf.get(request.entityId);
-      if (request.module !== "CERTIFICATE" || !c) return { summary: null, file: null };
+      if (request.module !== "CERTIFICATE" || !c) return { headline: null, summary: null, file: null };
       const parts = [
         `${c.name} (${c.employee.fullName})`,
         c.issuer && `Penerbit ${c.issuer}`,
@@ -192,9 +202,22 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
             ? `Berlaku s/d ${formatDate(c.endDate, "short")}`
             : "Permanen",
       ];
-      return { summary: parts.filter(Boolean).join(" · "), file: c.fileKey ? { key: c.fileKey, name: c.name } : null };
+      return { headline: c.name, summary: parts.filter(Boolean).join(" · "), file: c.fileKey ? { key: c.fileKey, name: c.name } : null };
     })(),
   }));
+}
+
+/**
+ * Satu pengajuan untuk halaman detail `/approval/[id]` (2026-11-02). Admin: semua; Approver: hanya yang mencantumkan dia
+ * di salah satu level (atau yang bisa ia putuskan sebagai super admin). null = tidak ada / tidak berhak.
+ */
+export async function getApprovalDetail(db: PrismaClient, requestId: string, viewer: { id: string; role: string }): Promise<ApprovalRow | null> {
+  const request = await db.approvalRequest.findUnique({ where: { id: requestId }, include });
+  if (!request) return null;
+  const involved = request.steps.some((step) => step.approverIds.includes(viewer.id) || step.actedById === viewer.id);
+  if (viewer.role !== "ADMIN" && !involved) return null;
+  const [row] = await toRows(db, [request], viewer.id);
+  return row;
 }
 
 /** Antrian milik user yang login: pengajuan dengan step PENDING yang mencantumkan dia (super admin: semua). */

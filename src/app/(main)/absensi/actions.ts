@@ -6,8 +6,8 @@ import { type ActionResult, toActionError } from "@/lib/actions";
 import { requireAdmin, requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { clockIn, clockOut, correctAttendance, saveWorkHours } from "@/lib/services/attendance";
-import { appealSchema, attendanceCorrectionSchema, workHoursSchema } from "@/lib/validators/attendance";
-import { submitAppeal } from "@/lib/services/attendance-appeal";
+import { appealDatesSchema, attendanceCorrectionSchema, workHoursSchema } from "@/lib/validators/attendance";
+import { submitAppeals } from "@/lib/services/attendance-appeal";
 import { enqueueApprovalNotifications } from "@/lib/mail/approval-emails";
 
 function revalidateAttendance() {
@@ -62,11 +62,11 @@ export async function saveWorkHoursAction(values: unknown): Promise<ActionResult
   }
 }
 
-/** Appeal satu hari tidak hadir (Fase 14): Sakit / Kunjungan keluar, approval Bu Ika. */
+/** Appeal tanggal-tanggal tidak hadir yang dicentang (2026-11-02): Sakit / Kunjungan keluar / Lainnya, approval Bu Ika. */
 export async function submitAppealAction(values: unknown): Promise<ActionResult> {
   const user = await requireUser();
   try {
-    const result = await submitAppeal(prisma, user, appealSchema.parse(values));
+    const result = await submitAppeals(prisma, user, appealDatesSchema.parse(values));
     await enqueueApprovalNotifications(prisma, result.notifications);
     revalidateAttendance();
     revalidatePath("/approval");

@@ -2,7 +2,6 @@ import { Pencil } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AssignmentHistory } from "@/components/employee/assignment-history";
 import { CertificatesPanel } from "@/components/employee/certificates-panel";
 import { PersonalDocumentsPanel } from "@/components/employee/documents-panel";
 import { FamilyPanel } from "@/components/employee/family-panel";
@@ -36,7 +35,6 @@ const TABS = [
   { key: "dokumen", label: "Dokumen" },
   { key: "sertifikat", label: "Sertifikat" },
   { key: "aset", label: "Asset Kantor" },
-  { key: "inventory", label: "Inventory" },
   { key: "riwayat", label: "Riwayat Kerja" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
@@ -51,13 +49,11 @@ export default async function DetailKaryawanPage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const admin = await requireAdmin();
-  // Tab Inventory hanya bila modulnya aktif (super admin tetap bisa, 2026-10-30).
-  const visibleTabs = TABS.filter((t) => t.key !== "inventory" || inventoryEnabled(admin));
   const [{ id }, { tab }] = await Promise.all([params, searchParams]);
   const [employee, documents] = await Promise.all([getEmployeeDetail(prisma, id), getEmployeeDocuments(prisma, id)]);
   if (!employee || !documents) notFound();
 
-  const activeTab: TabKey = visibleTabs.some((t) => t.key === tab) ? (tab as TabKey) : "data-diri";
+  const activeTab: TabKey = TABS.some((t) => t.key === tab) ? (tab as TabKey) : "data-diri";
   const isActive = employee.status === "ACTIVE";
   const currentPeriod = employee.periods[0];
 
@@ -130,18 +126,26 @@ export default async function DetailKaryawanPage({
       <LinkTabs
         label="Detail karyawan"
         active={activeTab}
-        tabs={visibleTabs.map((t) => ({ key: t.key, label: t.label, href: `/karyawan/${employee.id}?tab=${t.key}` }))}
+        tabs={TABS.map((t) => ({ key: t.key, label: t.label, href: `/karyawan/${employee.id}?tab=${t.key}` }))}
       />
 
       {activeTab === "data-diri" && <PersonalData employee={employee} />}
       {activeTab === "riwayat" && <EmploymentHistory periods={employee.periods} />}
-      {activeTab === "aset" && <EmployeeAssetsPanel employeeId={employee.id} assets={await listEmployeeAssetItems(prisma, employee.id)} canEdit />}
+      {/* Asset Kantor = catatan langsung + unit Inventory yang diserahkan (2026-11-02, satu tampilan). */}
+      {activeTab === "aset" && (
+        <EmployeeAssetsPanel
+          employeeId={employee.id}
+          assets={await listEmployeeAssetItems(prisma, employee.id)}
+          inventory={await listEmployeeAssets(prisma, employee.id)}
+          canEdit
+          canOpenInventory={inventoryEnabled(admin)}
+        />
+      )}
       {activeTab === "keluarga" && <FamilyPanel data={documents} canEdit />}
       {activeTab === "dokumen" && <PersonalDocumentsPanel data={documents} canEdit />}
       {activeTab === "sertifikat" && (
         <CertificatesPanel employeeId={employee.id} certificates={await getEmployeeCertificates(prisma, employee.id)} canEdit canEditVerified />
       )}
-      {activeTab === "inventory" && <AssignmentHistory rows={await listEmployeeAssets(prisma, employee.id)} mode="employee" />}
     </div>
   );
 }

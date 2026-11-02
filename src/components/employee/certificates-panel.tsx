@@ -28,13 +28,13 @@ import {
 } from "@/components/ui/dialog";
 import { CERTIFICATE_STATUS_BADGE } from "@/lib/certificate-status";
 import { formatDate } from "@/lib/format";
-import { CERTIFICATE_TYPE_LABEL, EDUCATION_LEVEL_LABEL, toOptions } from "@/lib/labels";
+import { CERTIFICATE_TYPE_LABEL, EDUCATION_LEVEL_LABEL } from "@/lib/labels";
 import type { CertificateView } from "@/lib/services/employee-queries";
 import { CERTIFICATE_LEVELS, certificateSchema } from "@/lib/validators/certificate";
 
 const date = (iso: string) => formatDate(`${iso}T00:00:00Z`, "short");
 
-/** Daftar sertifikat & ijazah (CERT-01/02) dengan tambah/ubah/hapus. */
+/** Daftar sertifikat profesional (CERT-01/02) dengan tambah/ubah/hapus. Ijazah = Dokumen sejak 2026-11-02. */
 export function CertificatesPanel({
   employeeId,
   certificates,
@@ -51,16 +51,17 @@ export function CertificatesPanel({
     <section className="rounded-2xl bg-card p-5 shadow-card sm:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="space-y-1">
-          <h2 className="text-base font-semibold">Sertifikat & Ijazah</h2>
+          <h2 className="text-base font-semibold">Sertifikat</h2>
           <p className="text-sm text-muted-foreground">
-            Sertifikat profesional baru diverifikasi Admin; ijazah langsung tersimpan. Status &ldquo;Akan kadaluarsa&rdquo; muncul 30 hari sebelum masa berlaku habis.
+            Sertifikat profesional baru diverifikasi Admin. Status &ldquo;Akan kadaluarsa&rdquo; muncul 30 hari sebelum masa berlaku habis. Ijazah diunggah di
+            Dokumen &amp; Keluarga (Ijazah + Transkrip).
           </p>
         </div>
         {canEdit && <CertificateDialog employeeId={employeeId} />}
       </div>
 
       {certificates.length === 0 ? (
-        <EmptyState icon={Award} title="Belum ada sertifikat" description="Tambahkan sertifikat profesional atau ijazah." className="shadow-none" />
+        <EmptyState icon={Award} title="Belum ada sertifikat" description="Tambahkan sertifikat profesional." className="shadow-none" />
       ) : (
         <ul className="divide-y divide-border">
           {certificates.map((certificate) => (
@@ -175,21 +176,18 @@ function CertificateDialog({ employeeId, certificate }: { employeeId: string; ce
   // Nama file hanya untuk tampilan di form; yang disimpan adalah key.
   const [fileName, setFileName] = useState<string | null>(null);
   const defaults: FormInput = {
-    type: certificate?.type ?? "PROFESSIONAL",
+    type: "PROFESSIONAL",
     name: certificate?.name ?? "",
     issuer: certificate?.issuer ?? "",
     level: certificate?.level ? (String(certificate.level) as (typeof CERTIFICATE_LEVELS)[number]) : "",
-    degree: certificate?.degree ?? "",
     startDate: certificate?.startDate ?? "",
     endDate: certificate?.endDate ?? "",
     // Sertifikat lama tanpa masa berlaku → tercentang Permanent.
-    noExpiry: certificate ? certificate.type === "PROFESSIONAL" && !certificate.endDate : false,
-    graduationDate: certificate?.graduationDate ?? "",
+    noExpiry: certificate ? !certificate.endDate : false,
     fileKey: certificate?.fileKey ?? "",
   };
   const form = useForm<FormInput, unknown, FormOutput>({ resolver: zodResolver(certificateSchema), defaultValues: defaults });
   const { serverError, pending, submit } = useActionSubmit(form);
-  const type = useWatch({ control: form.control, name: "type" });
   const noExpiry = useWatch({ control: form.control, name: "noExpiry" });
 
   // Kirim isian ASLI (bukan hasil transform schema): server mem-parse ulang dengan schema yang sama, dan hasil
@@ -237,36 +235,24 @@ function CertificateDialog({ employeeId, certificate }: { employeeId: string; ce
         <FormProvider {...form}>
           <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
             <DialogHeader>
-              <DialogTitle>{certificate ? `Edit ${certificate.name}` : "Tambah Sertifikat / Ijazah"}</DialogTitle>
+              <DialogTitle>{certificate ? `Edit ${certificate.name}` : "Tambah Sertifikat"}</DialogTitle>
             </DialogHeader>
             <FormAlert message={serverError} />
             <div className="grid gap-4 sm:grid-cols-2">
-              <SelectInputField name="type" label="Jenis" required options={toOptions(CERTIFICATE_TYPE_LABEL)} />
-              {type === "IJAZAH" ? (
-                <>
-                  <TextInputField name="name" label="Gelar" required placeholder="mis. Sarjana Komputer (S.Kom)" />
-                  <TextInputField name="issuer" label="Lembaga" required placeholder="mis. Universitas Indonesia" />
-                  <SelectInputField name="degree" label="Jenjang" required options={toOptions(EDUCATION_LEVEL_LABEL)} />
-                  <DateInputField name="graduationDate" label="Tanggal lulus" required />
-                </>
-              ) : (
-                <>
-                  <TextInputField name="name" label="Nama" required placeholder="mis. Cisco CCNA" />
-                  <TextInputField name="issuer" label="Penerbit" />
-                  <SelectInputField name="level" label="Level" required options={CERTIFICATE_LEVELS.map((l) => ({ value: l, label: `Level ${l}` }))} />
-                  <DateInputField name="startDate" label="Tanggal diambil" required />
-                  <div className="flex flex-col gap-2">
-                    {!noExpiry && <DateInputField name="endDate" label="Masa berlaku sampai" required />}
-                    <CheckboxField
-                      name="noExpiry"
-                      label="Tidak ada masa berlaku / Permanent"
-                      onCheckedChange={(checked) => {
-                        if (checked) form.setValue("endDate", "");
-                      }}
-                    />
-                  </div>
-                </>
-              )}
+              <TextInputField name="name" label="Nama" required placeholder="mis. Cisco CCNA" />
+              <TextInputField name="issuer" label="Penerbit" />
+              <SelectInputField name="level" label="Level" required options={CERTIFICATE_LEVELS.map((l) => ({ value: l, label: `Level ${l}` }))} />
+              <DateInputField name="startDate" label="Tanggal diambil" required />
+              <div className="flex flex-col gap-2">
+                {!noExpiry && <DateInputField name="endDate" label="Masa berlaku sampai" required />}
+                <CheckboxField
+                  name="noExpiry"
+                  label="Tidak ada masa berlaku / Permanent"
+                  onCheckedChange={(checked) => {
+                    if (checked) form.setValue("endDate", "");
+                  }}
+                />
+              </div>
             </div>
             <FormField label="File" htmlFor="certificate-file" error={form.formState.errors.fileKey?.message}>
               <Controller

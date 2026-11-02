@@ -5,8 +5,8 @@ import { jakartaDateTime } from "@/lib/attendance";
 import type { Actor } from "@/lib/services/access";
 import { approveRequest } from "@/lib/services/approval";
 import { clockIn } from "@/lib/services/attendance";
-import { DEDUCTION_START_KEY, deductUnexcusedAbsences, submitAppeal } from "@/lib/services/attendance-appeal";
-import { listMonthDays } from "@/lib/services/attendance-queries";
+import { DEDUCTION_START_KEY, deductUnexcusedAbsences, submitAppeal, submitAppeals } from "@/lib/services/attendance-appeal";
+import { listAppealableDays, listMonthDays } from "@/lib/services/attendance-queries";
 import { getCurrentBalances } from "@/lib/services/leave-queries";
 import { appealSchema } from "@/lib/validators/attendance";
 import { testDb } from "@/test/db";
@@ -37,6 +37,21 @@ afterAll(async () => {
 });
 
 describe("appeal tidak hadir (Fase 14)", () => {
+  it("2026-11-02: daftar tanggal yang bisa di-appeal; yang dicentang berurutan (hanya dipisah akhir pekan) jadi satu appeal", async () => {
+    const before = await listAppealableDays(testDb, actors.andi.employeeId!, TODAY);
+    expect(before.map((d) => d.date)).toEqual(["2026-10-07", "2026-10-08", "2026-10-09", "2026-10-12", "2026-10-13"]);
+
+    // Rabu 7 sendiri (Kamis 8 tidak dicentang); Jumat 9 + Senin 12 = satu appeal (dipisah Sabtu–Minggu saja).
+    const result = await submitAppeals(testDb, actors.andi, { dates: ["2026-10-12", "2026-10-07", "2026-10-09"], reason: "SICK", note: "Tifus", ...(await sickNote(actors.andi.id)) }, TODAY);
+    expect(result.numbers).toHaveLength(2);
+    const appeals = await testDb.attendanceAppeal.findMany({ where: { employeeId: actors.andi.employeeId! }, orderBy: { date: "asc" } });
+    expect(appeals.map((a) => [a.date.toISOString().slice(0, 10), a.endDate?.toISOString().slice(0, 10) ?? null, a.fileKey === appeals[0].fileKey])).toEqual([
+      ["2026-10-07", null, true],
+      ["2026-10-09", "2026-10-12", true],
+    ]);
+    expect((await listAppealableDays(testDb, actors.andi.employeeId!, TODAY)).map((d) => d.date)).toEqual(["2026-10-08", "2026-10-13"]);
+  });
+
   it("appeal Sakit → Bu Ika menyetujui → hari itu tampil Sakit", async () => {
     const result = await submitAppeal(testDb, actors.andi, { date: "2026-10-12", reason: "SICK", note: "Demam", ...(await sickNote(actors.andi.id)) }, TODAY);
     expect(result.number).toMatch(/^APL\//);

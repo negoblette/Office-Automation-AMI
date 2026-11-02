@@ -46,22 +46,34 @@ const restColumns = [
     ),
   }),
   col.accessor("workingDays", {
-    header: "Hari Kerja",
+    header: "Hari",
     enableGlobalFilter: false,
     cell: ({ getValue }) => <span className="tabular-nums">{getValue()} hari</span>,
   }),
-  col.accessor("reason", { header: "Alasan", cell: ({ getValue }) => <p className="max-w-72 truncate">{getValue()}</p> }),
+  // Ringkas supaya tabel muat satu layar (2026-11-02); teks lengkap saat kursor di atasnya.
+  col.accessor("reason", {
+    header: "Alasan",
+    cell: ({ getValue }) => (
+      <p className="max-w-44 truncate" title={getValue()}>
+        {getValue()}
+      </p>
+    ),
+  }),
   col.accessor((row) => requestStatusBadge(row.status, row.currentLevel).label, {
     id: "status",
     header: "Status",
     cell: ({ row }) => {
       const badge = requestStatusBadge(row.original.status, row.original.currentLevel);
       return (
-        <div className="flex max-w-60 flex-col items-start gap-1">
+        <div className="flex flex-col items-start gap-1">
           <StatusBadge variant={badge.variant}>{badge.label}</StatusBadge>
+          {/* Alasan penolakan muncul saat kursor di atasnya (2026-11-02). */}
           {row.original.rejection && (
-            <span className="text-xs text-danger">
-              {row.original.rejection.by}: {row.original.rejection.reason}
+            <span
+              className="cursor-help text-xs whitespace-nowrap text-danger underline decoration-dotted underline-offset-2"
+              title={`${row.original.rejection.by}: ${row.original.rejection.reason}`}
+            >
+              Lihat alasan
             </span>
           )}
         </div>

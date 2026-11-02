@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { getEmployeeCertificates } from "@/lib/services/employee-queries";
 import { NoEmployeeRecord, ProfileShell } from "../profile-shell";
 
-export const metadata: Metadata = { title: "Sertifikat & Ijazah" };
+export const metadata: Metadata = { title: "Sertifikat" };
 
 export default async function ProfilSertifikatPage() {
   const user = await requireUser();
@@ -13,8 +13,8 @@ export default async function ProfilSertifikatPage() {
   return (
     <ProfileShell
       active="sertifikat"
-      title="Sertifikat & Ijazah"
-      description="Sertifikat profesional dan ijazah Anda. Admin mendapat pengingat sebelum sertifikat kadaluarsa."
+      title="Sertifikat"
+      description="Sertifikat profesional Anda (ijazah diunggah di Dokumen & Keluarga). Admin mendapat pengingat sebelum sertifikat kadaluarsa."
     >
       {user.employeeId ? (
         <CertificatesPanel

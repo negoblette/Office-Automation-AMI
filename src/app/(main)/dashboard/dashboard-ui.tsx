@@ -278,7 +278,7 @@ export function MyRequestsList({ rows }: { rows: ApprovalRow[] }) {
                 {meta.label} · <span className="font-mono font-medium">{row.entityNumber}</span>
               </p>
               <p className="text-xs text-ink-3">Diajukan {formatDate(row.createdAt, "short")}</p>
-              <CorrectionList corrections={row.corrections} className="mt-1 flex flex-col gap-0.5 text-xs text-muted-foreground" />
+              <CorrectionList compact corrections={row.corrections} className="mt-1 flex flex-col gap-0.5 text-xs text-muted-foreground" />
             </Link>
             <div className="flex flex-wrap items-center gap-3">
               <ApprovalStepper steps={row.steps} requestStatus={row.status} compact />

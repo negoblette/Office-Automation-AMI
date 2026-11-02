@@ -12,7 +12,7 @@ import { assetSchema, assignAssetSchema, returnAssetSchema } from "@/lib/validat
 function revalidateInventory() {
   revalidatePath("/inventory", "layout");
   revalidatePath("/karyawan", "layout");
-  revalidatePath("/profil/inventory");
+  revalidatePath("/profil/aset");
 }
 
 async function run(admin: { isSuperAdmin: boolean }, action: () => Promise<unknown>): Promise<ActionResult> {

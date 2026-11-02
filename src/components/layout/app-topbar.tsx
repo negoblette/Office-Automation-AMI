@@ -25,7 +25,7 @@ type AppTopbarProps = {
 const ROLE_LABELS: Record<AppRole, string> = {
   ADMIN: "Admin",
   APPROVER: "Approver",
-  STAFF: "Staf",
+  STAFF: "Staff",
 };
 
 /** Topbar di dalam lembar putih (tetap sticky). */

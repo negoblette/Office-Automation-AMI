@@ -4,15 +4,13 @@ import { buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { LinkTabs } from "@/components/shared/link-tabs";
 import { PageHeader } from "@/components/shared/page-header";
-import { FEATURES } from "@/lib/features";
 
 const TABS = [
   { key: "data-diri", label: "Data Diri", href: "/profil" },
   { key: "dokumen", label: "Dokumen & Keluarga", href: "/profil/dokumen" },
-  { key: "sertifikat", label: "Sertifikat & Ijazah", href: "/profil/sertifikat" },
+  { key: "sertifikat", label: "Sertifikat", href: "/profil/sertifikat" },
   { key: "aset", label: "Asset Kantor", href: "/profil/aset" },
-  { key: "inventory", label: "Inventory Saya", href: "/profil/inventory" },
-].filter((tab) => tab.key !== "inventory" || FEATURES.inventory);
+];
 
 /** Kepala halaman + tab untuk semua halaman Profil Saya. */
 export function ProfileShell({

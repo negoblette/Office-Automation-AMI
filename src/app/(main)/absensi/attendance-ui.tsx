@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { Controller, useFormContext, useWatch } from "react-hook-form";
-import { DateInputField, SelectInputField, TextareaField, TextInputField } from "@/components/form/fields";
+import { CheckboxGroupField, DateInputField, SelectInputField, TextareaField, TextInputField } from "@/components/form/fields";
 import { FileUpload } from "@/components/form/file-upload";
 import { FormDialog } from "@/components/form/form-dialog";
 import { FormField } from "@/components/form/form-field";
@@ -16,10 +16,10 @@ import { StatusBadge, type StatusVariant } from "@/components/shared/status-badg
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { APPEAL_REASON_LABEL, DAY_STATUS_LABEL, type DayStatus, formatDuration } from "@/lib/attendance";
-import { formatDate, toJakartaIsoDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import type { AttendanceDay, TodayAttendance } from "@/lib/services/attendance-queries";
 import { cn } from "@/lib/utils";
-import { appealSchema, attendanceCorrectionSchema } from "@/lib/validators/attendance";
+import { appealDatesSchema, attendanceCorrectionSchema } from "@/lib/validators/attendance";
 import { clockInAction, clockOutAction, correctAttendanceAction, submitAppealAction } from "./actions";
 
 export const DAY_STATUS_VARIANT: Record<DayStatus, StatusVariant> = {
@@ -208,45 +208,52 @@ export function AddCorrectionButton({ employeeId, defaultDate }: { employeeId: s
   return <CorrectionDialog employeeId={employeeId} defaultDate={defaultDate} />;
 }
 
-/** Appeal satu hari tidak hadir (Fase 14): Sakit / Kunjungan keluar + keterangan → approval Bu Ika. */
-function AppealDialog({ day }: { day: AttendanceDay }) {
+/**
+ * Kartu Appeal (2026-11-02): daftar hari tidak hadir yang masih bisa di-appeal (≤ 7 hari). Centang tanggalnya, satu
+ * alasan & keterangan untuk semuanya → approval Bu Ika. Tanpa appeal yang disetujui, saldo cuti dipotong 1 hari per tanggal.
+ */
+export function AppealCard({ days }: { days: AttendanceDay[] }) {
+  if (days.length === 0) return null;
+  const options = days.map((day) => ({
+    value: day.date,
+    label: `${formatDate(`${day.date}T00:00:00Z`, "weekday")} · batas ${formatDate(`${day.appealDeadline}T00:00:00Z`, "short")}${day.appeal?.status === "REJECTED" ? " · ditolak, bisa diajukan lagi" : ""}`,
+  }));
   return (
-    <FormDialog
-      trigger={
-        <Button variant="outline" size="sm">
-          <MessageSquareWarning aria-hidden /> Appeal
-        </Button>
-      }
-      title={`Appeal ${formatDate(`${day.date}T00:00:00Z`, "weekday")}`}
-      description={`Tidak masuk karena sakit atau ada kunjungan keluar? Ajukan paling lambat ${formatDate(`${day.appealDeadline}T00:00:00Z`)}. Tanpa appeal yang disetujui, saldo cuti dipotong 1 hari.`}
-      schema={appealSchema}
-      defaults={
-        day.appeal?.status === "REJECTED"
-          ? { date: day.date, endDate: "", reason: day.appeal.reason, note: day.appeal.note, fileKey: day.appeal.fileKey ?? "", fileName: day.appeal.fileName ?? "" }
-          : { date: day.date, endDate: "", reason: "" as never, note: "", fileKey: "", fileName: "" }
-      }
-      submitLabel="Ajukan Appeal"
-      successMessage="Appeal diajukan"
-      action={submitAppealAction}
-    >
-      <DateInputField
-        name="endDate"
-        label="Sampai tanggal (opsional)"
-        min={day.date}
-        max={yesterday()}
-        hint={`Mulai ${formatDate(`${day.date}T00:00:00Z`, "weekday")}. Isi bila tidak masuk beberapa hari berturut-turut — satu appeal untuk semuanya; Sabtu, Minggu & libur dilewati.`}
-      />
-      <SelectInputField name="reason" label="Alasan" required options={Object.entries(APPEAL_REASON_LABEL).map(([value, label]) => ({ value, label }))} />
-      <TextareaField name="note" label="Keterangan" required />
-      <SickNoteField />
-    </FormDialog>
+    <section className="flex flex-col gap-3 rounded-2xl bg-card p-5 shadow-card sm:flex-row sm:items-center sm:justify-between sm:p-6">
+      <div className="flex items-start gap-4">
+        <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-warning-soft text-warning">
+          <MessageSquareWarning className="size-6" aria-hidden />
+        </div>
+        <div className="flex flex-col gap-1">
+          <p className="text-sm font-semibold">{days.length} hari tidak hadir masih bisa di-appeal</p>
+          <ul className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted-foreground">
+            {days.map((day) => (
+              <li key={day.date}>{formatDate(`${day.date}T00:00:00Z`, "short")}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <FormDialog
+        trigger={
+          <Button variant="outline" size="lg">
+            <MessageSquareWarning aria-hidden /> Ajukan Appeal
+          </Button>
+        }
+        title="Appeal Absensi"
+        description="Centang tanggal tidak hadir yang mau di-appeal. Tanpa appeal yang disetujui, saldo cuti dipotong 1 hari per tanggal."
+        schema={appealDatesSchema}
+        defaults={{ dates: [], reason: "" as never, note: "", fileKey: "", fileName: "" }}
+        submitLabel="Ajukan Appeal"
+        successMessage="Appeal diajukan"
+        action={submitAppealAction}
+      >
+        <CheckboxGroupField name="dates" label="Tanggal" required options={options} className="[&>div]:flex-col [&>div]:items-start" />
+        <SelectInputField name="reason" label="Alasan" required options={Object.entries(APPEAL_REASON_LABEL).map(([value, label]) => ({ value, label }))} />
+        <TextareaField name="note" label="Keterangan" required />
+        <SickNoteField />
+      </FormDialog>
+    </section>
   );
-}
-
-/** Kemarin (YYYY-MM-DD, WIB) — batas akhir rentang appeal. */
-function yesterday() {
-  const d = new Date(Date.parse(`${toJakartaIsoDate()}T00:00:00Z`) - 86_400_000);
-  return d.toISOString().slice(0, 10);
 }
 
 /** Upload bukti surat keterangan sakit — wajib untuk alasan Sakit, hanya muncul bila Sakit dipilih (2026-10-14). */
@@ -292,11 +299,11 @@ function EmptyValue() {
 const timeClass = "font-mono text-[13.5px] font-semibold text-ink tabular-nums";
 
 /**
- * Tabel riwayat harian. `correctFor` = employeeId bila Admin boleh mengoreksi; `appealable` = riwayat
- * milik sendiri (tombol Appeal untuk hari tidak hadir ≤ 7 hari).
+ * Tabel riwayat harian. `correctFor` = employeeId bila Admin boleh mengoreksi. Appeal diajukan dari `AppealCard`
+ * (daftar tanggal, 2026-11-02); di tabel hanya tampil batas appeal.
  */
 
-export function AttendanceDaysTable({ days, correctFor, appealable = false }: { days: AttendanceDay[]; correctFor?: string; appealable?: boolean }) {
+export function AttendanceDaysTable({ days, correctFor }: { days: AttendanceDay[]; correctFor?: string }) {
   if (days.length === 0) {
     return <p className="py-12 text-center text-sm text-ink-3">Belum ada data di bulan ini.</p>;
   }
@@ -360,11 +367,10 @@ export function AttendanceDaysTable({ days, correctFor, appealable = false }: { 
                       </span>
                     )}
                     {day.leaveDeducted && <span className="text-xs font-semibold text-red-ink">Saldo cuti dipotong 1 hari</span>}
-                    {day.canAppeal && !appealable && (
+                    {day.canAppeal && (
                       <span className="text-xs text-ink-3">Batas appeal {formatDate(`${day.appealDeadline}T00:00:00Z`, "short")}</span>
                     )}
                   </div>
-                  {appealable && day.canAppeal && <AppealDialog day={day} />}
                 </div>
               </TableCell>
 

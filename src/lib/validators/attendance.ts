@@ -39,3 +39,16 @@ export const appealSchema = z
     if (v.reason === "SICK" && !v.fileKey) ctx.addIssue({ code: "custom", path: ["fileKey"], message: "Surat keterangan sakit wajib diupload" });
     if (v.endDate && v.endDate < v.date) ctx.addIssue({ code: "custom", path: ["endDate"], message: "Tanggal akhir tidak boleh sebelum tanggal mulai" });
   });
+
+/** Appeal dari daftar tanggal yang masih bisa di-appeal (2026-11-02): centang tanggalnya, satu alasan untuk semua. */
+export const appealDatesSchema = z
+  .object({
+    dates: z.array(isoDateSchema).min(1, { error: "Pilih minimal 1 tanggal" }).max(31, { error: "Maksimal 31 tanggal" }),
+    reason: z.enum(["SICK", "VISIT", "OTHER"], { error: "Alasan wajib dipilih" }),
+    note: textSchema("Keterangan", { min: 3, max: 300 }),
+    fileKey: optionalField(z.string()),
+    fileName: optionalField(textSchema("Nama file", { max: 200 })),
+  })
+  .superRefine((v, ctx) => {
+    if (v.reason === "SICK" && !v.fileKey) ctx.addIssue({ code: "custom", path: ["fileKey"], message: "Surat keterangan sakit wajib diupload" });
+  });

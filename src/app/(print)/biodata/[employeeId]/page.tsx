@@ -149,7 +149,7 @@ export default async function BiodataPage({ params }: { params: Promise<{ employ
         </ul>
       </Section>
 
-      <Section title="Sertifikat & Ijazah">
+      <Section title="Sertifikat">
         {certificates.length === 0 ? (
           <p className="text-sm">—</p>
         ) : (

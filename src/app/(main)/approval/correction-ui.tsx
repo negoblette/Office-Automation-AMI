@@ -227,8 +227,27 @@ export function RevokeButton({ requestId, label, final }: { requestId: string; l
 }
 
 /** Daftar koreksi approver (sebelum → sesudah) & pembatalan approval. */
-export function CorrectionList({ corrections, className }: { corrections: CorrectionView[]; className?: string }) {
+/**
+ * Riwayat koreksi / pembatalan approver. `compact` (sel tabel, 2026-11-02): hanya siapa & apa — isi (sebelum → sesudah,
+ * alasan pembatalan) muncul saat kursor di atasnya.
+ */
+export function CorrectionList({ corrections, className, compact = false }: { corrections: CorrectionView[]; className?: string; compact?: boolean }) {
   if (corrections.length === 0) return null;
+  if (compact) {
+    return (
+      <ul className={className ?? "flex flex-col gap-0.5 text-xs text-muted-foreground"}>
+        {corrections.map((c) => (
+          <li
+            key={c.id}
+            className="cursor-help underline decoration-dotted underline-offset-2"
+            title={c.field === "REVOKE" ? `${c.before} · ${c.after}` : `${c.label}: ${c.before || "—"} → ${c.after || "—"}`}
+          >
+            {c.field === "REVOKE" ? `${c.editedBy} membatalkan ${c.label.toLowerCase()}` : `Dikoreksi ${c.editedBy} · ${c.label}`}
+          </li>
+        ))}
+      </ul>
+    );
+  }
   return (
     <ul className={className ?? "flex flex-col gap-1 text-xs text-muted-foreground"}>
       {corrections.map((c) => (

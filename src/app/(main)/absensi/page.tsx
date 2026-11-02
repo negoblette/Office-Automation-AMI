@@ -10,8 +10,8 @@ import { formatDuration } from "@/lib/attendance";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { toJakartaIsoDate } from "@/lib/format";
-import { getTodayAttendance, listMonthDays, monthSummary } from "@/lib/services/attendance-queries";
-import { AttendanceDaysTable, ClockCard, DayStatusBadge, MonthNav } from "./attendance-ui";
+import { getTodayAttendance, listAppealableDays, listMonthDays, monthSummary } from "@/lib/services/attendance-queries";
+import { AppealCard, AttendanceDaysTable, ClockCard, DayStatusBadge, MonthNav } from "./attendance-ui";
 import { divisionLabels } from "@/lib/services/division";
 
 export const metadata: Metadata = { title: "Absensi" };
@@ -50,13 +50,14 @@ export default async function AbsensiPage({ searchParams }: { searchParams: Prom
 }
 
 async function Mine({ employeeId, yearMonth, thisMonth }: { employeeId: string | null; yearMonth: string; thisMonth: string }) {
-  const [today, days] = employeeId
-    ? await Promise.all([getTodayAttendance(prisma, employeeId), listMonthDays(prisma, employeeId, yearMonth)])
-    : [null, []];
+  const [today, days, appealable] = employeeId
+    ? await Promise.all([getTodayAttendance(prisma, employeeId), listMonthDays(prisma, employeeId, yearMonth), listAppealableDays(prisma, employeeId)])
+    : [null, [], []];
   const late = days.filter((d) => d.lateMinutes > 0);
   return (
     <>
       <ClockCard today={today} />
+      <AppealCard days={appealable} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-base font-semibold">Riwayat Absensi</h2>
         <MonthNav yearMonth={yearMonth} baseHref="/absensi" maxMonth={thisMonth} />
@@ -73,7 +74,7 @@ async function Mine({ employeeId, yearMonth, thisMonth }: { employeeId: string |
         />
         <StatCard label="Tidak hadir / tidak clock out" value={days.filter((d) => d.status === "ABSENT" || d.status === "NO_CLOCK_OUT").length} unit="hari" icon={CalendarX} tone="danger" />
       </div>
-      <AttendanceDaysTable days={days} appealable />
+      <AttendanceDaysTable days={days} />
     </>
   );
 }
@@ -140,7 +141,6 @@ async function Recap({ yearMonth, thisMonth, todayIso }: { yearMonth: string; th
                 <td className="px-4 py-2.5 text-right tabular-nums">{row.present}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">
                   {row.late}
-                  {row.lateMinutes > 0 && <span className="block text-xs text-muted-foreground">{formatDuration(row.lateMinutes)}</span>}
                 </td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{row.noClockOut}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{row.leave}</td>

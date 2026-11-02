@@ -16,7 +16,7 @@ export function leaveDeductLabel(deductDays: number, workingDays: number): strin
 export const ROLE_LABEL: Record<Role, string> = {
   ADMIN: "Admin",
   APPROVER: "Approver",
-  STAFF: "Staf",
+  STAFF: "Staff",
 };
 
 export const GENDER_LABEL: Record<Gender, string> = {

@@ -98,13 +98,25 @@ async function AllBalances() {
   );
 }
 
-/** Riwayat pemutihan / penyesuaian / potong cuti (Fase 14). */
+/**
+ * Riwayat pemutihan / penyesuaian / potong cuti (Fase 14). Tinggi maksimal ±10 baris (2026-11-02); sisanya digulir di
+ * dalam kotak supaya halaman tidak memanjang.
+ */
 function AdjustmentHistory({ rows, showEmployee }: { rows: LeaveAdjustmentView[]; showEmployee: boolean }) {
   if (rows.length === 0) return null;
   return (
     <section className="rounded-2xl bg-card p-5 shadow-card">
-      <h2 className="mb-3 text-base font-semibold">Riwayat Penyesuaian Saldo</h2>
-      <ul className="divide-y divide-border text-sm">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-base font-semibold">Riwayat Penyesuaian Saldo</h2>
+        <span className="text-xs text-muted-foreground">
+          {rows.length} entri{rows.length > 10 && " · gulir untuk melihat lainnya"}
+        </span>
+      </div>
+      <ul
+        tabIndex={rows.length > 10 ? 0 : undefined}
+        aria-label="Riwayat penyesuaian saldo"
+        className="max-h-[34rem] divide-y divide-border overflow-y-auto pr-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
         {rows.map((r) => (
           <li key={r.id} className="flex flex-wrap items-baseline justify-between gap-2 py-2">
             <div className="min-w-0">

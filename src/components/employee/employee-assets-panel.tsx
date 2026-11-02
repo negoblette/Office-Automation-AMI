@@ -1,6 +1,7 @@
 "use client";
 
 import { Laptop, Pencil, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { deleteEmployeeAssetAction, saveEmployeeAssetAction } from "@/app/(main)/karyawan/asset-actions";
@@ -11,6 +12,8 @@ import { useFeedback } from "@/components/shared/feedback";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { formatDate, toJakartaIsoDate } from "@/lib/format";
+import { ASSET_CATEGORY_LABEL } from "@/lib/labels";
+import type { AssignmentRow } from "@/lib/services/asset-queries";
 import type { EmployeeAssetView } from "@/lib/services/employee-asset";
 import { employeeAssetSchema } from "@/lib/validators/employee-asset";
 
@@ -26,7 +29,7 @@ function AssetDialog({ employeeId, asset }: { employeeId: string; asset?: Employ
           </Button>
         ) : (
           <Button size="sm">
-            <Plus aria-hidden /> Tambah Inventory
+            <Plus aria-hidden /> Tambah Asset
           </Button>
         )
       }
@@ -89,8 +92,39 @@ function DeleteAssetButton({ asset }: { asset: EmployeeAssetView }) {
   );
 }
 
-/** Aset yang dipegang karyawan (Fase 14). `canEdit` = Admin. */
-export function EmployeeAssetsPanel({ employeeId, assets, canEdit }: { employeeId: string; assets: EmployeeAssetView[]; canEdit: boolean }) {
+/** Satu baris tampilan: barang yang dicatat langsung, atau unit Inventory yang diserahkan ke karyawan. */
+type AssetLine =
+  | { source: "manual"; key: string; held: boolean; sortDate: string; asset: EmployeeAssetView }
+  | { source: "inventory"; key: string; held: boolean; sortDate: string; assignment: AssignmentRow };
+
+/**
+ * Asset Kantor (Fase 14; 2026-11-02 satu tampilan): barang yang dicatat Admin langsung (`EmployeeAsset`, bisa diubah di
+ * sini) + unit Inventory / Demo Unit yang sedang/pernah diserahkan ke karyawan (`AssetAssignment`, diubah lewat modul
+ * Inventory). Yang masih dipegang di atas. `canEdit` = Admin; `canOpenInventory` = boleh membuka halaman unit Inventory.
+ */
+export function EmployeeAssetsPanel({
+  employeeId,
+  assets,
+  inventory = [],
+  canEdit,
+  canOpenInventory = false,
+}: {
+  employeeId: string;
+  assets: EmployeeAssetView[];
+  inventory?: AssignmentRow[];
+  canEdit: boolean;
+  canOpenInventory?: boolean;
+}) {
+  const lines: AssetLine[] = [
+    ...assets.map((asset) => ({ source: "manual" as const, key: `m-${asset.id}`, held: !asset.returnedDate, sortDate: asset.receivedDate, asset })),
+    ...inventory.map((assignment) => ({
+      source: "inventory" as const,
+      key: `i-${assignment.id}`,
+      held: !assignment.returnedAt,
+      sortDate: assignment.assignedAt,
+      assignment,
+    })),
+  ].sort((a, b) => Number(b.held) - Number(a.held) || b.sortDate.localeCompare(a.sortDate));
   return (
     <section className="rounded-2xl bg-card p-5 shadow-card sm:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -100,33 +134,71 @@ export function EmployeeAssetsPanel({ employeeId, assets, canEdit }: { employeeI
         </div>
         {canEdit && <AssetDialog employeeId={employeeId} />}
       </div>
-      {assets.length === 0 ? (
-        <EmptyState icon={Laptop} title="Belum ada inventory tercatat" className="shadow-none" />
+      {lines.length === 0 ? (
+        <EmptyState icon={Laptop} title="Belum ada asset tercatat" className="shadow-none" />
       ) : (
         <ul className="divide-y divide-border">
-          {assets.map((asset) => (
-            <li key={asset.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-semibold">{asset.name}</p>
-                  <StatusBadge variant={asset.returnedDate ? "neutral" : "success"}>{asset.returnedDate ? "Sudah dikembalikan" : "Dipegang"}</StatusBadge>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {asset.serialNo && `SN ${asset.serialNo} · `}Diterima {date(asset.receivedDate)}
-                  {asset.returnedDate && ` · dikembalikan ${date(asset.returnedDate)}`}
-                </p>
-                {asset.note && <p className="text-sm text-muted-foreground">{asset.note}</p>}
-              </div>
-              {canEdit && (
-                <div className="flex items-center gap-1">
-                  <AssetDialog employeeId={employeeId} asset={asset} />
-                  <DeleteAssetButton asset={asset} />
-                </div>
-              )}
-            </li>
-          ))}
+          {lines.map((line) =>
+            line.source === "inventory" ? (
+              <InventoryLine key={line.key} row={line.assignment} canOpen={canOpenInventory} />
+            ) : (
+              <ManualLine key={line.key} employeeId={employeeId} asset={line.asset} canEdit={canEdit} />
+            ),
+          )}
         </ul>
       )}
     </section>
+  );
+}
+
+function InventoryLine({ row, canOpen }: { row: AssignmentRow; canOpen: boolean }) {
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-3 py-3">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          {canOpen ? (
+            <Link href={`/inventory/${row.assetId}`} className="font-semibold hover:underline">
+              {row.deviceName}
+            </Link>
+          ) : (
+            <p className="font-semibold">{row.deviceName}</p>
+          )}
+          <StatusBadge variant={row.returnedAt ? "neutral" : "success"}>{row.returnedAt ? "Sudah dikembalikan" : "Dipegang"}</StatusBadge>
+          <StatusBadge variant="info" dot={false}>
+            {ASSET_CATEGORY_LABEL[row.category]}
+          </StatusBadge>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          SN {row.serialNo} · Diterima {date(row.assignedAt)}
+          {row.returnedAt && ` · dikembalikan ${date(row.returnedAt)}`}
+        </p>
+        {row.note && <p className="text-sm text-muted-foreground">{row.note}</p>}
+      </div>
+      <span className="text-xs text-muted-foreground">Dari Inventory</span>
+    </li>
+  );
+}
+
+function ManualLine({ employeeId, asset, canEdit }: { employeeId: string; asset: EmployeeAssetView; canEdit: boolean }) {
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-3 py-3">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-semibold">{asset.name}</p>
+          <StatusBadge variant={asset.returnedDate ? "neutral" : "success"}>{asset.returnedDate ? "Sudah dikembalikan" : "Dipegang"}</StatusBadge>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {asset.serialNo && `SN ${asset.serialNo} · `}Diterima {date(asset.receivedDate)}
+          {asset.returnedDate && ` · dikembalikan ${date(asset.returnedDate)}`}
+        </p>
+        {asset.note && <p className="text-sm text-muted-foreground">{asset.note}</p>}
+      </div>
+      {canEdit && (
+        <div className="flex items-center gap-1">
+          <AssetDialog employeeId={employeeId} asset={asset} />
+          <DeleteAssetButton asset={asset} />
+        </div>
+      )}
+    </li>
   );
 }

@@ -79,7 +79,16 @@ export function ApprovalStepper({ steps, requestStatus, compact = false, classNa
                   {step.status === "APPROVED" && step.actedAt && ` · ${formatDateTime(step.actedAt)}`}
                 </p>
               )}
-              {step.status === "REJECTED" && step.note && <p className={cn("font-medium text-danger", compact ? "text-xs" : "text-sm")}>Alasan: {step.note}</p>}
+              {step.status === "REJECTED" &&
+                step.note &&
+                (compact ? (
+                  // Versi tabel (2026-11-02): alasan muncul saat kursor di atasnya.
+                  <p className="cursor-help text-xs font-medium text-danger underline decoration-dotted underline-offset-2" title={`Alasan: ${step.note}`}>
+                    Ditolak · lihat alasan
+                  </p>
+                ) : (
+                  <p className="text-sm font-medium text-danger">Alasan: {step.note}</p>
+                ))}
             </div>
             <span className={cn("text-muted-foreground", compact ? "text-xs" : "mt-1 text-sm")} aria-hidden>
               →

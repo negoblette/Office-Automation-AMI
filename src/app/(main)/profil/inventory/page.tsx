@@ -1,21 +1,6 @@
-import type { Metadata } from "next";
-import { notFound } from "next/navigation";
-import { AssignmentHistory } from "@/components/employee/assignment-history";
-import { requireUser } from "@/lib/auth/guards";
-import { prisma } from "@/lib/db";
-import { inventoryEnabled } from "@/lib/features";
-import { listEmployeeAssets } from "@/lib/services/asset-queries";
-import { NoEmployeeRecord, ProfileShell } from "../profile-shell";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Inventory Saya" };
-
-export default async function ProfilInventoryPage() {
-  const user = await requireUser();
-  if (!inventoryEnabled(user)) notFound();
-
-  return (
-    <ProfileShell active="inventory" title="Inventory Saya" description="Perangkat kantor dan unit demo yang sedang atau pernah Anda pegang (INV-03).">
-      {user.employeeId ? <AssignmentHistory rows={await listEmployeeAssets(prisma, user.employeeId)} mode="employee" /> : <NoEmployeeRecord />}
-    </ProfileShell>
-  );
+/** "Inventory Saya" digabung ke Asset Kantor (2026-11-02): unit Inventory yang diserahkan tampil di sana. */
+export default function ProfilInventoryPage() {
+  redirect("/profil/aset");
 }

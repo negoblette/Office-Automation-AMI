@@ -1,6 +1,6 @@
 // Query halaman Absensi & kartu dashboard. Hasil aman dikirim ke Client Component (tanpa Date).
 import type { AppealReason, PrismaClient } from "@/generated/prisma/client";
-import { appealDeadline, type DayStatus, dayStatus, isWorkday, type WorkHours } from "@/lib/attendance";
+import { APPEAL_WINDOW_DAYS, appealDeadline, type DayStatus, dayStatus, isWorkday, type WorkHours } from "@/lib/attendance";
 import { formatTime, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { addDays } from "@/lib/leave";
 import { getWorkHours } from "./attendance";
@@ -256,4 +256,14 @@ export async function monthSummary(db: PrismaClient, yearMonth: string, todayIso
     }
     return row;
   });
+}
+
+/**
+ * Hari tidak hadir yang masih bisa di-appeal (≤ 7 hari, belum ada appeal berjalan; appeal ditolak boleh diajukan lagi),
+ * urut tanggal — daftar centang di kartu Appeal halaman Absensi (2026-11-02). Bisa melewati batas bulan.
+ */
+export async function listAppealableDays(db: PrismaClient, employeeId: string, todayIso = toJakartaIsoDate()): Promise<AttendanceDay[]> {
+  const months = [...new Set([addDays(todayIso, -APPEAL_WINDOW_DAYS).slice(0, 7), todayIso.slice(0, 7)])];
+  const days = (await Promise.all(months.map((month) => listMonthDays(db, employeeId, month, todayIso)))).flat();
+  return days.filter((day) => day.canAppeal).sort((a, b) => a.date.localeCompare(b.date));
 }

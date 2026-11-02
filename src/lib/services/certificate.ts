@@ -1,4 +1,4 @@
-// Sertifikat & ijazah karyawan — URD CERT-01..02. Fase 14 (2026-10-05): setiap sertifikat baru
+// Sertifikat profesional karyawan — URD CERT-01..02 (ijazah = Dokumen "Ijazah + Transkrip" sejak 2026-11-02). Fase 14 (2026-10-05): setiap sertifikat baru
 // diverifikasi lewat approval engine (modul CERTIFICATE, flow Ci Ika sejak 2026-10-12); yang
 // meng-input = pemohon. Setelah terverifikasi hanya Admin yang boleh mengubah.
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
@@ -25,19 +25,13 @@ function certificateData(input: CertificateInput) {
 }
 
 /**
- * Tambah sertifikat. Sertifikat PROFESIONAL diajukan verifikasi (approval); ijazah langsung tersimpan tanpa
- * approval (2026-10-16). Kirim `notifications` (email approver) SETELAH commit.
+ * Tambah sertifikat profesional → diajukan verifikasi (approval). Ijazah diunggah sebagai Dokumen sejak 2026-11-02.
+ * Kirim `notifications` (email approver) SETELAH commit.
  */
 export async function addCertificate(db: PrismaClient, actor: Actor, employeeId: string, input: CertificateInput) {
   return db.$transaction(async (tx) => {
     await getManageableEmployee(tx, actor, employeeId);
     if (input.fileKey) await assertFileKeyAvailable(tx, input.fileKey, actor.id);
-
-    if (input.type !== "PROFESSIONAL") {
-      const saved = await tx.certificate.create({ data: { employeeId, ...certificateData(input), status: "APPROVED" } });
-      await logAudit(tx, { actorId: actor.id, action: "CREATE", entity: "Certificate", entityId: saved.id, after: saved });
-      return { ...saved, notifications: [] as ApprovalNotification[] };
-    }
 
     const number = await nextDocumentNumber(tx, "CRT");
     const created = await tx.certificate.create({ data: { employeeId, ...certificateData(input), verificationNumber: number } });

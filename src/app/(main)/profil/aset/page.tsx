@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { EmployeeAssetsPanel } from "@/components/employee/employee-assets-panel";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
+import { listEmployeeAssets } from "@/lib/services/asset-queries";
 import { listEmployeeAssetItems } from "@/lib/services/employee-asset";
 import { NoEmployeeRecord, ProfileShell } from "../profile-shell";
 
@@ -12,7 +13,12 @@ export default async function ProfilAsetPage() {
   return (
     <ProfileShell active="aset" title="Asset Kantor" description={user.role === "ADMIN" ? "Barang kantor yang sedang atau pernah Anda pegang." : "Barang kantor yang sedang atau pernah Anda pegang. Dicatat oleh Admin."}>
       {user.employeeId ? (
-        <EmployeeAssetsPanel employeeId={user.employeeId} assets={await listEmployeeAssetItems(prisma, user.employeeId)} canEdit={user.role === "ADMIN"} />
+        <EmployeeAssetsPanel
+          employeeId={user.employeeId}
+          assets={await listEmployeeAssetItems(prisma, user.employeeId)}
+          inventory={await listEmployeeAssets(prisma, user.employeeId)}
+          canEdit={user.role === "ADMIN"}
+        />
       ) : (
         <NoEmployeeRecord />
       )}
