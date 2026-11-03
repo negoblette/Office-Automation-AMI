@@ -291,7 +291,7 @@ per hari (satu baris per sesi), satu sesi berjalan; Clock Out = finalize custome
 dialog Setujui** (`approveRequest({ overtimeAmounts })`, tercatat koreksi). Tidak ada tarif. Detail: Tech Spec §6.4a.
 Appeal (Fase 14; 2026-11-02: kartu **daftar tanggal** yang masih bisa di-appeal, centang beberapa sekaligus — `submitAppeals`
 menggabungkan tanggal yang hanya dipisah akhir pekan/libur jadi satu appeal rentang, sisanya appeal sendiri; satu surat sakit
-untuk semuanya): hari kerja tidak hadir → appeal Sakit (wajib surat keterangan sakit PDF, 2026-10-14) / Kunjungan keluar / Lainnya (keterangan wajib, tanpa lampiran, 2026-10-30) maks 7 hari (modul ATTENDANCE_APPEAL,
+untuk semuanya): hari kerja tidak hadir → appeal Sakit (surat keterangan sakit PDF opsional — wajib 2026-10-14, opsional sejak 2026-11-03) / Kunjungan keluar / Lainnya (keterangan wajib, tanpa lampiran, 2026-10-30) maks 7 hari (modul ATTENDANCE_APPEAL,
 `APL/…`, Bu Ika; milik Bu Ika → Fallback). Lewat 7 hari tanpa appeal → job `attendance.deduct` (01:00 WIB) memotong
 1 hari cuti (`LeaveAdjustment` ABSENCE), hanya untuk tanggal ≥ `attendance.deductionStartDate`.
 

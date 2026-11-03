@@ -37,6 +37,7 @@ function FlowSteps({ flow }: { flow: FlowView }) {
 export default async function SettingApprovalPage() {
   await requireAdmin();
   const [flows, approvers] = await Promise.all([listFlows(prisma), listApproverOptions(prisma)]);
+  const hasFallback = flows.some((flow) => flow.scope === "FALLBACK");
 
   return (
     <div className="flex flex-col gap-6">
@@ -44,8 +45,21 @@ export default async function SettingApprovalPage() {
         title="Approval Flow"
         description="Alur approval per modul & divisi pemohon. Perubahan hanya berlaku untuk pengajuan baru — pengajuan yang sedang berjalan tetap memakai alur saat diajukan."
         breadcrumbs={[{ label: "Kontrol & Sistem" }, { label: "Setting", href: "/setting" }, { label: "Approval Flow" }]}
-        actions={<FlowDialog approvers={approvers} />}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            {!hasFallback && <FlowDialog approvers={approvers} fallback />}
+            <FlowDialog approvers={approvers} />
+          </div>
+        }
       />
+
+      {!hasFallback && (
+        <p role="status" className="rounded-2xl bg-warning-soft px-5 py-4 text-sm">
+          <span className="font-semibold">Flow Fallback belum ada.</span> Fallback dipakai bila pemohon adalah satu-satunya approver di
+          alurnya sendiri (mis. pengajuan Ci Ika di alur yang approvernya Ci Ika). Tanpa Fallback, pengajuan seperti itu gagal
+          diajukan — tambahkan lewat tombol &ldquo;Flow Fallback&rdquo;.
+        </p>
+      )}
 
       <ul className="flex flex-col gap-3">
         {flows.map((flow) => (

@@ -84,16 +84,29 @@ const summary = (input: { module?: unknown; division?: unknown; autoApproveWhenS
   steps: input.steps.map((s) => s.approverIds),
 });
 
-/** Buat flow REGULAR baru, atau ubah flow (REGULAR/FALLBACK) — step diganti seluruhnya. */
+/**
+ * Buat flow REGULAR baru, atau ubah flow (REGULAR/FALLBACK) — step diganti seluruhnya. `fallback` + `flowId` null =
+ * buat flow FALLBACK (2026-11-03: produksi tidak di-seed, Admin menambahkannya sendiri); hanya boleh satu.
+ */
 export async function saveFlow(
   db: PrismaClient,
   actorId: string,
   flowId: string | null,
   input: Pick<ApprovalFlowInput, "steps"> & Partial<Pick<ApprovalFlowInput, "module" | "division" | "autoApproveWhenSkipped">>,
+  { fallback = false }: { fallback?: boolean } = {},
 ) {
   return db.$transaction(async (tx) => {
     await assertDivisions(tx, [input.division]);
     await assertValidSteps(tx, input.steps);
+    if (!flowId && fallback) {
+      if (input.steps.length === 0) throw new ServiceError("Flow Fallback harus punya minimal satu level", "steps");
+      if (await tx.approvalFlow.findFirst({ where: { scope: "FALLBACK", deletedAt: null } })) {
+        throw new ServiceError("Flow Fallback sudah ada — ubah flow yang ada");
+      }
+      const flow = await tx.approvalFlow.create({ data: { module: null, division: null, scope: "FALLBACK", steps: { create: stepsCreate(input.steps) } } });
+      await logAudit(tx, { actorId, action: "CREATE", entity: "ApprovalFlow", entityId: flow.id, after: { scope: "FALLBACK", ...summary(input) } });
+      return flow;
+    }
     if (!flowId) {
       if (!input.module) throw new ServiceError("Modul wajib dipilih", "module");
       const division = input.division ?? null;

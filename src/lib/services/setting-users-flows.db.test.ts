@@ -116,4 +116,14 @@ describe("Approval Flow", () => {
     const view = (await listFlows(testDb)).find((f) => f.id === fallback.id)!;
     expect(view).toMatchObject({ label: "Fallback", module: null, division: null, steps: [{ level: 1, approvers: [{ name: "Leonard" }] }] });
   });
+
+  it("2026-11-03: Fallback bisa ditambahkan bila belum ada (produksi tidak di-seed), hanya satu", async () => {
+    const steps = [{ approverIds: [u.rudy, u.leonard] }];
+    await expect(saveFlow(testDb, u.yosep, null, { steps }, { fallback: true })).rejects.toThrow("Flow Fallback sudah ada");
+    await testDb.approvalFlow.updateMany({ where: { scope: "FALLBACK" }, data: { deletedAt: new Date(), isActive: false } });
+    await expect(saveFlow(testDb, u.yosep, null, { steps: [] }, { fallback: true })).rejects.toThrow("minimal satu level");
+    const created = await saveFlow(testDb, u.yosep, null, { steps }, { fallback: true });
+    expect(created).toMatchObject({ scope: "FALLBACK", module: null, division: null, isActive: true });
+    expect((await listFlows(testDb)).find((f) => f.id === created.id)).toMatchObject({ label: "Fallback", steps: [{ level: 1 }] });
+  });
 });

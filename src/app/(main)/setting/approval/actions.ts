@@ -10,12 +10,12 @@ import { approvalFlowSchema, fallbackFlowSchema } from "@/lib/validators/setting
 
 const id = z.string().min(1);
 
-/** Tambah flow REGULAR (flowId null) atau ubah flow; FALLBACK hanya step-nya. */
+/** Tambah flow (flowId null; `isFallback` = flow Fallback) atau ubah flow; FALLBACK hanya step-nya. */
 export async function saveFlowAction(flowId: string | null, isFallback: boolean, values: unknown): Promise<ActionResult> {
   const admin = await requireAdmin();
   try {
     const input = z.boolean().parse(isFallback) ? fallbackFlowSchema.parse(values) : approvalFlowSchema.parse(values);
-    await saveFlow(prisma, admin.id, id.nullable().parse(flowId), input);
+    await saveFlow(prisma, admin.id, id.nullable().parse(flowId), input, { fallback: z.boolean().parse(isFallback) });
     revalidatePath("/setting/approval");
     return { ok: true, data: undefined };
   } catch (error) {

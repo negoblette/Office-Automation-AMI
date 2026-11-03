@@ -66,9 +66,10 @@ describe("appeal tidak hadir (Fase 14)", () => {
     expect(day).toMatchObject({ status: "SICK", appeal: { reason: "SICK", note: "Demam" } });
   });
 
-  it("2026-10-14: surat sakit WAJIB untuk alasan Sakit, bisa dibuka approver; tidak disimpan untuk Kunjungan", async () => {
-    await expect(submitAppeal(testDb, actors.andi, { date: "2026-10-12", reason: "SICK", note: "Demam" }, TODAY)).rejects.toThrow("Surat keterangan sakit wajib diupload");
-    expect(appealSchema.safeParse({ date: "2026-10-12", reason: "SICK", note: "Demam", fileKey: "" }).error?.issues[0]).toMatchObject({ path: ["fileKey"] });
+  it("2026-11-03: surat sakit opsional untuk Sakit; bila ada bisa dibuka approver; tidak disimpan untuk Kunjungan", async () => {
+    expect(appealSchema.safeParse({ date: "2026-10-09", reason: "SICK", note: "Demam", fileKey: "" }).success).toBe(true);
+    const withoutNote = await submitAppeal(testDb, actors.andi, { date: "2026-10-09", reason: "SICK", note: "Demam" }, TODAY);
+    expect(await testDb.attendanceAppeal.findUniqueOrThrow({ where: { id: withoutNote.appealId } })).toMatchObject({ reason: "SICK", fileKey: null });
     const fileKey = `${randomUUID()}.pdf`;
     await asUploadedBy(actors.andi.id, fileKey);
     const sick = await submitAppeal(testDb, actors.andi, { date: "2026-10-12", reason: "SICK", note: "Demam", fileKey, fileName: "surat-dokter.pdf" }, TODAY);

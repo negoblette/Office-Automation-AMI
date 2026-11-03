@@ -134,8 +134,7 @@ async function submitAppealInTx(tx: Tx, actor: Actor, input: AppealInput, todayI
   });
   if (overlapping) throw new ServiceError(`Sebagian tanggal sudah tercakup appeal ${overlapping.number}`, "date");
 
-  // Bukti sakit WAJIB untuk alasan Sakit (2026-10-14); file harus belum dipakai data lain.
-  if (input.reason === "SICK" && !input.fileKey) throw new ServiceError("Surat keterangan sakit wajib diupload", "fileKey");
+  // Surat sakit hanya untuk alasan Sakit, opsional sejak 2026-11-03 (sebelumnya wajib); file harus belum dipakai data lain.
   const file = input.reason === "SICK" && input.fileKey ? { fileKey: input.fileKey, fileName: input.fileName ?? "surat-sakit.pdf" } : { fileKey: null, fileName: null };
   if (file.fileKey && file.fileKey !== existing?.fileKey && !sharedFile) await assertFileKeyAvailable(tx, file.fileKey, actor.id);
 

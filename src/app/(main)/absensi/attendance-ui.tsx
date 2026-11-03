@@ -256,7 +256,7 @@ export function AppealCard({ days }: { days: AttendanceDay[] }) {
   );
 }
 
-/** Upload bukti surat keterangan sakit — wajib untuk alasan Sakit, hanya muncul bila Sakit dipilih (2026-10-14). */
+/** Upload bukti surat keterangan sakit — hanya muncul bila Sakit dipilih; opsional sejak 2026-11-03. */
 function SickNoteField() {
   const {
     control,
@@ -267,14 +267,13 @@ function SickNoteField() {
   const fileName = useWatch({ control, name: "fileName" });
   if (reason !== "SICK") return null;
   return (
-    <FormField label="Surat keterangan sakit" htmlFor="appeal-sick-note" required hint="PDF, maks 5 MB." error={errors.fileKey?.message as string | undefined}>
+    <FormField label="Surat keterangan sakit (opsional)" htmlFor="appeal-sick-note" hint="PDF, maks 5 MB." error={errors.fileKey?.message as string | undefined}>
       <Controller
         control={control}
         name="fileKey"
         render={({ field }) => (
           <FileUpload
             id="appeal-sick-note"
-            aria-required
             aria-invalid={errors.fileKey ? true : undefined}
             aria-describedby="appeal-sick-note-description"
             value={field.value && fileName ? { key: String(field.value), fileName: String(fileName), mimeType: "application/pdf", sizeBytes: 0 } : null}

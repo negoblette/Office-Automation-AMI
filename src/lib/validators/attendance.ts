@@ -31,12 +31,11 @@ export const appealSchema = z
     endDate: optionalField(isoDateSchema),
     reason: z.enum(["SICK", "VISIT", "OTHER"], { error: "Alasan wajib dipilih" }),
     note: textSchema("Keterangan", { min: 3, max: 300 }),
-    /** Bukti surat keterangan sakit — WAJIB untuk alasan Sakit (2026-10-14). */
+    /** Bukti surat keterangan sakit — opsional untuk alasan Sakit (wajib 2026-10-14, opsional sejak 2026-11-03). */
     fileKey: optionalField(z.string()),
     fileName: optionalField(textSchema("Nama file", { max: 200 })),
   })
   .superRefine((v, ctx) => {
-    if (v.reason === "SICK" && !v.fileKey) ctx.addIssue({ code: "custom", path: ["fileKey"], message: "Surat keterangan sakit wajib diupload" });
     if (v.endDate && v.endDate < v.date) ctx.addIssue({ code: "custom", path: ["endDate"], message: "Tanggal akhir tidak boleh sebelum tanggal mulai" });
   });
 
@@ -46,9 +45,7 @@ export const appealDatesSchema = z
     dates: z.array(isoDateSchema).min(1, { error: "Pilih minimal 1 tanggal" }).max(31, { error: "Maksimal 31 tanggal" }),
     reason: z.enum(["SICK", "VISIT", "OTHER"], { error: "Alasan wajib dipilih" }),
     note: textSchema("Keterangan", { min: 3, max: 300 }),
+    /** Surat keterangan sakit — opsional (2026-11-03). */
     fileKey: optionalField(z.string()),
     fileName: optionalField(textSchema("Nama file", { max: 200 })),
-  })
-  .superRefine((v, ctx) => {
-    if (v.reason === "SICK" && !v.fileKey) ctx.addIssue({ code: "custom", path: ["fileKey"], message: "Surat keterangan sakit wajib diupload" });
   });

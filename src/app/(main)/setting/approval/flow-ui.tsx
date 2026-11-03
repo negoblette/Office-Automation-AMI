@@ -79,12 +79,17 @@ function RegularFlowOptions({ approvers }: { approvers: SelectOption[] }) {
   );
 }
 
-export function FlowDialog({ flow, approvers }: { flow?: FlowView; approvers: SelectOption[] }) {
+/** `fallback` tanpa `flow` = tambah Flow Fallback (2026-11-03, bila belum ada). */
+export function FlowDialog({ flow, approvers, fallback = false }: { flow?: FlowView; approvers: SelectOption[]; fallback?: boolean }) {
   const divisions = useDivisions();
   const steps = flow?.steps.map((s) => ({ approverIds: s.approvers.filter((a) => a.usable).map((a) => a.id) })) ?? [{ approverIds: [] }];
   const trigger = flow ? (
     <Button variant="ghost" size="icon-sm" aria-label={`Ubah ${flow.label}`}>
       <Pencil />
+    </Button>
+  ) : fallback ? (
+    <Button size="lg" variant="outline">
+      <Plus aria-hidden /> Flow Fallback
     </Button>
   ) : (
     <Button size="lg">
@@ -93,17 +98,17 @@ export function FlowDialog({ flow, approvers }: { flow?: FlowView; approvers: Se
   );
   const description = "Perubahan hanya berlaku untuk pengajuan baru; pengajuan yang sedang berjalan tetap memakai alur saat diajukan.";
 
-  if (flow?.scope === "FALLBACK") {
+  if (flow?.scope === "FALLBACK" || (!flow && fallback)) {
     return (
       <FormDialog
         wide
         trigger={trigger}
-        title="Ubah Flow Fallback"
+        title={flow ? "Ubah Flow Fallback" : "Tambah Flow Fallback"}
         description={`Dipakai bila semua level flow biasa terlewati (pemohon adalah approver-nya sendiri). ${description}`}
         schema={fallbackFlowSchema}
         defaults={{ steps }}
         submitLabel="Simpan"
-        action={(values) => saveFlowAction(flow.id, true, values)}
+        action={(values) => saveFlowAction(flow?.id ?? null, true, values)}
       >
         <StepsEditor approvers={approvers} />
       </FormDialog>
