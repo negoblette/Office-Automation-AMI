@@ -106,7 +106,6 @@ async function Recap({ yearMonth, thisMonth, todayIso }: { yearMonth: string; th
               {isCurrent && <th className="px-4 py-3 font-semibold">Hari ini</th>}
               <th className="px-4 py-3 text-right font-semibold">Hadir</th>
               <th className="px-4 py-3 text-right font-semibold">Terlambat</th>
-              <th className="px-4 py-3 text-right font-semibold">Tidak clock out</th>
               <th className="px-4 py-3 text-right font-semibold">Cuti</th>
               <th className="px-4 py-3 text-right font-semibold">Sakit</th>
               <th className="px-4 py-3 text-right font-semibold">Kunjungan</th>
@@ -142,7 +141,6 @@ async function Recap({ yearMonth, thisMonth, todayIso }: { yearMonth: string; th
                 <td className="px-4 py-2.5 text-right tabular-nums">
                   {row.late}
                 </td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{row.noClockOut}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{row.leave}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{row.sick}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{row.visit}</td>
