@@ -208,7 +208,8 @@ Reimburse: 6 tipe untuk semua divisi. Dokumen: Kelompok I & II (`DOCUMENT_GROUP_
 
 **Tampilan approval (2026-11-02):** tabel antrian/monitor hanya ringkasan satu baris (`ApprovalRow.headline`); rincian,
 alasan/catatan, koreksi & alasan tolak muncul saat kursor di atasnya; klik nomor → halaman detail `/approval/[id]`
-(`getApprovalDetail`: rincian lengkap, file, alur, koreksi, aksi).
+(`getApprovalDetail`: rincian lengkap, file, alur, koreksi, aksi). Detail reimburse juga menampilkan aksi yang sama (`RowActions` +
+`getApprovalForEntity`, 2026-11-04).
 **Koreksi approver:** approver step aktif boleh mengoreksi isi pengajuan sebelum menyetujui — reimburse per baris
 (tanggal, company, project/New Acquisition, tipe, payment, nominal, lokasi, aktivitas, nama – jabatan, kwitansi),
 expense (tanggal, payment, nominal, keterangan), keterangan klaim → `ApprovalCorrection` (sebelum → sesudah),

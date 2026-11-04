@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { Actor } from "@/lib/services/access";
 import { approveRequest, rejectRequest } from "@/lib/services/approval";
-import { countPendingApprovals, listMyApprovalQueue } from "@/lib/services/approval-queries";
+import { countPendingApprovals, getApprovalForEntity, listMyApprovalQueue } from "@/lib/services/approval-queries";
 import { resetUserMfa } from "@/lib/services/mfa";
 import { saveCustomer } from "@/lib/services/project";
 import { saveReimbursementDraft, submitReimbursement } from "@/lib/services/reimbursement";
@@ -67,6 +67,16 @@ describe("super admin (2026-10-30)", () => {
       ["PENDING", null],
     ]);
     await expect(rejectRequest(testDb, { requestId: request.id, actorId: superId, reason: "Tidak sesuai" })).resolves.toMatchObject({ status: "REJECTED" });
+  });
+
+  it("2026-11-04: aksi di halaman detail hanya untuk yang berhak memutuskan step aktif", async () => {
+    const request = await submittedReimburse();
+    const view = (viewer: { id: string; role: string }) => getApprovalForEntity(testDb, "REIMBURSE", request.entityId, viewer);
+    expect(await view({ id: superId, role: "ADMIN" })).toMatchObject({ id: request.id, canApprove: true, correctable: true });
+    expect(await view(actors.yosep)).toMatchObject({ canApprove: true });
+    expect(await view(actors.ika)).toMatchObject({ canApprove: false }); // Admin biasa: bisa melihat, bukan approver step ini
+    expect(await view(actors.darwin)).toBeNull(); // Approver yang tidak tercantum
+    expect(await getApprovalForEntity(testDb, "REIMBURSE", "tidak-ada", actors.ika)).toBeNull();
   });
 
   it("tidak bisa diubah, dinonaktifkan, atau di-reset Admin lain; dirinya sendiri tetap bisa ganti password", async () => {

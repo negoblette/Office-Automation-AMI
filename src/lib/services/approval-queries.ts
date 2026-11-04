@@ -220,6 +220,12 @@ export async function getApprovalDetail(db: PrismaClient, requestId: string, vie
   return row;
 }
 
+/** Sama dengan `getApprovalDetail`, dicari dari entitas modul — untuk tombol aksi di halaman detail modul (2026-11-04). */
+export async function getApprovalForEntity(db: PrismaClient, module: ApprovalModule, entityId: string, viewer: { id: string; role: string }): Promise<ApprovalRow | null> {
+  const request = await db.approvalRequest.findUnique({ where: { module_entityId: { module, entityId } }, select: { id: true } });
+  return request ? getApprovalDetail(db, request.id, viewer) : null;
+}
+
 /** Antrian milik user yang login: pengajuan dengan step PENDING yang mencantumkan dia (super admin: semua). */
 export async function listMyApprovalQueue(db: PrismaClient, userId: string): Promise<ApprovalRow[]> {
   const requests = await db.approvalRequest.findMany({

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Fragment } from "react";
 import { notFound, redirect } from "next/navigation";
+import { RowActions } from "@/app/(main)/approval/approval-tables";
 import { CorrectionList } from "@/app/(main)/approval/correction-ui";
 import { ApprovalStepper } from "@/components/shared/approval-stepper";
 import { requestStatusBadge } from "@/components/shared/approval-status";
@@ -11,6 +12,7 @@ import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { formatDate, formatDateTime, formatRupiah } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL } from "@/lib/labels";
+import { getApprovalForEntity } from "@/lib/services/approval-queries";
 import { getReimbursementDetail } from "@/lib/services/reimbursement-queries";
 import { DraftActions } from "./draft-actions";
 import { divisionLabels } from "@/lib/services/division";
@@ -34,6 +36,8 @@ export default async function DetailReimbursePage({ params }: { params: Promise<
 
   const badge = requestStatusBadge(r.status, r.currentLevel);
   const title = r.number ?? "Draft Reimburse";
+  // Aksi approver langsung di halaman ini (2026-11-04): Setujui, Tolak, Koreksi, Batalkan — hanya yang berhak yang melihatnya.
+  const approval = user.role !== "STAFF" ? await getApprovalForEntity(prisma, "REIMBURSE", r.id, user) : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -46,7 +50,13 @@ export default async function DetailReimbursePage({ params }: { params: Promise<
             <StatusBadge variant={badge.variant}>{badge.label}</StatusBadge>
           </span>
         }
-        actions={isOwner && (r.status === "DRAFT" || r.status === "REJECTED") ? <DraftActions reimbursementId={r.id} rejected={r.status === "REJECTED"} incomplete={r.draftForm !== null} /> : undefined}
+        actions={
+          isOwner && (r.status === "DRAFT" || r.status === "REJECTED") ? (
+            <DraftActions reimbursementId={r.id} rejected={r.status === "REJECTED"} incomplete={r.draftForm !== null} />
+          ) : approval ? (
+            <RowActions row={approval} />
+          ) : undefined
+        }
       />
 
       <section className="grid gap-4 rounded-2xl bg-card p-5 shadow-card sm:grid-cols-4">
