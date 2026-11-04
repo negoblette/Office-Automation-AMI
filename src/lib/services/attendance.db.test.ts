@@ -115,6 +115,28 @@ describe("rekap", () => {
   });
 });
 
+describe("sedang cuti (2026-11-04)", () => {
+  const leave = () =>
+    testDb.leaveRequest.create({
+      data: { number: "LV/2026/09/0009", employeeId: andi.employeeId!, startDate: d("2026-09-25"), endDate: d("2026-09-28"), workingDays: 2, deductDays: 2, reason: "x", status: "APPROVED" },
+    });
+
+  it("hari cuti: clock in & clock out ditolak, tombol tidak tersedia", async () => {
+    await clockIn(testDb, andi, jakartaDateTime("2026-09-25", "08:00"));
+    await leave();
+    await expect(clockOut(testDb, andi, jakartaDateTime("2026-09-25", "17:00"))).rejects.toThrow("sedang cuti");
+    await expect(clockIn(testDb, andi, jakartaDateTime("2026-09-28", "08:00"))).rejects.toThrow("Anda sedang cuti hari ini (LV/2026/09/0009)");
+    expect(await getTodayAttendance(testDb, andi.employeeId!, jakartaDateTime("2026-09-28", "08:00"))).toMatchObject({ onLeave: true, canClockIn: false, canClockOut: false });
+  });
+
+  it("akhir pekan di dalam rentang cuti bukan hari cuti; cuti yang masih menunggu tidak memblokir", async () => {
+    await leave();
+    await expect(clockIn(testDb, andi, jakartaDateTime("2026-09-26", "09:00"))).resolves.toBeDefined(); // Sabtu
+    await testDb.leaveRequest.updateMany({ data: { status: "PENDING" } });
+    await expect(clockIn(testDb, andi, jakartaDateTime("2026-09-28", "08:00"))).resolves.toBeDefined();
+  });
+});
+
 describe("clock out otomatis di jam pulang (2026-10-30)", () => {
   it("sebelum jam pulang tidak disentuh; setelahnya clock out = jam pulang, ditandai otomatis & tercatat audit", async () => {
     await clockIn(testDb, andi, jakartaDateTime("2026-09-25", "08:00"));

@@ -46,7 +46,7 @@ export default async function DetailReimbursePage({ params }: { params: Promise<
             <StatusBadge variant={badge.variant}>{badge.label}</StatusBadge>
           </span>
         }
-        actions={isOwner && (r.status === "DRAFT" || r.status === "REJECTED") ? <DraftActions reimbursementId={r.id} rejected={r.status === "REJECTED"} /> : undefined}
+        actions={isOwner && (r.status === "DRAFT" || r.status === "REJECTED") ? <DraftActions reimbursementId={r.id} rejected={r.status === "REJECTED"} incomplete={r.draftForm !== null} /> : undefined}
       />
 
       <section className="grid gap-4 rounded-2xl bg-card p-5 shadow-card sm:grid-cols-4">
@@ -70,6 +70,12 @@ export default async function DetailReimbursePage({ params }: { params: Promise<
             </div>
           )}
         </section>
+      )}
+
+      {r.draftForm !== null && (
+        <p role="status" className="rounded-2xl bg-warning-soft px-5 py-4 text-sm">
+          <span className="font-semibold">Draft belum lengkap.</span> Isian Anda tersimpan. Tekan Edit untuk melanjutkan; draft bisa diajukan setelah semua isian lengkap.
+        </p>
       )}
 
       <TableScroll as="section" label="Rincian biaya reimburse" className="rounded-2xl bg-card shadow-card">

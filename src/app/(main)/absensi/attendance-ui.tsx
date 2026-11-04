@@ -119,6 +119,8 @@ export function ClockCard({ today, className }: { today: TodayAttendance | null;
       </div>
       {!today ? (
         <p className="text-sm text-muted-foreground">Akun belum terhubung ke data karyawan.</p>
+      ) : today.onLeave ? (
+        <StatusBadge variant="info">Sedang cuti hari ini</StatusBadge>
       ) : today.canClockIn ? (
         <Button size="lg" disabled={pending} onClick={() => run(clockInAction)}>
           {pending ? <Loader2 className="animate-spin" aria-hidden /> : <LogIn aria-hidden />} Clock In

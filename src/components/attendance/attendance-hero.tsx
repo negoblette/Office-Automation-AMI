@@ -13,12 +13,13 @@ import type { TodayAttendance } from "@/lib/services/attendance-queries";
 import { cn } from "@/lib/utils";
 import styles from "./attendance-hero.module.css";
 
-type HeroState = "in" | "out" | "done";
+type HeroState = "in" | "out" | "done" | "leave";
 
 const STATUS_LABEL: Record<HeroState, string> = {
   in: "Belum clock in",
   out: "Sedang bekerja",
   done: "Absen hari ini lengkap",
+  leave: "Sedang cuti hari ini",
 };
 
 /**
@@ -33,7 +34,7 @@ export function AttendanceHero({ today, className, style }: { today: TodayAttend
   const [error, setError] = useState<string | null>(null);
   const { confirm } = useFeedback();
   const clock = useJakartaClock();
-  const state: HeroState | null = !today ? null : today.canClockIn ? "in" : today.canClockOut ? "out" : "done";
+  const state: HeroState | null = !today ? null : today.onLeave ? "leave" : today.canClockIn ? "in" : today.canClockOut ? "out" : "done";
 
   // Animasi ganti tombol hanya saat keadaannya berubah setelah halaman terbuka (mis. selesai Clock In).
   const [shownState, setShownState] = useState(state);
@@ -57,7 +58,7 @@ export function AttendanceHero({ today, className, style }: { today: TodayAttend
         today.lateMinutes > 0 ? `terlambat ${formatDuration(today.lateMinutes)}` : null,
         today.earlyLeaveMinutes > 0 ? `pulang cepat ${formatDuration(today.earlyLeaveMinutes)}` : null,
         // Clock out otomatis di jam pulang (2026-10-30): yang masih lembur menekan Clock Out untuk jam sebenarnya.
-        today.autoClockOut ? "masih bekerja? tekan Clock Out" : null,
+        today.autoClockOut && !today.onLeave ? "masih bekerja? tekan Clock Out" : null,
       ].filter((note): note is string => note !== null)
     : [];
 
@@ -93,7 +94,7 @@ export function AttendanceHero({ today, className, style }: { today: TodayAttend
         <div className="flex w-full flex-wrap items-center justify-between gap-x-5 gap-y-3 sm:ml-auto sm:w-auto sm:justify-end">
           <p className="flex flex-col leading-snug sm:items-end sm:text-right">
             <span className="text-[15px] font-bold">
-              {today?.autoClockOut ? "Clock out otomatis" : state ? STATUS_LABEL[state] : "Akun belum terhubung ke data karyawan."}
+              {today?.autoClockOut && !today.onLeave ? "Clock out otomatis" : state ? STATUS_LABEL[state] : "Akun belum terhubung ke data karyawan."}
             </span>
             {today && (
               <span className="text-[13.5px] text-on-hero-2">

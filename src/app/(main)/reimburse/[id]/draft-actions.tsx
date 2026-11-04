@@ -11,7 +11,16 @@ import { deleteReimbursementAction, submitReimbursementAction } from "../actions
 
 /** Aksi pemohon untuk draft: Edit, Hapus, Ajukan. */
 /** Draft: Edit / Hapus / Ajukan. Ditolak (2026-10-12): Revisi / Ajukan Ulang. */
-export function DraftActions({ reimbursementId, rejected = false }: { reimbursementId: string; rejected?: boolean }) {
+export function DraftActions({
+  reimbursementId,
+  rejected = false,
+  incomplete = false,
+}: {
+  reimbursementId: string;
+  rejected?: boolean;
+  /** Draft belum lengkap (2026-11-04): belum bisa diajukan. */
+  incomplete?: boolean;
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -21,7 +30,7 @@ export function DraftActions({ reimbursementId, rejected = false }: { reimbursem
     <div className="flex flex-col items-end gap-2">
       <div className="flex flex-wrap gap-2">
         <Link href={`/reimburse/${reimbursementId}/edit`} className={buttonVariants({ variant: "outline", size: "lg" })}>
-          <Pencil aria-hidden /> {rejected ? "Revisi" : "Edit"}
+          <Pencil aria-hidden /> {rejected ? "Revisi" : incomplete ? "Lanjutkan Mengisi" : "Edit"}
         </Link>
         {!rejected && (
           <Button
@@ -44,22 +53,24 @@ export function DraftActions({ reimbursementId, rejected = false }: { reimbursem
             <Trash2 aria-hidden /> Hapus
           </Button>
         )}
-        <Button
-          size="lg"
-          disabled={pending}
-          onClick={() => {
-            setError(null);
-            startTransition(async () => {
-              const result = await submitReimbursementAction(reimbursementId);
-              if (result.ok) {
-                notify(rejected ? "Reimburse diajukan ulang" : "Reimburse diajukan");
-                router.refresh();
-              } else setError(result.error);
-            });
-          }}
-        >
-          {pending ? <Loader2 className="animate-spin" aria-hidden /> : <Send aria-hidden />} {rejected ? "Ajukan Ulang" : "Ajukan"}
-        </Button>
+        {!incomplete && (
+          <Button
+            size="lg"
+            disabled={pending}
+            onClick={() => {
+              setError(null);
+              startTransition(async () => {
+                const result = await submitReimbursementAction(reimbursementId);
+                if (result.ok) {
+                  notify(rejected ? "Reimburse diajukan ulang" : "Reimburse diajukan");
+                  router.refresh();
+                } else setError(result.error);
+              });
+            }}
+          >
+            {pending ? <Loader2 className="animate-spin" aria-hidden /> : <Send aria-hidden />} {rejected ? "Ajukan Ulang" : "Ajukan"}
+          </Button>
+        )}
       </div>
       <FormAlert message={error} />
     </div>

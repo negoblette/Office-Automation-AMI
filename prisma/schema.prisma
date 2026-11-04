@@ -492,6 +492,8 @@ model Reimbursement {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
+  /// Draft belum lengkap (2026-11-04): isian form apa adanya; `items` kosong sampai lengkap. null = draft/pengajuan normal.
+  draftForm Json?
   items     ReimbursementItem[]
   deletedAt DateTime? // soft delete: data tidak dihapus permanen (NFR v1.14)
 

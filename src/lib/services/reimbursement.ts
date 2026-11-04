@@ -3,9 +3,9 @@
 // (efek final di approval-effects.ts). Hanya pemohon yang boleh mengubah/menghapus DRAFT.
 import { randomUUID } from "node:crypto";
 import type { PaymentMethod } from "@/generated/prisma/enums";
-import type { Prisma, PrismaClient } from "@/generated/prisma/client";
+import { Prisma, type PrismaClient } from "@/generated/prisma/client";
 import { fromIsoDate } from "@/lib/format";
-import { type ReimbursementInput, reimbursementTotals } from "@/lib/validators/reimbursement";
+import { type ReimbursementDraftForm, type ReimbursementInput, reimbursementTotals } from "@/lib/validators/reimbursement";
 import type { Actor } from "./access";
 import { type ApprovalNotification, restartApproval } from "./approval";
 import { logAudit } from "./audit";
@@ -116,7 +116,7 @@ export async function saveReimbursementDraft(
       ...(await overtimeReimbursementItems(tx, employee.id, input.overtimeIds, before?.id ?? null)),
     ];
     if (items.length > 50) throw new ServiceError("Maksimal 50 baris per pengajuan");
-    const data = { note: input.note, division: employee.division, ...totalsOf(items) };
+    const data = { note: input.note, division: employee.division, draftForm: Prisma.DbNull, ...totalsOf(items) };
 
     let id: string;
     if (before) {
@@ -137,6 +137,37 @@ export async function saveReimbursementDraft(
   });
 }
 
+/**
+ * Simpan draft yang BELUM lengkap (2026-11-04): isian form disimpan apa adanya tanpa baris; bisa dilanjutkan lewat Edit
+ * dan baru bisa diajukan setelah lengkap. Revisi pengajuan yang ditolak & reimburse overtime tidak lewat sini.
+ */
+export async function saveIncompleteReimbursementDraft(
+  db: PrismaClient,
+  actor: Actor,
+  reimbursementId: string | null,
+  form: ReimbursementDraftForm,
+): Promise<SaveDraftResult> {
+  return db.$transaction(async (tx) => {
+    const employee = await getRequester(tx, actor);
+    const before = reimbursementId ? await getOwnDraft(tx, actor, reimbursementId) : null;
+    if (before?.status === "REJECTED") throw new ServiceError("Lengkapi semua isian sebelum menyimpan revisi");
+    if (before?.items.some((item) => item.overtimeId)) throw new ServiceError("Jenis reimburse (biasa / overtime) tidak bisa diubah setelah disimpan");
+    const data = { note: form.note || null, division: employee.division, draftForm: form, totalPersonal: 0n, totalCorporate: 0n, total: 0n };
+
+    let id: string;
+    if (before) {
+      await tx.reimbursementItem.deleteMany({ where: { reimbursementId: before.id } });
+      await tx.reimbursement.update({ where: { id: before.id }, data });
+      id = before.id;
+    } else {
+      const created = await tx.reimbursement.create({ data: { ...data, employeeId: employee.id, number: `${DRAFT_NUMBER_PREFIX}${randomUUID()}` } });
+      id = created.id;
+    }
+    await logAudit(tx, { actorId: actor.id, action: before ? "UPDATE" : "CREATE", entity: "Reimbursement", entityId: id, before, after: { id, incomplete: true, draftForm: form } });
+    return { reimbursementId: id };
+  });
+}
+
 export type SubmitResult = { number: string; status: "PENDING" | "APPROVED"; notifications: ApprovalNotification[] };
 
 /** Ajukan draft: nomor RMB + approval dibuat dalam satu transaksi (RMB-01, RMB-07). */
@@ -144,6 +175,7 @@ export async function submitReimbursement(db: PrismaClient, actor: Actor, reimbu
   return db.$transaction(async (tx) => {
     const employee = await getRequester(tx, actor);
     const draft = await getOwnDraft(tx, actor, reimbursementId);
+    if (draft.draftForm !== null) throw new ServiceError("Draft belum lengkap. Buka Edit untuk melengkapi isiannya sebelum mengajukan");
     if (draft.items.length === 0) throw new ServiceError("Tambahkan minimal 1 baris sebelum mengajukan");
 
     // Ajukan ulang setelah ditolak: nomor tetap, approval dimulai lagi dari level 1.

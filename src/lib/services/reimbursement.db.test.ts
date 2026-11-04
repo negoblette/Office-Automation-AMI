@@ -3,11 +3,12 @@ import type { Actor } from "@/lib/services/access";
 import { approveRequest } from "@/lib/services/approval";
 import {
   deleteReimbursementDraft,
+  saveIncompleteReimbursementDraft,
   saveReimbursementDraft,
   submitReimbursement,
 } from "@/lib/services/reimbursement";
 import { saveCustomer } from "@/lib/services/project";
-import { itemsToVisits, NEW_ACQUISITION, reimbursementFormSchema, reimbursementSchema } from "@/lib/validators/reimbursement";
+import { itemsToVisits, NEW_ACQUISITION, reimbursementDraftFormSchema, reimbursementFormSchema, reimbursementSchema } from "@/lib/validators/reimbursement";
 import { testDb } from "@/test/db";
 import { resetAndSeed } from "@/test/seed";
 
@@ -52,6 +53,32 @@ async function approvalOf(entityId: string) {
 }
 
 describe("draft", () => {
+  const partial = (activity: string) =>
+    reimbursementDraftFormSchema.parse({
+      note: "",
+      visits: [{ date: "2026-09-20", customerId, project: "", lines: [{ activity, participants: "", location: "", typeId: "", hasReceipt: false, paymentMethod: "PERSONAL", amount: null }] }],
+    });
+
+  it("2026-11-04: draft belum lengkap tersimpan apa adanya, belum bisa diajukan; setelah lengkap penanda hilang", async () => {
+    const { reimbursementId } = await saveIncompleteReimbursementDraft(testDb, actors.andi, null, partial("Kunjungan"));
+    expect(await testDb.reimbursement.findUniqueOrThrow({ where: { id: reimbursementId }, include: { items: true } })).toMatchObject({ status: "DRAFT", total: 0n, items: [] });
+    await expect(submitReimbursement(testDb, actors.andi, reimbursementId)).rejects.toThrow("Draft belum lengkap");
+
+    await saveIncompleteReimbursementDraft(testDb, actors.andi, reimbursementId, partial("Kunjungan klien"));
+    const updated = await testDb.reimbursement.findUniqueOrThrow({ where: { id: reimbursementId } });
+    expect((updated.draftForm as { visits: { lines: { activity: string }[] }[] }).visits[0].lines[0].activity).toBe("Kunjungan klien");
+
+    await saveReimbursementDraft(testDb, actors.andi, reimbursementId, input([item()]));
+    expect((await testDb.reimbursement.findUniqueOrThrow({ where: { id: reimbursementId } })).draftForm).toBeNull();
+    await expect(submitReimbursement(testDb, actors.andi, reimbursementId)).resolves.toMatchObject({ status: "PENDING" });
+  });
+
+  it("2026-11-04: form kosong sama sekali tidak disimpan", () => {
+    expect(() => reimbursementDraftFormSchema.parse({ note: "", visits: [{ date: "2026-09-20", customerId: "", project: "", lines: [{ hasReceipt: false, paymentMethod: "PERSONAL", amount: null }] }] })).toThrow(
+      "Isi minimal satu data",
+    );
+  });
+
   it("draft: nomor sementara, total dihitung server (Cash/CC/Total), company dari master", async () => {
     const { reimbursementId } = await saveReimbursementDraft(
       testDb,

@@ -26,9 +26,27 @@ export async function saveWorkHours(db: PrismaClient, actorId: string, input: Wo
   });
 }
 
-async function isWorkdayAt(tx: Tx, dateIso: string) {
+async function isWorkdayAt(tx: Tx | PrismaClient, dateIso: string) {
   const holiday = await tx.holiday.findUnique({ where: { date: fromIsoDate(dateIso) } });
   return isWorkday(dateIso, new Set(holiday && !holiday.deletedAt ? [dateIso] : []));
+}
+
+/**
+ * Cuti disetujui yang mencakup tanggal ini, atau null (2026-11-04). Hanya hari kerja: Sabtu, Minggu & libur di dalam
+ * rentang cuti bukan hari cuti, jadi tetap boleh absen.
+ */
+export async function approvedLeaveOn(db: Tx | PrismaClient, employeeId: string, dateIso: string) {
+  const date = fromIsoDate(dateIso);
+  const leave = await db.leaveRequest.findFirst({
+    where: { employeeId, status: "APPROVED", startDate: { lte: date }, endDate: { gte: date } },
+    select: { number: true },
+  });
+  return leave && (await isWorkdayAt(db, dateIso)) ? leave : null;
+}
+
+async function assertNotOnLeave(tx: Tx, employeeId: string, dateIso: string) {
+  const leave = await approvedLeaveOn(tx, employeeId, dateIso);
+  if (leave) throw new ServiceError(`Anda sedang cuti hari ini (${leave.number}), tidak bisa absen`);
 }
 
 async function requireActiveEmployee(tx: Tx, actor: Actor) {
@@ -43,6 +61,7 @@ export async function clockIn(db: PrismaClient, actor: Actor, now = new Date()) 
   return db.$transaction(async (tx) => {
     const employeeId = await requireActiveEmployee(tx, actor);
     const dateIso = toJakartaIsoDate(now);
+    await assertNotOnLeave(tx, employeeId, dateIso);
     const existing = await tx.attendance.findUnique({ where: { employeeId_date: { employeeId, date: fromIsoDate(dateIso) } } });
     if (existing) throw new ServiceError("Anda sudah clock in hari ini");
     const [hours, workday] = await Promise.all([getWorkHours(tx), isWorkdayAt(tx, dateIso)]);
@@ -62,6 +81,7 @@ export async function clockOut(db: PrismaClient, actor: Actor, now = new Date())
   return db.$transaction(async (tx) => {
     const employeeId = await requireActiveEmployee(tx, actor);
     const dateIso = toJakartaIsoDate(now);
+    await assertNotOnLeave(tx, employeeId, dateIso);
     const record = await tx.attendance.findUnique({ where: { employeeId_date: { employeeId, date: fromIsoDate(dateIso) } } });
     if (!record) throw new ServiceError("Anda belum clock in hari ini");
     if (record.clockOut && !record.autoClockOut) throw new ServiceError("Anda sudah clock out hari ini");

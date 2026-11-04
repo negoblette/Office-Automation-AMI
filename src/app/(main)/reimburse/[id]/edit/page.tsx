@@ -4,7 +4,8 @@ import { PageHeader } from "@/components/shared/page-header";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { getReimbursementDetail, getReimbursementFormOptions } from "@/lib/services/reimbursement-queries";
-import { itemsToVisits } from "@/lib/validators/reimbursement";
+import { itemsToVisits, reimbursementDraftFormSchema } from "@/lib/validators/reimbursement";
+import type { ReimbursementFormValues } from "../../form-defaults";
 import { ReimbursementForm } from "../../reimbursement-form";
 import { canAddCustomerProject } from "@/lib/services/project";
 import { listReimbursableOvertimes } from "@/lib/services/overtime-queries";
@@ -47,21 +48,26 @@ export default async function EditReimbursePage({ params }: { params: Promise<{ 
         reimbursementId={id}
         draftKey={`reimburse:${user.id}:${id}`}
         options={await getReimbursementFormOptions(prisma, detail.division, await canAddCustomerProject(prisma, user))}
-        defaultValues={{
-          note: detail.note ?? "",
-          visits: itemsToVisits(detail.items).map((visit) => ({
-            ...visit,
-            lines: visit.lines.map((item) => ({
-              activity: item.activity,
-              participants: item.participants,
-              location: item.location,
-              typeId: item.typeId,
-              hasReceipt: item.hasReceipt,
-              paymentMethod: item.paymentMethod,
-              amount: item.amount,
-            })),
-          })),
-        }}
+        defaultValues={
+          // Draft belum lengkap (2026-11-04): lanjutkan dari isian yang tersimpan.
+          detail.draftForm !== null
+            ? (reimbursementDraftFormSchema.parse(detail.draftForm) as ReimbursementFormValues)
+            : {
+                note: detail.note ?? "",
+                visits: itemsToVisits(detail.items).map((visit) => ({
+                  ...visit,
+                  lines: visit.lines.map((item) => ({
+                    activity: item.activity,
+                    participants: item.participants,
+                    location: item.location,
+                    typeId: item.typeId,
+                    hasReceipt: item.hasReceipt,
+                    paymentMethod: item.paymentMethod,
+                    amount: item.amount,
+                  })),
+                })),
+              }
+        }
       />
     </div>
   );

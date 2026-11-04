@@ -83,6 +83,56 @@ export const reimbursementFormSchema = z
     }),
   );
 
+const draftText = (max: number) =>
+  z
+    .string()
+    .max(max, { error: `Isian maksimal ${max} karakter` })
+    .nullish()
+    .transform((value) => value ?? "");
+
+/**
+ * Draft belum lengkap (2026-11-04): isian form apa adanya, hanya dibatasi ukurannya. Kelengkapan & aturan bisnis dicek
+ * saat draft lengkap disimpan atau diajukan (`reimbursementFormSchema`, `buildItems`).
+ */
+export const reimbursementDraftFormSchema = z
+  .object({
+    note: draftText(500),
+    visits: z
+      .array(
+        z.object({
+          date: draftText(10),
+          customerId: draftText(64),
+          project: draftText(64),
+          lines: z
+            .array(
+              z.object({
+                activity: draftText(300),
+                participants: draftText(500),
+                location: draftText(150),
+                typeId: draftText(64),
+                hasReceipt: z.boolean().catch(false),
+                paymentMethod: z.enum(PaymentMethod).catch("PERSONAL"),
+                amount: z.number().int().min(0).nullable().catch(null),
+              }),
+            )
+            .max(50, { error: "Maksimal 50 baris per pengajuan" }),
+        }),
+      )
+      .max(50, { error: "Maksimal 50 baris per pengajuan" }),
+  })
+  .superRefine((v, ctx) => {
+    if (v.visits.reduce((n, visit) => n + visit.lines.length, 0) > 50) ctx.addIssue({ code: "custom", path: ["visits"], message: "Maksimal 50 baris per pengajuan" });
+    const filled =
+      v.note.trim() !== "" ||
+      v.visits.some(
+        (visit) =>
+          visit.customerId !== "" ||
+          visit.lines.some((line) => line.activity.trim() || line.participants.trim() || line.location.trim() || line.typeId || line.amount),
+      );
+    if (!filled) ctx.addIssue({ code: "custom", path: ["visits"], message: "Isi minimal satu data sebelum menyimpan draft" });
+  });
+export type ReimbursementDraftForm = z.output<typeof reimbursementDraftFormSchema>;
+
 /** Baris tersimpan → kunjungan untuk form edit: baris berurutan dengan header sama digabung. */
 export function itemsToVisits<T extends { date: string; customerId: string | null; projectId: string | null; newAcquisition: boolean }>(items: T[]) {
   const visits: { date: string; customerId: string; project: string; lines: T[] }[] = [];

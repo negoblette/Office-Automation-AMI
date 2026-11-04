@@ -21,7 +21,8 @@ export default async function ReimbursePage() {
   ]);
 
   const thisMonth = toJakartaIsoDate().slice(0, 7);
-  const submittedThisMonth = rows.filter((row) => row.submittedAt && toJakartaIsoDate(row.submittedAt).startsWith(thisMonth));
+  // Pengajuan yang ditolak tidak dihitung (2026-11-04); dihitung lagi setelah direvisi & diajukan ulang.
+  const submittedThisMonth = rows.filter((row) => row.status !== "REJECTED" && row.submittedAt && toJakartaIsoDate(row.submittedAt).startsWith(thisMonth));
   const pending = rows.filter((row) => row.status === "PENDING");
   const approved = rows.filter((row) => row.status === "APPROVED");
 

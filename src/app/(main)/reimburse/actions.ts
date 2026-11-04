@@ -6,8 +6,9 @@ import { type ActionResult, toActionError } from "@/lib/actions";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { enqueueApprovalNotifications } from "@/lib/mail/approval-emails";
-import { deleteReimbursementDraft, saveReimbursementDraft, submitReimbursement } from "@/lib/services/reimbursement";
-import { reimbursementSchema } from "@/lib/validators/reimbursement";
+import { ServiceError } from "@/lib/services/errors";
+import { deleteReimbursementDraft, saveIncompleteReimbursementDraft, saveReimbursementDraft, submitReimbursement } from "@/lib/services/reimbursement";
+import { reimbursementDraftFormSchema, reimbursementFormSchema, reimbursementSchema } from "@/lib/validators/reimbursement";
 
 function revalidateReimburse() {
   revalidatePath("/reimburse", "layout");
@@ -37,6 +38,36 @@ export async function saveReimbursementAction(
     }
     revalidateReimburse();
     return { ok: true, data: { reimbursementId: saved.reimbursementId, number } };
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+/**
+ * Tombol Simpan Draft (2026-11-04): isian lengkap → draft biasa; belum lengkap → isian disimpan apa adanya supaya bisa
+ * dilanjutkan nanti. `values` = isian mentah form (bukan hasil validasi).
+ */
+export async function saveReimbursementDraftAction(
+  reimbursementId: string | null,
+  values: unknown,
+): Promise<ActionResult<{ reimbursementId: string; complete: boolean }>> {
+  const user = await requireUser();
+  try {
+    const id = z.string().nullable().parse(reimbursementId);
+    const parsed = reimbursementFormSchema.safeParse(values);
+    if (parsed.success) {
+      try {
+        const saved = await saveReimbursementDraft(prisma, user, id, parsed.data);
+        revalidateReimburse();
+        return { ok: true, data: { reimbursementId: saved.reimbursementId, complete: true } };
+      } catch (error) {
+        // Aturan bisnis belum terpenuhi (mis. Names – Position kosong) → tetap tersimpan sebagai draft belum lengkap.
+        if (!(error instanceof ServiceError)) throw error;
+      }
+    }
+    const saved = await saveIncompleteReimbursementDraft(prisma, user, id, reimbursementDraftFormSchema.parse(values));
+    revalidateReimburse();
+    return { ok: true, data: { reimbursementId: saved.reimbursementId, complete: false } };
   } catch (error) {
     return toActionError(error);
   }

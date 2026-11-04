@@ -28,6 +28,8 @@ export type ReimbursementListRow = {
   total: number;
   itemCount: number;
   summary: string;
+  /** Draft belum lengkap (2026-11-04). */
+  incomplete: boolean;
 };
 
 /**
@@ -59,7 +61,8 @@ export async function listReimbursements(
     submittedAt: row.submittedAt?.toISOString() ?? null,
     ...serializeMoney({ totalPersonal: row.totalPersonal, totalCorporate: row.totalCorporate, total: row.total }),
     itemCount: row.items.length,
-    summary: row.items[0]?.activity ?? "—",
+    summary: row.items[0]?.activity ?? (row.draftForm !== null ? "Draft belum lengkap" : "—"),
+    incomplete: row.draftForm !== null,
   }));
 }
 
@@ -122,6 +125,8 @@ export async function getReimbursementDetail(db: PrismaClient, reimbursementId: 
     employeePosition: r.employee.position,
     division: r.division,
     note: r.note,
+    /** Isian draft belum lengkap (2026-11-04); null = draft/pengajuan normal. */
+    draftForm: r.draftForm,
     createdAt: r.createdAt.toISOString(),
     submittedAt: r.submittedAt?.toISOString() ?? null,
     approvedAt: r.approvedAt?.toISOString() ?? null,

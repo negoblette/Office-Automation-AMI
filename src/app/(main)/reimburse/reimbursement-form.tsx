@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Building2, Loader2, Plus, Send, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Controller, FormProvider, useFieldArray, useForm, useFormContext, useWatch } from "react-hook-form";
 import type { z } from "zod";
 import { DateInputField, SelectInputField, TextareaField, TextInputField } from "@/components/form/fields";
@@ -21,7 +21,7 @@ import type { ReimbursementFormOptions } from "@/lib/services/reimbursement-quer
 import { cn } from "@/lib/utils";
 import { dailySubtotals, NEW_ACQUISITION, reimbursementFormSchema, reimbursementTotals } from "@/lib/validators/reimbursement";
 import { CustomerDialog, ProjectDialog } from "../project/project-dialogs";
-import { saveReimbursementAction } from "./actions";
+import { saveReimbursementAction, saveReimbursementDraftAction } from "./actions";
 import { emptyLine, emptyVisit } from "./form-defaults";
 
 type Input = z.input<typeof reimbursementFormSchema>;
@@ -63,21 +63,40 @@ export function ReimbursementForm({
   const lineCount = lines.length;
   const visitsError = form.formState.errors.visits?.root?.message ?? form.formState.errors.visits?.message;
 
-  const save = (andSubmit: boolean) =>
-    form.handleSubmit((values) =>
+  // Ajukan: isian wajib lengkap; pesan di dekat tombol karena kolom yang kurang bisa berada di luar layar.
+  const [incomplete, setIncomplete] = useState(false);
+  const submitForm = form.handleSubmit(
+    (values) => {
+      setIncomplete(false);
       submit(
-        () => saveReimbursementAction(reimbursementId, values, andSubmit),
+        () => saveReimbursementAction(reimbursementId, values, true),
         (data) => {
           draft.clear();
-          notify(andSubmit ? "Reimburse diajukan" : "Draft reimburse tersimpan");
+          notify("Reimburse diajukan");
           router.push(`/reimburse/${data.reimbursementId}`);
         },
-      ),
+      );
+    },
+    () => setIncomplete(true),
+  );
+
+  /** Simpan Draft (2026-11-04): tanpa cek kelengkapan — isian belum lengkap tetap tersimpan dan bisa dilanjutkan. */
+  const saveDraft = () => {
+    setIncomplete(false);
+    form.clearErrors();
+    submit(
+      () => saveReimbursementDraftAction(reimbursementId, form.getValues()),
+      (data) => {
+        draft.clear();
+        notify(data.complete ? "Draft reimburse tersimpan" : "Draft tersimpan. Lengkapi isiannya sebelum diajukan");
+        router.push(`/reimburse/${data.reimbursementId}`);
+      },
     );
+  };
 
   return (
     <FormProvider {...form}>
-      <form onSubmit={save(true)} noValidate className="flex flex-col gap-6">
+      <form onSubmit={submitForm} noValidate className="flex flex-col gap-6">
         {draft.pendingDraft && <DraftNotice savedAt={draft.pendingDraft.savedAt} onRestore={draft.restore} onDiscard={draft.discard} />}
         <FormAlert message={serverError ?? visitsError ?? null} />
         {options.types.length === 0 && <FormAlert message="Belum ada tipe reimburse untuk divisi Anda. Hubungi Admin." />}
@@ -116,8 +135,10 @@ export function ReimbursementForm({
           </dl>
         </section>
 
+        {incomplete && <FormAlert message="Masih ada isian yang belum lengkap. Periksa kolom yang ditandai, atau tekan Simpan Draft untuk melanjutkannya nanti." />}
+        {(visitsError ?? serverError) && <FormAlert message={visitsError ?? serverError} />}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button type="button" variant="outline" size="lg" disabled={pending} onClick={save(false)}>
+          <Button type="button" variant="outline" size="lg" disabled={pending} onClick={saveDraft}>
             Simpan Draft
           </Button>
           <Button type="submit" size="lg" disabled={pending || options.types.length === 0}>

@@ -250,6 +250,9 @@ tampil "ID - Nama" (`Project.code`, `projectLabel`); subtotal per kunjungan & pe
 orang per bulan di `/cetak/reimburse` (route group `(print)`, print browser → PDF); export Excel per bulan di
 `/api/export/reimburse` (`services/reimburse-export.ts`, `exceljs`; Admin bisa semua karyawan, 2026-10-16).
 Biaya project dihitung **per tahun kalender** (cutoff 31 Des; `?tahun=` untuk history).
+**Draft (2026-11-04):** tombol Simpan Draft tidak mengecek kelengkapan: isian lengkap → draft biasa; belum lengkap → disimpan apa
+adanya di `Reimbursement.draftForm` tanpa baris (`saveIncompleteReimbursementDraft`, tidak bisa diajukan sampai lengkap; bukan untuk
+revisi yang ditolak). Kartu "Diajukan bulan ini" tidak menghitung pengajuan yang ditolak.
 
 **Isi data mandiri:** Admin hanya membuat akun minimal (nama, email, divisi,
 jabatan, tanggal masuk, role); staf melengkapi sendiri data diri, keluarga, dokumen,
@@ -283,6 +286,8 @@ karyawan per hari. Terlambat / pulang cepat terhadap jam kerja `AppSetting atten
 **Clock out otomatis (2026-10-30):** job `attendance.auto-clock-out` (tiap 5 menit) mengisi clock out = jam pulang untuk
 yang lupa (`Attendance.autoClockOut`; clock in setelah jam pulang → 23:59). Yang lembur masih bisa clock out sendiri
 sekali di hari yang sama (jam otomatis diganti); koreksi Admin menghapus tanda otomatis.
+**Sedang cuti (2026-11-04):** hari kerja dalam cuti APPROVED → clock in/out ditolak server (`approvedLeaveOn`), tombol diganti
+"Sedang cuti hari ini". Sabtu/Minggu/libur dalam rentang cuti & cuti yang masih menunggu tidak memblokir.
 **Overtime (2026-10-30):** menu terpisah `/overtime`, hanya karyawan divisi Engineer (Admin: rekap). Boleh beberapa sesi
 per hari (satu baris per sesi), satu sesi berjalan; Clock Out = finalize customer + project + pekerjaan → approval modul
 `OVERTIME` (`OVT/…`, Ko Yosep; ditolak → revisi & ajukan ulang). Sesi APPROVED diajukan lewat **Reimburse Overtime**

@@ -3,7 +3,7 @@ import type { AppealReason, PrismaClient } from "@/generated/prisma/client";
 import { APPEAL_WINDOW_DAYS, appealDeadline, type DayStatus, dayStatus, isWorkday, type WorkHours } from "@/lib/attendance";
 import { formatTime, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { addDays } from "@/lib/leave";
-import { getWorkHours } from "./attendance";
+import { approvedLeaveOn, getWorkHours } from "./attendance";
 import { rejectionsOf } from "./approval";
 import { appealDates, appealOverlap } from "./attendance-appeal";
 
@@ -40,6 +40,8 @@ export type TodayAttendance = {
   autoClockOut: boolean;
   lateMinutes: number;
   earlyLeaveMinutes: number;
+  /** Sedang cuti hari ini (2026-11-04): tombol clock in/out tidak tampil. */
+  onLeave: boolean;
   canClockIn: boolean;
   canClockOut: boolean;
 };
@@ -161,9 +163,10 @@ export async function listMonthDays(db: PrismaClient, employeeId: string, yearMo
 
 export async function getTodayAttendance(db: PrismaClient, employeeId: string, now = new Date()): Promise<TodayAttendance> {
   const dateIso = toJakartaIsoDate(now);
-  const [row, hours] = await Promise.all([
+  const [row, hours, leave] = await Promise.all([
     db.attendance.findUnique({ where: { employeeId_date: { employeeId, date: fromIsoDate(dateIso) } } }),
     getWorkHours(db),
+    approvedLeaveOn(db, employeeId, dateIso),
   ]);
   return {
     date: dateIso,
@@ -173,8 +176,9 @@ export async function getTodayAttendance(db: PrismaClient, employeeId: string, n
     autoClockOut: row?.autoClockOut ?? false,
     lateMinutes: row?.lateMinutes ?? 0,
     earlyLeaveMinutes: row?.earlyLeaveMinutes ?? 0,
-    canClockIn: !row,
-    canClockOut: Boolean(row && (!row.clockOut || row.autoClockOut)),
+    onLeave: Boolean(leave),
+    canClockIn: !leave && !row,
+    canClockOut: !leave && Boolean(row && (!row.clockOut || row.autoClockOut)),
   };
 }
 
