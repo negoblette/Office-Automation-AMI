@@ -26,7 +26,24 @@ const requesterColumn = col.accessor("employeeName", {
   cell: ({ row }) => <PersonCell name={row.original.employeeName} subtitle={row.original.employeePosition} />,
 });
 const restColumns = [
-  col.accessor("categoryName", { header: "Kategori" }),
+  col.accessor("categoryName", {
+    header: "Kategori",
+    cell: ({ row }) => (
+      <div className="max-w-64">
+        <p className="truncate" title={row.original.categoryName}>
+          {row.original.categoryName}
+        </p>
+        {row.original.items.length > 1 && (
+          <p
+            className="cursor-help text-xs text-muted-foreground underline decoration-dotted underline-offset-2"
+            title={row.original.items.map((item) => `${formatDate(`${item.date}T00:00:00Z`, "short")} · ${item.categoryName} · ${formatRupiah(item.amount)}${item.note ? ` · ${item.note}` : ""}`).join("\n")}
+          >
+            {row.original.items.length} baris
+          </p>
+        )}
+      </div>
+    ),
+  }),
   col.accessor("amount", {
     header: "Nominal",
     enableGlobalFilter: false,
@@ -104,9 +121,7 @@ export function HealthClaimTable({ rows, showRequester, revise }: { rows: Health
                       revise={{
                         id: row.original.id,
                         number: row.original.number,
-                        categoryId: row.original.categoryId,
-                        claimDate: row.original.claimDate,
-                        amount: row.original.amount,
+                        items: row.original.items,
                         note: row.original.note,
                       }}
                     />

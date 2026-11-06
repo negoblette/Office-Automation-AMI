@@ -3,7 +3,7 @@ import type { ApprovalModule, Prisma, PrismaClient, RequestStatus } from "@/gene
 import type { ApprovalStepView } from "@/components/shared/approval-stepper";
 import { CORRECTABLE_MODULES, type CorrectionView, listCorrections } from "./approval-correction";
 import { APPEAL_REASON_LABEL, formatDuration } from "@/lib/attendance";
-import { formatDate, formatTime } from "@/lib/format";
+import { formatDate, formatRupiah, formatTime } from "@/lib/format";
 import { overtimeMinutes } from "@/lib/validators/overtime";
 import { EDUCATION_LEVEL_LABEL, LEAVE_TYPE_LABEL, leaveDeductLabel, projectLabel } from "@/lib/labels";
 import { canRevoke } from "./approval";
@@ -81,9 +81,13 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
   const roleOf = new Map(users.map((user) => [user.id, user.role]));
   const healthIds = requests.filter((r) => r.module === "HEALTH").map((r) => r.entityId);
   const claims = healthIds.length
-    ? await db.healthClaim.findMany({ where: { id: { in: healthIds } }, select: { id: true, amount: true } })
+    ? await db.healthClaim.findMany({
+        where: { id: { in: healthIds } },
+        select: { id: true, amount: true, note: true, items: { orderBy: { id: "asc" }, include: { category: { select: { name: true } } } } },
+      })
     : [];
   const claimAmountOf = new Map(claims.map((c) => [c.id, Number(c.amount)]));
+  const claimOf = new Map(claims.map((c) => [c.id, c]));
   const correctionsOf = await listCorrections(db, requests.map((r) => r.id));
   const certIds = requests.filter((r) => r.module === "CERTIFICATE").map((r) => r.entityId);
   const certificates = certIds.length
@@ -186,6 +190,16 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
           leaveDeductLabel(leave.deductDays, leave.workingDays),
         ];
         return { headline: parts.slice(0, 2).join(" · "), summary: parts.join(" · "), file: null };
+      }
+      // Klaim kesehatan (2026-11-06): ringkas di tabel, tiap baris di rincian.
+      const claim = claimOf.get(request.entityId);
+      if (request.module === "HEALTH" && claim) {
+        const lines = claim.items.map((item) => [formatDate(item.date, "short"), item.category.name, formatRupiah(item.amount), item.note].filter(Boolean).join(" · "));
+        return {
+          headline: `${claim.items.length} baris · ${formatRupiah(claim.amount)}`,
+          summary: [...lines, claim.note && `Catatan: ${claim.note}`].filter(Boolean).join("\n"),
+          file: null,
+        };
       }
       const c = certOf.get(request.entityId);
       if (request.module !== "CERTIFICATE" || !c) return { headline: null, summary: null, file: null };

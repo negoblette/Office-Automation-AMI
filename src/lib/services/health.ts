@@ -54,26 +54,33 @@ export async function submitHealthClaim(
       if (revised.status !== "REJECTED") throw new ServiceError("Hanya klaim yang ditolak yang bisa direvisi");
     }
 
-    const category = await tx.healthCategory.findUnique({ where: { id: input.categoryId } });
-    if (!category?.isActive) throw new ServiceError("Kategori klaim tidak tersedia", "categoryId");
+    const categories = await tx.healthCategory.findMany({ where: { id: { in: input.items.map((item) => item.categoryId) }, isActive: true }, select: { id: true } });
+    const activeCategories = new Set(categories.map((c) => c.id));
+    for (const [index, item] of input.items.entries()) {
+      if (!activeCategories.has(item.categoryId)) throw new ServiceError(`Baris ${index + 1}: kategori klaim tidak tersedia`, `items.${index}.categoryId`);
+    }
 
-    // HC-07: total klaim dibatasi plafon tahunan (tahun tanggal klaim).
-    const year = Number(input.claimDate.slice(0, 4));
+    // HC-07: total klaim dibatasi plafon tahunan (semua baris di tahun yang sama, dicek schema).
+    const total = input.items.reduce((sum, item) => sum + item.amount, 0);
+    const claimDate = input.items.map((item) => item.date).sort()[0];
+    const year = Number(claimDate.slice(0, 4));
     const plafond = await lockPlafond(tx, employeeId, year);
     const remaining = remainingPlafond(Number(plafond.annualAmount), await usedOrPendingAmount(tx, employeeId, year));
-    if (input.amount > remaining) {
-      throw new ServiceError(`Sisa plafon ${year} ${formatRupiah(Math.max(0, remaining))}, klaim ${formatRupiah(input.amount)}`, "amount");
+    if (total > remaining) {
+      throw new ServiceError(`Sisa plafon ${year} ${formatRupiah(Math.max(0, remaining))}, klaim ${formatRupiah(total)}`);
     }
 
     const number = revised ? revised.number : await nextDocumentNumber(tx, "HC");
     const data = {
-      categoryId: input.categoryId,
-      claimDate: fromIsoDate(input.claimDate),
-      amount: BigInt(input.amount),
+      categoryId: input.items[0].categoryId,
+      claimDate: fromIsoDate(claimDate),
+      amount: BigInt(total),
       note: input.note,
       status: "PENDING" as const,
       submittedAt: new Date(),
+      items: { create: input.items.map((item) => ({ categoryId: item.categoryId, date: fromIsoDate(item.date), amount: BigInt(item.amount), note: item.note })) },
     };
+    if (revised) await tx.healthClaimItem.deleteMany({ where: { claimId: revised.id } });
     const claim = revised
       ? await tx.healthClaim.update({ where: { id: revised.id }, data })
       : await tx.healthClaim.create({ data: { ...data, number, employeeId } });

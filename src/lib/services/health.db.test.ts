@@ -1,10 +1,11 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { toJakartaIsoDate } from "@/lib/format";
 import type { Actor } from "@/lib/services/access";
-import { approveRequest } from "@/lib/services/approval";
+import { approveRequest, rejectRequest } from "@/lib/services/approval";
+import { listMyApprovalQueue } from "@/lib/services/approval-queries";
 import { setHealthPlafond, setPayoutPaid, submitHealthClaim } from "@/lib/services/health";
 import { applyApprovedHealthClaim } from "@/lib/services/health-payout";
-import { getHealthPrintData } from "@/lib/services/health-queries";
+import { getHealthPrintData, listHealthClaims } from "@/lib/services/health-queries";
 import { healthClaimSchema, healthPlafondSchema } from "@/lib/validators/health";
 import { testDb } from "@/test/db";
 import { resetAndSeed } from "@/test/seed";
@@ -33,7 +34,7 @@ const claim = (key: string, amount: number, claimDate = `${YEAR}-09-10`) =>
   submitHealthClaim(
     testDb,
     actors[key],
-    healthClaimSchema.parse({ categoryId, claimDate, amount, note: "" }),
+    healthClaimSchema.parse({ items: [{ categoryId, date: claimDate, amount }], note: "" }),
   );
 const requestOf = (claimId: string) =>
   testDb.approvalRequest.findUniqueOrThrow({ where: { module_entityId: { module: "HEALTH", entityId: claimId } } });
@@ -127,12 +128,54 @@ describe("jadwal pembayaran (HC-05/06 — plafon tahunan, keputusan user 2026-09
   });
 });
 
+describe("klaim beberapa baris (2026-11-06)", () => {
+  const lines = (...rows: [string, string, number][]) => rows.map(([id, date, amount]) => ({ categoryId: id, date, amount, note: "" }));
+
+  it("total & tanggal dari baris; plafon dicek terhadap total; revisi mengganti baris; tampil di daftar & approval", async () => {
+    await plafond("andi", 1_000_000, 2026);
+    const [first, second] = await testDb.healthCategory.findMany({ orderBy: { name: "asc" }, take: 2 });
+    const over = healthClaimSchema.parse({ items: lines([first.id, "2026-09-10", 700_000], [second.id, "2026-09-08", 400_000]), note: "" });
+    await expect(submitHealthClaim(testDb, actors.andi, over)).rejects.toThrow("klaim Rp 1.100.000");
+
+    const input = healthClaimSchema.parse({ items: lines([first.id, "2026-09-10", 300_000], [second.id, "2026-09-08", 200_000]), note: "Kontrol" });
+    const { claimId } = await submitHealthClaim(testDb, actors.andi, input);
+    const claim = await testDb.healthClaim.findUniqueOrThrow({ where: { id: claimId }, include: { items: { orderBy: { id: "asc" } } } });
+    expect(claim).toMatchObject({ amount: 500_000n, categoryId: first.id, note: "Kontrol" });
+    expect(claim.claimDate.toISOString().slice(0, 10)).toBe("2026-09-08");
+    expect(claim.items.map((item) => item.amount)).toEqual([300_000n, 200_000n]);
+
+    const [row] = await listHealthClaims(testDb, actors.andi);
+    expect(row.categoryName).toBe(`${first.name}, ${second.name}`);
+    expect(row.items.map((item) => [item.date, item.amount])).toEqual([["2026-09-10", 300_000], ["2026-09-08", 200_000]]);
+    const [queued] = await listMyApprovalQueue(testDb, u.ika);
+    expect(queued).toMatchObject({ headline: "2 baris · Rp 500.000", requestedAmount: 500_000 });
+    expect(queued.summary).toContain(second.name);
+    expect(queued.summary).toContain("Catatan: Kontrol");
+
+    await rejectRequest(testDb, { requestId: queued.id, actorId: u.ika, reason: "Lengkapi" });
+    await submitHealthClaim(testDb, actors.andi, healthClaimSchema.parse({ items: lines([second.id, "2026-09-11", 150_000]), note: "" }), claimId);
+    expect(await testDb.healthClaimItem.findMany({ where: { claimId } })).toMatchObject([{ categoryId: second.id, amount: 150_000n }]);
+    expect(await testDb.healthClaim.findUniqueOrThrow({ where: { id: claimId } })).toMatchObject({ amount: 150_000n, categoryId: second.id });
+  });
+
+  it("minimal 1 baris; semua baris di tahun yang sama; kategori nonaktif ditolak dengan nomor barisnya", async () => {
+    await plafond("andi", 1_000_000, 2026);
+    expect(() => healthClaimSchema.parse({ items: [], note: "" })).toThrow("Minimal 1 baris");
+    const [first, second] = await testDb.healthCategory.findMany({ take: 2 });
+    expect(() => healthClaimSchema.parse({ items: lines([first.id, "2025-12-30", 1_000], [first.id, "2026-01-02", 1_000]), note: "" })).toThrow("tahun yang sama");
+
+    await testDb.healthCategory.update({ where: { id: second.id }, data: { isActive: false } });
+    const input = healthClaimSchema.parse({ items: lines([first.id, "2026-09-10", 1_000], [second.id, "2026-09-10", 1_000]), note: "" });
+    await expect(submitHealthClaim(testDb, actors.andi, input)).rejects.toThrow("Baris 2: kategori klaim tidak tersedia");
+  });
+});
+
 describe("rekap cetak klaim kesehatan (2026-10-16)", () => {
   it("per karyawan per tahun: plafon, terpakai (nominal disetujui), menunggu, sisa, daftar klaim tanpa draft", async () => {
     await plafond("andi", 3_000_000, 2026);
     const medicineId = (await testDb.healthCategory.findFirstOrThrow({ where: { name: "Obat-obatan" } })).id;
-    const first = await submitHealthClaim(testDb, actors.andi, healthClaimSchema.parse({ categoryId: medicineId, claimDate: "2026-09-10", amount: 500_000, note: "Obat flu" }));
-    await submitHealthClaim(testDb, actors.andi, healthClaimSchema.parse({ categoryId: medicineId, claimDate: "2026-09-12", amount: 200_000, note: "" }));
+    const first = await submitHealthClaim(testDb, actors.andi, healthClaimSchema.parse({ items: [{ categoryId: medicineId, date: "2026-09-10", amount: 500_000 }], note: "Obat flu" }));
+    await submitHealthClaim(testDb, actors.andi, healthClaimSchema.parse({ items: [{ categoryId: medicineId, date: "2026-09-12", amount: 200_000 }], note: "" }));
     const request = await testDb.approvalRequest.findUniqueOrThrow({ where: { module_entityId: { module: "HEALTH", entityId: first.claimId } } });
     await approveRequest(testDb, { requestId: request.id, actorId: u.ika, approvedAmount: 400_000 });
 

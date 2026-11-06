@@ -200,6 +200,9 @@ mengubah lewat isian "Hari dipotong dari saldo" di dialog Setujui (`approveReque
 sisa plafon tahunan ditolak saat submit. Approver mengisi nominal disetujui (≤ diajukan, `approvedAmount`);
 plafon & pembayaran memakai nominal disetujui. Klaim approved dibayar penuh: satu `HealthPayout` di bulan approval.
 Rekap cetak per orang per tahun di `/cetak/kesehatan` (2026-10-16).
+**Baris klaim (2026-11-06):** satu klaim berisi beberapa baris seperti reimburse tanpa kunjungan (`HealthClaimItem`: kategori, tanggal,
+nominal, keterangan). `HealthClaim.amount` = total, `claimDate` = tanggal paling awal, `categoryId` = baris pertama; semua baris wajib
+di tahun yang sama (plafon per tahun). Nominal disetujui tetap satu angka per klaim.
 
 **Hapus data = soft delete** (`deletedAt`, NFR v1.14): Document, Certificate, FamilyMember, Candidate, Customer,
 Holiday, Reimbursement (draft), ApprovalFlow, Asset. Setiap query WAJIB memfilter `deletedAt: null` (termasuk

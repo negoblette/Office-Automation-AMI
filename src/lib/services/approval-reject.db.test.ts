@@ -102,9 +102,9 @@ describe("tolak & revisi (2026-10-12, OI-05)", () => {
   it("klaim kesehatan, sertifikat, appeal: ditolak → revisi → menunggu approval lagi", async () => {
     await setHealthPlafond(testDb, u.ika, healthPlafondSchema.parse({ employeeId: actors.andi.employeeId, year: 2026, annualAmount: 5_000_000 }));
     const categoryId = (await testDb.healthCategory.findFirstOrThrow()).id;
-    const claim = await submitHealthClaim(testDb, actors.andi, healthClaimSchema.parse({ categoryId, claimDate: "2026-09-10", amount: 300_000, note: "" }));
+    const claim = await submitHealthClaim(testDb, actors.andi, healthClaimSchema.parse({ items: [{ categoryId, date: "2026-09-10", amount: 300_000 }], note: "" }));
     await rejectRequest(testDb, { requestId: (await requestOf("HEALTH", claim.claimId)).id, actorId: u.ika, reason: "Nominal tidak sesuai invoice" });
-    const revisedClaim = await submitHealthClaim(testDb, actors.andi, healthClaimSchema.parse({ categoryId, claimDate: "2026-09-10", amount: 250_000, note: "" }), claim.claimId);
+    const revisedClaim = await submitHealthClaim(testDb, actors.andi, healthClaimSchema.parse({ items: [{ categoryId, date: "2026-09-10", amount: 250_000 }], note: "" }), claim.claimId);
     expect(revisedClaim).toMatchObject({ number: claim.number, status: "PENDING" });
 
     const certInput = (name: string) =>

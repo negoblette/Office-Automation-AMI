@@ -614,7 +614,8 @@ model HealthCategory {
   isActive  Boolean @default(true)
   sortOrder Int     @default(100) // urutan di dropdown (2026-10-16); kategori baru di akhir, lalu A-Z
 
-  claims HealthClaim[]
+  claims     HealthClaim[]
+  claimItems HealthClaimItem[]
 }
 
 model HealthPlafond {
@@ -634,9 +635,12 @@ model HealthClaim {
   number      String         @unique // HC/YYYY/MM/NNNN
   employeeId  String
   employee    Employee       @relation(fields: [employeeId], references: [id])
+  /// Kategori baris pertama (rincian per baris di `items`, 2026-11-06).
   categoryId  String
   category    HealthCategory @relation(fields: [categoryId], references: [id])
+  /// Tanggal baris paling awal; tahunnya = tahun plafon (semua baris wajib di tahun yang sama).
   claimDate   DateTime       @db.Date
+  /// Total semua baris.
   amount      BigInt
   note        String?
   status      RequestStatus  @default(DRAFT)
@@ -644,11 +648,26 @@ model HealthClaim {
   approvedAt  DateTime?
   createdAt   DateTime       @default(now())
 
+  items          HealthClaimItem[]
   payouts        HealthPayout[]
   /// Nominal disetujui approver (≤ nominal diajukan `amount`); null selama belum disetujui.
   approvedAmount BigInt?
 
   @@index([employeeId, status])
+}
+
+/// Baris klaim kesehatan (2026-11-06): satu klaim bisa berisi beberapa baris, seperti reimburse tapi tanpa kunjungan.
+model HealthClaimItem {
+  id         String         @id @default(cuid())
+  claimId    String
+  claim      HealthClaim    @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   HealthCategory @relation(fields: [categoryId], references: [id])
+  date       DateTime       @db.Date
+  amount     BigInt
+  note       String?
+
+  @@index([claimId])
 }
 
 model HealthPayout {

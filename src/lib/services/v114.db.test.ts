@@ -37,7 +37,7 @@ describe("klaim kesehatan: nominal diajukan & disetujui", () => {
     const result = await submitHealthClaim(
       testDb,
       actors[key],
-      healthClaimSchema.parse({ categoryId, claimDate: "2026-09-10", amount, note: "" }),
+      healthClaimSchema.parse({ items: [{ categoryId, date: "2026-09-10", amount }], note: "" }),
     );
     const request = await testDb.approvalRequest.findUniqueOrThrow({ where: { module_entityId: { module: "HEALTH", entityId: result.claimId } } });
     return { claimId: result.claimId, requestId: request.id };

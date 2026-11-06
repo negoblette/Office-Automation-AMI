@@ -172,6 +172,10 @@ semua direktur auto-approve; bila flow REGULAR tidak ditemukan, engine melempar 
 - Saat approved, jadwalkan payout: mulai bulan approval, isi tiap bulan maks `monthlyAmount − payout lain di bulan itu`, sisa ke bulan berikutnya *(TODO OI-10: lintas tahun)*.
 - Tidak ada carry over plafon *(TODO OI-01)*.
 
+- **Baris klaim (2026-11-06):** satu klaim = beberapa `HealthClaimItem` (kategori, tanggal, nominal, keterangan), tanpa kunjungan.
+  Kolom klaim: `amount` = total baris, `claimDate` = tanggal terawal (menentukan tahun plafon), `categoryId` = baris pertama. Semua
+  baris wajib di tahun yang sama. Plafon dicek terhadap total; approver mengisi satu nominal disetujui untuk seluruh klaim.
+
 ### 6.4 Reimburse
 - Dropdown tipe difilter `ReimburseType.divisions has divisi pemohon`. Seed: Sales → 4 tipe Sales;
   Engineer → Transport, Allowance; Umum & Direktur → keenam tipe.

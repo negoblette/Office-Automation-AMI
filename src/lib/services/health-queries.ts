@@ -7,6 +7,13 @@ import { rejectionsOf } from "./approval";
 
 const yearRange = (year: number) => ({ gte: fromIsoDate(`${year}-01-01`), lte: fromIsoDate(`${year}-12-31`) });
 
+const claimItems = { orderBy: { id: "asc" as const }, include: { category: { select: { name: true } } } };
+
+/** Nama kategori sebuah klaim: gabungan kategori tiap baris tanpa duplikat (2026-11-06). */
+function categoryLabel(claim: { category: { name: string }; items: { category: { name: string } }[] }) {
+  return claim.items.length ? [...new Set(claim.items.map((item) => item.category.name))].join(", ") : claim.category.name;
+}
+
 export type HealthSummary = {
   year: number;
   annual: number | null;
@@ -62,7 +69,8 @@ export type HealthClaimRow = {
   status: RequestStatus;
   currentLevel: number | null;
   payouts: { month: string; amount: number; paid: boolean }[];
-  categoryId: string;
+  /** Baris klaim (2026-11-06). */
+  items: { categoryId: string; categoryName: string; date: string; amount: number; note: string | null }[];
   /** Milik user yang login (boleh direvisi bila ditolak). */
   own: boolean;
   rejection: { reason: string; by: string } | null;
@@ -76,6 +84,7 @@ export async function listHealthClaims(db: PrismaClient, viewer: { role: Role; e
     include: {
       employee: { select: { fullName: true, position: true } },
       category: { select: { name: true } },
+      items: claimItems,
       payouts: { orderBy: { periodMonth: "asc" } },
     },
   });
@@ -90,7 +99,7 @@ export async function listHealthClaims(db: PrismaClient, viewer: { role: Role; e
     number: claim.number,
     employeeName: claim.employee.fullName,
     employeePosition: claim.employee.position,
-    categoryName: claim.category.name,
+    categoryName: categoryLabel(claim),
     claimDate: toJakartaIsoDate(claim.claimDate),
     amount: Number(claim.amount),
     approvedAmount: claim.approvedAmount === null ? null : Number(claim.approvedAmount),
@@ -98,7 +107,13 @@ export async function listHealthClaims(db: PrismaClient, viewer: { role: Role; e
     status: claim.status,
     currentLevel: levelOf.get(claim.id) ?? null,
     payouts: claim.payouts.map((p) => ({ month: toJakartaIsoDate(p.periodMonth).slice(0, 7), amount: Number(p.amount), paid: p.paidAt !== null })),
-    categoryId: claim.categoryId,
+    items: claim.items.map((item) => ({
+      categoryId: item.categoryId,
+      categoryName: item.category.name,
+      date: toJakartaIsoDate(item.date),
+      amount: Number(item.amount),
+      note: item.note,
+    })),
     own: claim.employeeId === viewer.employeeId,
     rejection: rejections.get(claim.id) ?? null,
   }));
@@ -119,7 +134,7 @@ export type PayoutRow = {
 export async function listPayoutsForMonth(db: PrismaClient, yearMonth: string): Promise<PayoutRow[]> {
   const payouts = await db.healthPayout.findMany({
     where: { periodMonth: fromIsoDate(`${yearMonth}-01`) },
-    include: { claim: { include: { employee: { select: { fullName: true, position: true } }, category: { select: { name: true } } } } },
+    include: { claim: { include: { employee: { select: { fullName: true, position: true } }, category: { select: { name: true } }, items: claimItems } } },
     orderBy: [{ claim: { employee: { fullName: "asc" } } }, { claim: { number: "asc" } }],
   });
   return payouts.map((p) => ({
@@ -127,7 +142,7 @@ export async function listPayoutsForMonth(db: PrismaClient, yearMonth: string): 
     employeeName: p.claim.employee.fullName,
     employeePosition: p.claim.employee.position,
     claimNumber: p.claim.number,
-    categoryName: p.claim.category.name,
+    categoryName: categoryLabel(p.claim),
     claimAmount: Number(p.claim.amount),
     amount: Number(p.amount),
     paidAt: p.paidAt?.toISOString() ?? null,
@@ -204,15 +219,15 @@ export async function getHealthPrintData(db: PrismaClient, employeeId: string, y
     db.healthClaim.findMany({
       where: { employeeId, claimDate: yearRange(year), status: { not: "DRAFT" } },
       orderBy: [{ claimDate: "asc" }, { number: "asc" }],
-      include: { category: { select: { name: true } }, payouts: { orderBy: { periodMonth: "asc" }, take: 1 } },
+      include: { category: { select: { name: true } }, items: claimItems, payouts: { orderBy: { periodMonth: "asc" }, take: 1 } },
     }),
   ]);
   const rows: HealthPrintRow[] = claims.map((c) => ({
     id: c.id,
     number: c.number,
     claimDate: toJakartaIsoDate(c.claimDate),
-    category: c.category.name,
-    note: c.note,
+    category: categoryLabel(c),
+    note: [c.note, ...c.items.map((item) => item.note)].filter(Boolean).join("; ") || null,
     amount: Number(c.amount),
     approvedAmount: c.approvedAmount === null ? null : Number(c.approvedAmount),
     status: c.status,
