@@ -30,7 +30,7 @@ export function DraftActions({
     <div className="flex flex-col items-end gap-2">
       <div className="flex flex-wrap gap-2">
         <Link href={`/reimburse/${reimbursementId}/edit`} className={buttonVariants({ variant: "outline", size: "lg" })}>
-          <Pencil aria-hidden /> {rejected ? "Revisi" : incomplete ? "Lanjutkan Mengisi" : "Edit"}
+          <Pencil aria-hidden /> {rejected ? "Revisi" : incomplete ? "Lanjutkan Mengisi" : "Ubah"}
         </Link>
         {!rejected && (
           <Button

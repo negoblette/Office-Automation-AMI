@@ -63,7 +63,7 @@ async function loadTargets(db: Db, module: ApprovalModule, entityId: string): Pr
       const customerOptions = customers.map((c) => ({ value: c.id, label: c.name }));
       const projectOptions: CorrectionOption[] = [
         { value: "", label: "Tanpa project" },
-        { value: NEW_ACQUISITION, label: "New Acquisition (prospek)" },
+        { value: NEW_ACQUISITION, label: "Prospek Baru" },
         ...projects.map((p) => ({ value: p.id, label: projectLabel(p), parent: p.customerId })),
       ];
       return reimbursement.items.map((item, index) => ({
@@ -71,7 +71,7 @@ async function loadTargets(db: Db, module: ApprovalModule, entityId: string): Pr
         label: `Baris ${index + 1}`,
         fields: [
           { key: "date", label: "Tanggal", kind: "date", value: isoOf(item.date) },
-          { key: "customerId", label: "Company", kind: "select", value: item.customerId ?? "", options: customerOptions },
+          { key: "customerId", label: "Perusahaan", kind: "select", value: item.customerId ?? "", options: customerOptions },
           {
             key: "project",
             label: "Project",
@@ -82,11 +82,11 @@ async function loadTargets(db: Db, module: ApprovalModule, entityId: string): Pr
             optional: true,
           },
           { key: "typeId", label: "Tipe", kind: "select", value: item.typeId, options: typeOptions },
-          { key: "paymentMethod", label: "Payment", kind: "select", value: item.paymentMethod, options: PAYMENT_OPTIONS },
+          { key: "paymentMethod", label: "Pembayaran", kind: "select", value: item.paymentMethod, options: PAYMENT_OPTIONS },
           { key: "amount", label: "Nominal", kind: "amount", value: Number(item.amount) },
           { key: "location", label: "Lokasi", kind: "text", value: item.location },
           { key: "activity", label: "Aktivitas", kind: "text", value: item.activity },
-          { key: "participants", label: "Names – Position", kind: "textarea", value: item.participants },
+          { key: "participants", label: "Nama – Jabatan", kind: "textarea", value: item.participants },
           { key: "hasReceipt", label: "Ada kwitansi fisik", kind: "boolean", value: item.hasReceipt },
         ],
       }));
@@ -100,7 +100,7 @@ async function loadTargets(db: Db, module: ApprovalModule, entityId: string): Pr
               label: "Expense",
               fields: [
                 { key: "date", label: "Tanggal", kind: "date", value: isoOf(e.date) },
-                { key: "paymentMethod", label: "Payment", kind: "select", value: e.paymentMethod, options: PAYMENT_OPTIONS },
+                { key: "paymentMethod", label: "Pembayaran", kind: "select", value: e.paymentMethod, options: PAYMENT_OPTIONS },
                 { key: "amount", label: "Nominal", kind: "amount", value: Number(e.amount) },
                 { key: "description", label: "Keterangan", kind: "text", value: e.description },
               ],
@@ -174,7 +174,7 @@ function normalize(target: CorrectionTarget, field: CorrectionField, raw: Correc
       const parent = field.dependsOn ? String(values[field.dependsOn] ?? "") : undefined;
       const option = field.options?.find((o) => o.value === s);
       if (!option || (option.parent !== undefined && option.parent !== parent)) {
-        throw new ServiceError(field.dependsOn && option ? `${where}: tidak sesuai ${field.dependsOn === "customerId" ? "company" : field.dependsOn} yang dipilih` : `${where}: pilihan tidak valid`);
+        throw new ServiceError(field.dependsOn && option ? `${where}: tidak sesuai ${field.dependsOn === "customerId" ? "perusahaan" : field.dependsOn} yang dipilih` : `${where}: pilihan tidak valid`);
       }
       return s;
     }

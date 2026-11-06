@@ -60,8 +60,8 @@ export default async function DetailReimbursePage({ params }: { params: Promise<
       />
 
       <section className="grid gap-4 rounded-2xl bg-card p-5 shadow-card sm:grid-cols-4">
-        <Info label="Subtotal Personal" value={formatRupiah(r.totalPersonal)} />
-        <Info label="Subtotal Corporate" value={formatRupiah(r.totalCorporate)} />
+        <Info label="Subtotal Pribadi" value={formatRupiah(r.totalPersonal)} />
+        <Info label="Subtotal Perusahaan" value={formatRupiah(r.totalCorporate)} />
         <Info label="Total" value={<span className="text-lg font-bold">{formatRupiah(r.total)}</span>} />
         <Info
           label={r.approvedAt ? "Disetujui" : r.submittedAt ? "Diajukan" : "Dibuat"}
@@ -84,7 +84,7 @@ export default async function DetailReimbursePage({ params }: { params: Promise<
 
       {r.draftForm !== null && (
         <p role="status" className="rounded-2xl bg-warning-soft px-5 py-4 text-sm">
-          <span className="font-semibold">Draft belum lengkap.</span> Isian Anda tersimpan. Tekan Edit untuk melanjutkan; draft bisa diajukan setelah semua isian lengkap.
+          <span className="font-semibold">Draft belum lengkap.</span> Isian Anda tersimpan. Tekan Lanjutkan Mengisi untuk meneruskannya; draft bisa diajukan setelah semua isian lengkap.
         </p>
       )}
 
@@ -92,7 +92,7 @@ export default async function DetailReimbursePage({ params }: { params: Promise<
         <table className="w-full min-w-[960px] text-sm">
           <thead className="bg-muted/60 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
             <tr>
-              {["Tanggal", "Company", "Names – Position", "Activities", "Lokasi", "Tipe", "Kwitansi", "Payment", "Total"].map((h) => (
+              {["Tanggal", "Perusahaan", "Nama – Jabatan", "Aktivitas", "Lokasi", "Tipe", "Kwitansi", "Pembayaran", "Total"].map((h) => (
                 <th key={h} className={h === "Total" ? "px-4 py-3 text-right" : "px-4 py-3"}>
                   {h}
                 </th>

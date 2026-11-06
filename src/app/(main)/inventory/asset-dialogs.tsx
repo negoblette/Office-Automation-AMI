@@ -20,7 +20,7 @@ export function AssetFormDialog({ asset }: { asset?: AssetRow }) {
       wide
       trigger={
         asset ? (
-          <Button variant="ghost" size="icon-sm" aria-label={`Edit ${asset.deviceName}`}>
+          <Button variant="ghost" size="icon-sm" aria-label={`Ubah ${asset.deviceName}`}>
             <Pencil />
           </Button>
         ) : (
@@ -29,7 +29,7 @@ export function AssetFormDialog({ asset }: { asset?: AssetRow }) {
           </Button>
         )
       }
-      title={asset ? `Edit ${asset.deviceName}` : "Daftarkan Unit"}
+      title={asset ? `Ubah ${asset.deviceName}` : "Daftarkan Unit"}
       schema={assetSchema}
       defaults={{
         deviceName: asset?.deviceName ?? "",

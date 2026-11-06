@@ -8,16 +8,16 @@ import { toOptions } from "@/lib/labels";
 import { LEAVE_ADJUST_MODES, leaveAdjustmentSchema } from "@/lib/validators/leave";
 import { adjustLeaveBalanceAction } from "../actions";
 
-/** Edit sisa cuti / pemutihan / penyesuaian saldo satu karyawan (Fase 14; "atur sisa" 2026-10-28). */
+/** Ubah sisa cuti / pemutihan / penyesuaian saldo satu karyawan (Fase 14; "atur sisa" 2026-10-28). */
 export function AdjustLeaveDialog({ employeeId, employeeName, remaining }: { employeeId: string; employeeName: string; remaining: number }) {
   return (
     <FormDialog
       trigger={
-        <Button variant="ghost" size="icon-sm" aria-label={`Edit sisa cuti ${employeeName}`} title="Edit sisa cuti">
+        <Button variant="ghost" size="icon-sm" aria-label={`Ubah sisa cuti ${employeeName}`} title="Ubah sisa cuti">
           <SlidersHorizontal />
         </Button>
       }
-      title={`Edit sisa cuti ${employeeName}`}
+      title={`Ubah sisa cuti ${employeeName}`}
       description={`Sisa sekarang ${remaining} hari. "Atur sisa cuti menjadi" langsung mengganti angka sisa (boleh minus); "Tambah / kurangi" mengisi +/− hari. Selisihnya tercatat di riwayat & audit.`}
       schema={leaveAdjustmentSchema}
       defaults={{ mode: "SET", days: remaining as never, reason: "" }}

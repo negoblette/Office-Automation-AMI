@@ -47,7 +47,7 @@ const restColumns = [
       <div className="text-right whitespace-nowrap tabular-nums">
         <p className="font-semibold">{formatRupiah(row.original.total)}</p>
         <p className="text-xs text-muted-foreground">
-          Personal {formatRupiah(row.original.totalPersonal)} · Corporate {formatRupiah(row.original.totalCorporate)}
+          Pribadi {formatRupiah(row.original.totalPersonal)} · Perusahaan {formatRupiah(row.original.totalCorporate)}
         </p>
       </div>
     ),

@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { getEmployeeFormValues } from "@/lib/services/employee-queries";
 import { EditEmployeeForm } from "./edit-employee-form";
 
-export const metadata: Metadata = { title: "Edit Karyawan" };
+export const metadata: Metadata = { title: "Ubah Karyawan" };
 
 export default async function EditKaryawanPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdmin();
@@ -17,13 +17,13 @@ export default async function EditKaryawanPage({ params }: { params: Promise<{ i
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title={`Edit ${employee.values.fullName}`}
+        title={`Ubah ${employee.values.fullName}`}
         description="Admin dapat mengubah semua data, termasuk divisi, role, email login, dan tanggal masuk."
         breadcrumbs={[
           { label: "SDM" },
           { label: "Karyawan & Dokumen", href: "/karyawan" },
           { label: employee.values.fullName, href: `/karyawan/${employee.id}` },
-          { label: "Edit" },
+          { label: "Ubah" },
         ]}
       />
       <EditEmployeeForm employeeId={employee.id} defaultValues={employee.values} />

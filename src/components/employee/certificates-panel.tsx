@@ -217,7 +217,7 @@ function CertificateDialog({ employeeId, certificate }: { employeeId: string; ce
       <DialogTrigger
         render={
           certificate ? (
-            <Button variant="ghost" size="icon-sm" aria-label={`Edit ${certificate.name}`} />
+            <Button variant="ghost" size="icon-sm" aria-label={`Ubah ${certificate.name}`} />
           ) : (
             <Button variant="outline" size="sm" />
           )
@@ -235,7 +235,7 @@ function CertificateDialog({ employeeId, certificate }: { employeeId: string; ce
         <FormProvider {...form}>
           <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
             <DialogHeader>
-              <DialogTitle>{certificate ? `Edit ${certificate.name}` : "Tambah Sertifikat"}</DialogTitle>
+              <DialogTitle>{certificate ? `Ubah ${certificate.name}` : "Tambah Sertifikat"}</DialogTitle>
             </DialogHeader>
             <FormAlert message={serverError} />
             <div className="grid gap-4 sm:grid-cols-2">
@@ -247,7 +247,7 @@ function CertificateDialog({ employeeId, certificate }: { employeeId: string; ce
                 {!noExpiry && <DateInputField name="endDate" label="Masa berlaku sampai" required />}
                 <CheckboxField
                   name="noExpiry"
-                  label="Tidak ada masa berlaku / Permanent"
+                  label="Tidak ada masa berlaku / Permanen"
                   onCheckedChange={(checked) => {
                     if (checked) form.setValue("endDate", "");
                   }}

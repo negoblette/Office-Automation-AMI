@@ -21,7 +21,7 @@ export default async function CustomerProjectPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Customer & Project"
-        description="Master customer dan project (PRJ-01). Form reimburse hanya bisa memilih company dari daftar ini."
+        description="Master customer dan project (PRJ-01). Form reimburse hanya bisa memilih perusahaan dari daftar ini."
         breadcrumbs={[{ label: "Operasional & Aset" }, { label: "Project", href: "/project" }, { label: "Customer & Project" }]}
         actions={<CustomerDialog />}
       />

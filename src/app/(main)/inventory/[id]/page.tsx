@@ -24,7 +24,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
       <PageHeader
         title={asset.deviceName}
         description={`SN ${asset.serialNo} · ${ASSET_CATEGORY_LABEL[asset.category]}`}
-        breadcrumbs={[{ label: "Operasional & Aset" }, { label: "Inventory / Demo Unit", href: "/inventory" }, { label: asset.serialNo }]}
+        breadcrumbs={[{ label: "Operasional & Aset" }, { label: "Inventaris / Unit Demo", href: "/inventory" }, { label: asset.serialNo }]}
       />
       <section className="grid gap-4 rounded-2xl bg-card p-5 shadow-card sm:grid-cols-4">
         {[

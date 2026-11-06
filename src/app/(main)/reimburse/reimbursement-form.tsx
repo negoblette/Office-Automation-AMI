@@ -31,7 +31,7 @@ const MAX_LINES = 50;
 
 /**
  * Form reimburse (URD RMB-02..06, Fase 14): beberapa kunjungan (tanggal + company + project /
- * New Acquisition), masing-masing berisi beberapa baris transaksi. Subtotal per tanggal bila
+ * Prospek Baru), masing-masing berisi beberapa baris transaksi. Subtotal per tanggal bila
  * tanggalnya berbeda.
  */
 export function ReimbursementForm({
@@ -129,8 +129,8 @@ export function ReimbursementForm({
             {perDay.length > 1 &&
               perDay.map((day) => <Total key={day.date} label={`Subtotal ${formatDate(`${day.date}T00:00:00Z`, "short")}`} value={day.amount} />)}
             {perDay.length > 1 && <div className="border-t border-border" />}
-            <Total label="Subtotal Personal" value={totals.personal} />
-            <Total label="Subtotal Corporate" value={totals.corporate} />
+            <Total label="Subtotal Pribadi" value={totals.personal} />
+            <Total label="Subtotal Perusahaan" value={totals.corporate} />
             <Total label="Total" value={totals.total} strong />
           </dl>
         </section>
@@ -160,7 +160,7 @@ function Total({ label, value, strong }: { label: string; value: number; strong?
   );
 }
 
-/** Header kunjungan: tanggal → company (master) → project milik company / New Acquisition. */
+/** Header kunjungan: tanggal → company (master) → project milik company / Prospek Baru. */
 function VisitCard({
   index,
   options,
@@ -183,7 +183,7 @@ function VisitCard({
   const companyProjects = useMemo(() => (customerId ? options.projects.filter((p) => p.customerId === customerId) : []), [customerId, options.projects]);
   const projectOptions = [
     { value: NO_PROJECT, label: "Tanpa project" },
-    { value: NEW_ACQUISITION, label: "New Acquisition (prospek)" },
+    { value: NEW_ACQUISITION, label: "Prospek Baru" },
     ...companyProjects,
   ];
 
@@ -200,7 +200,7 @@ function VisitCard({
         </div>
         <div className="grid gap-4 sm:grid-cols-[minmax(0,11rem)_1fr_1fr]">
           <DateInputField name={`visits.${index}.date`} label="Tanggal" required max={toJakartaIsoDate()} />
-          <FormField label="Company / Customer" htmlFor={`visits.${index}.customerId`} required error={errors?.customerId?.message}>
+          <FormField label="Perusahaan / Customer" htmlFor={`visits.${index}.customerId`} required error={errors?.customerId?.message}>
             <Controller
               control={form.control}
               name={`visits.${index}.customerId`}
@@ -209,7 +209,7 @@ function VisitCard({
                   id={`visits.${index}.customerId`}
                   options={options.customers}
                   value={field.value || null}
-                  placeholder="Pilih company…"
+                  placeholder="Pilih perusahaan…"
                   aria-required
                   aria-invalid={errors?.customerId ? true : undefined}
                   aria-describedby={fieldDescriptionId(`visits.${index}.customerId`)}
@@ -225,7 +225,7 @@ function VisitCard({
           <FormField
             label="ID - Nama Project"
             htmlFor={`visits.${index}.project`}
-            hint={!customerId ? "Pilih company dulu" : companyProjects.length ? undefined : "Company ini belum punya project aktif"}
+            hint={!customerId ? "Pilih perusahaan dulu" : companyProjects.length ? undefined : "Perusahaan ini belum punya project aktif"}
             error={errors?.project?.message}
           >
             <Controller
@@ -245,7 +245,7 @@ function VisitCard({
         </div>
         {options.canAddMaster ? (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-            <span>Company / project belum ada?</span>
+            <span>Perusahaan / project belum ada?</span>
             <CustomerDialog
               trigger={
                 <Button type="button" variant="link" size="sm" className="h-auto px-0">
@@ -275,7 +275,7 @@ function VisitCard({
             />
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">Company / project belum ada? Hubungi tim Sales atau Admin untuk menambahkannya.</p>
+          <p className="text-sm text-muted-foreground">Perusahaan / project belum ada? Hubungi tim Sales atau Admin untuk menambahkannya.</p>
         )}
         {errors?.lines?.root?.message && <p className="text-sm text-danger">{errors.lines.root.message}</p>}
       </div>
@@ -316,7 +316,7 @@ function LineRow({
   const base = `visits.${visitIndex}.lines.${index}` as const;
   const name = (field: string) => `${base}.${field}`;
   const errors = form.formState.errors.visits?.[visitIndex]?.lines?.[index];
-  // Names – Position wajib kecuali tipe Transport (2026-10-12).
+  // Nama – Jabatan wajib kecuali tipe Transport (2026-10-12).
   const typeId = useWatch({ control: form.control, name: `${base}.typeId` });
   const participantsRequired = options.types.find((t) => t.value === typeId)?.code !== "TRANSPORT";
 
@@ -332,7 +332,7 @@ function LineRow({
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <SelectInputField name={name("typeId")} label="Tipe" required options={options.types} hint="Parkir & training → Allowance · Bensin & tol → Transport" />
-        <SelectInputField name={name("paymentMethod")} label="Payment" required options={toOptions(PAYMENT_METHOD_LABEL)} />
+        <SelectInputField name={name("paymentMethod")} label="Pembayaran" required options={toOptions(PAYMENT_METHOD_LABEL)} />
         <FormField label="Total" htmlFor={name("amount")} required error={errors?.amount?.message}>
           <Controller
             control={form.control}
@@ -354,7 +354,7 @@ function LineRow({
 
         <TextareaField
           name={name("participants")}
-          label="Names – Position"
+          label="Nama – Jabatan"
           required={participantsRequired}
           hint={participantsRequired ? undefined : "Opsional untuk tipe Transport"}
           className="sm:col-span-2"

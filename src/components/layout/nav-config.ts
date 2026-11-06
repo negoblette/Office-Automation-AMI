@@ -40,7 +40,7 @@ export type NavItem = {
   approverOnly?: boolean;
   /** Label pengganti untuk Staf, mis. "Project" (Staf hanya melihat, tanpa Customer). */
   staffLabel?: string;
-  /** Modul Inventory (ditunda; terbuka untuk super admin). */
+  /** Modul Inventaris (ditunda; terbuka untuk super admin). */
   inventory?: boolean;
   /** Overtime: karyawan divisi Engineer + Admin (rekap), 2026-10-30. */
   overtime?: boolean;
@@ -95,7 +95,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Operasional & Aset",
     items: [
-      { label: "Inventory / Demo Unit", href: "/inventory", icon: MonitorSmartphone, adminOnly: true, inventory: true },
+      { label: "Inventaris / Unit Demo", href: "/inventory", icon: MonitorSmartphone, adminOnly: true, inventory: true },
       {
         label: "Project & Customer",
         href: "/project",

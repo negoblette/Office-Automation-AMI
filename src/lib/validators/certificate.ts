@@ -6,7 +6,7 @@ export const CERTIFICATE_LEVELS = ["1", "2", "3"] as const;
 
 /**
  * Sertifikat profesional (URD CERT-01). Keputusan user 2026-10-12: Nama, Penerbit, **Level** (1–3), Tanggal diambil,
- * **Masa berlaku wajib** kecuali dicentang "Tidak ada masa berlaku / Permanent" (`noExpiry`).
+ * **Masa berlaku wajib** kecuali dicentang "Tidak ada masa berlaku / Permanen" (`noExpiry`).
  * 2026-11-02: ijazah tidak lagi dicatat sebagai sertifikat — diunggah di Dokumen ("Ijazah + Transkrip").
  */
 export const IJAZAH_MOVED_MESSAGE = "Ijazah diunggah di Profil → Dokumen & Keluarga (Ijazah + Transkrip)";
@@ -27,7 +27,7 @@ export const certificateSchema = z
     const issue = (path: string, message: string) => ctx.addIssue({ code: "custom", path: [path], message });
     if (!v.level) issue("level", "Level wajib dipilih");
     if (!v.startDate) issue("startDate", "Tanggal diambil wajib diisi");
-    if (!v.noExpiry && !v.endDate) issue("endDate", "Masa berlaku wajib diisi, atau centang \"Tidak ada masa berlaku / Permanent\"");
+    if (!v.noExpiry && !v.endDate) issue("endDate", "Masa berlaku wajib diisi, atau centang \"Tidak ada masa berlaku / Permanen\"");
     if (!v.noExpiry && v.endDate && v.startDate && v.endDate < v.startDate) issue("endDate", "Tanggal berakhir tidak boleh sebelum tanggal diambil");
   })
   .transform((v) => ({

@@ -56,7 +56,7 @@ export async function listReimburseExportRows(db: PrismaClient, yearMonth: strin
       employeeNo: i.reimbursement.employee.employeeNo,
       division: divisions[i.reimbursement.division] ?? i.reimbursement.division,
       customerName: i.customer?.name ?? null,
-      projectName: i.project ? projectLabel(i.project) : i.newAcquisition ? "New Acquisition (prospek)" : null,
+      projectName: i.project ? projectLabel(i.project) : i.newAcquisition ? "Prospek Baru" : null,
       activity: i.activity,
       participants: i.participants,
       location: i.location,
@@ -88,14 +88,14 @@ export async function buildReimburseWorkbook(rows: ReimburseExportRow[], title: 
     { header: "NIP", key: "employeeNo", width: 12 },
     { header: "Divisi", key: "division", width: 14 },
     { header: "Status", key: "status", width: 11 },
-    { header: "Company", key: "customerName", width: 24 },
+    { header: "Perusahaan", key: "customerName", width: 24 },
     { header: "Project", key: "projectName", width: 28 },
     { header: "Aktivitas", key: "activity", width: 30 },
-    { header: "Names – Position", key: "participants", width: 30 },
+    { header: "Nama – Jabatan", key: "participants", width: 30 },
     { header: "Lokasi", key: "location", width: 20 },
     { header: "Tipe", key: "typeName", width: 16 },
     { header: "Bukti", key: "hasReceipt", width: 8 },
-    { header: "Payment", key: "paymentMethod", width: 11 },
+    { header: "Pembayaran", key: "paymentMethod", width: 11 },
     { header: "Nominal", key: "amount", width: 16, style: { numFmt: RUPIAH } },
   ];
   rows.forEach((r, i) =>
@@ -123,7 +123,7 @@ export async function buildReimburseWorkbook(rows: ReimburseExportRow[], title: 
   const summary = wb.addWorksheet("Ringkasan", { views: [{ state: "frozen", ySplit: 3 }] });
   summary.getCell("A1").value = title;
   summary.getCell("A1").font = { bold: true, size: 13 };
-  summary.getRow(3).values = ["Karyawan", "NIP", "Divisi", "Jumlah pengajuan", "Disetujui", "Menunggu", "Ditolak", "Personal", "Corporate"];
+  summary.getRow(3).values = ["Karyawan", "NIP", "Divisi", "Jumlah pengajuan", "Disetujui", "Menunggu", "Ditolak", "Pribadi", "Perusahaan"];
   summary.columns = [{ width: 24 }, { width: 12 }, { width: 14 }, { width: 10 }, ...Array.from({ length: 5 }, () => ({ width: 16, style: { numFmt: RUPIAH } }))];
   styleHeader(summary.getRow(3));
   const byEmployee = new Map<string, ReimburseExportRow[]>();

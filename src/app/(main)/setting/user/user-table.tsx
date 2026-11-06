@@ -43,15 +43,15 @@ function PasswordDialog({ user }: { user: UserRow }) {
   return (
     <FormDialog
       trigger={
-        <Button variant="ghost" size="icon-sm" aria-label={`Reset password ${user.name}`}>
+        <Button variant="ghost" size="icon-sm" aria-label={`Atur ulang password ${user.name}`}>
           <KeyRound />
         </Button>
       }
-      title={`Reset password ${user.name}`}
+      title={`Atur ulang password ${user.name}`}
       description={`Password baru untuk login ${user.email}. Berikan ke yang bersangkutan.`}
       schema={resetPasswordSchema}
       defaults={{ password: "" }}
-      submitLabel="Reset Password"
+      submitLabel="Atur Ulang Password"
       successMessage={`Password ${user.name} direset`}
       action={(values) => resetPasswordAction(user.id, values)}
     >
@@ -71,14 +71,14 @@ function ResetMfaButton({ user }: { user: UserRow }) {
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label={`Reset MFA ${user.name}`}
-        title="Reset MFA"
+        aria-label={`Atur ulang MFA ${user.name}`}
+        title="Atur Ulang MFA"
         disabled={pending}
         onClick={async () => {
           const ok = await confirm({
-            title: `Reset MFA ${user.name}?`,
+            title: `Atur ulang MFA ${user.name}?`,
             description: "Semua sesinya berakhir dan ia wajib mendaftarkan aplikasi authenticator lagi saat login. Tercatat di audit.",
-            confirmLabel: "Reset MFA",
+            confirmLabel: "Atur Ulang MFA",
             tone: "danger",
           });
           if (!ok) return;

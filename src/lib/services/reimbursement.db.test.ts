@@ -92,10 +92,10 @@ describe("draft", () => {
     expect(new Set(r.items.map((i) => i.customerId))).toEqual(new Set([customerId]));
   });
 
-  it("Fase 14: company wajib dari master (tidak dibuat otomatis); New Acquisition = flag tanpa project", async () => {
-    expect(() => input([item({ customerId: "" })])).toThrow("Company wajib dipilih");
+  it("Fase 14: company wajib dari master (tidak dibuat otomatis); Prospek Baru = flag tanpa project", async () => {
+    expect(() => input([item({ customerId: "" })])).toThrow("Perusahaan wajib dipilih");
     await expect(saveReimbursementDraft(testDb, actors.andi, null, input([item({ customerId: "tidak-ada" })]))).rejects.toThrow(
-      "Baris 1: company tidak ditemukan di master",
+      "Baris 1: perusahaan tidak ditemukan di master",
     );
     expect(await testDb.customer.count()).toBe(1);
 
@@ -113,10 +113,10 @@ describe("draft", () => {
     );
   });
 
-  it("2026-10-12: Names – Position wajib untuk semua tipe kecuali Transport", async () => {
+  it("2026-10-12: Nama – Jabatan wajib untuk semua tipe kecuali Transport", async () => {
     await expect(saveReimbursementDraft(testDb, actors.andi, null, input([item({ participants: "" })]))).resolves.toBeTruthy(); // Transport
     await expect(saveReimbursementDraft(testDb, actors.andi, null, input([item({ typeId: typeId.MEALS, participants: "" })]))).rejects.toThrow(
-      "Baris 1: Names – Position wajib diisi untuk tipe Meals",
+      "Baris 1: Nama – Jabatan wajib diisi untuk tipe Meals",
     );
   });
 
@@ -207,7 +207,7 @@ describe("form kunjungan → baris (Fase 14)", () => {
     amount,
   });
 
-  it("kunjungan diratakan jadi baris; tanggal/company/project ikut tiap baris; New Acquisition jadi flag", () => {
+  it("kunjungan diratakan jadi baris; tanggal/company/project ikut tiap baris; Prospek Baru jadi flag", () => {
     const out = reimbursementFormSchema.parse({
       note: "",
       visits: [
@@ -223,7 +223,7 @@ describe("form kunjungan → baris (Fase 14)", () => {
       ["2026-09-21", "c1", null, false, 400],
     ]);
     expect(() => reimbursementFormSchema.parse({ note: "", visits: [{ date: "2026-09-20", customerId: "", project: "", lines: [line(1)] }] })).toThrow(
-      "Company wajib dipilih",
+      "Perusahaan wajib dipilih",
     );
     expect(() => reimbursementFormSchema.parse({ note: "", visits: [{ date: "2026-09-20", customerId: "c1", project: "", lines: [] }] })).toThrow("Minimal 1 baris");
   });

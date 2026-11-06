@@ -99,7 +99,7 @@ type AssetLine =
 
 /**
  * Asset Kantor (Fase 14; 2026-11-02 satu tampilan): barang yang dicatat Admin langsung (`EmployeeAsset`, bisa diubah di
- * sini) + unit Inventory / Demo Unit yang sedang/pernah diserahkan ke karyawan (`AssetAssignment`, diubah lewat modul
+ * sini) + unit Inventaris / Unit Demo yang sedang/pernah diserahkan ke karyawan (`AssetAssignment`, diubah lewat modul
  * Inventory). Yang masih dipegang di atas. `canEdit` = Admin; `canOpenInventory` = boleh membuka halaman unit Inventory.
  */
 export function EmployeeAssetsPanel({
@@ -174,7 +174,7 @@ function InventoryLine({ row, canOpen }: { row: AssignmentRow; canOpen: boolean 
         </p>
         {row.note && <p className="text-sm text-muted-foreground">{row.note}</p>}
       </div>
-      <span className="text-xs text-muted-foreground">Dari Inventory</span>
+      <span className="text-xs text-muted-foreground">Dari Inventaris</span>
     </li>
   );
 }

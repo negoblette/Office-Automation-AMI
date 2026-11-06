@@ -98,8 +98,8 @@ const columns = col.columns([
       <Link
         href={`/karyawan/${row.original.id}/edit`}
         className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
-        aria-label={`Edit ${row.original.fullName}`}
-        title="Edit"
+        aria-label={`Ubah ${row.original.fullName}`}
+        title="Ubah"
       >
         <Pencil aria-hidden />
       </Link>

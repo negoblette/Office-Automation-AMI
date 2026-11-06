@@ -62,7 +62,7 @@ export default async function ReimbursePage() {
           <Printer aria-hidden /> Cetak / Simpan PDF
         </button>
         <button type="submit" formAction="/api/export/reimburse" className={buttonVariants({ variant: "outline", size: "lg" })}>
-          <FileSpreadsheet aria-hidden /> Export Excel
+          <FileSpreadsheet aria-hidden /> Ekspor Excel
         </button>
       </form>
 

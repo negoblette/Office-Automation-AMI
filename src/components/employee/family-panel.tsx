@@ -205,7 +205,7 @@ function FamilyMemberDialog({
       <DialogTrigger
         render={
           member ? (
-            <Button variant="ghost" size="icon-sm" aria-label={`Edit ${member.fullName}`} />
+            <Button variant="ghost" size="icon-sm" aria-label={`Ubah ${member.fullName}`} />
           ) : (
             <Button variant="outline" size="sm" />
           )
@@ -223,7 +223,7 @@ function FamilyMemberDialog({
         <FormProvider {...form}>
           <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
             <DialogHeader>
-              <DialogTitle>{member ? `Edit ${member.fullName}` : `Tambah ${label}`}</DialogTitle>
+              <DialogTitle>{member ? `Ubah ${member.fullName}` : `Tambah ${label}`}</DialogTitle>
             </DialogHeader>
             <FormAlert message={serverError} />
             <TextInputField name="fullName" label="Nama lengkap" required />

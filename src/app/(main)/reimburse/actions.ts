@@ -61,7 +61,7 @@ export async function saveReimbursementDraftAction(
         revalidateReimburse();
         return { ok: true, data: { reimbursementId: saved.reimbursementId, complete: true } };
       } catch (error) {
-        // Aturan bisnis belum terpenuhi (mis. Names – Position kosong) → tetap tersimpan sebagai draft belum lengkap.
+        // Aturan bisnis belum terpenuhi (mis. Nama – Jabatan kosong) → tetap tersimpan sebagai draft belum lengkap.
         if (!(error instanceof ServiceError)) throw error;
       }
     }

@@ -39,9 +39,9 @@ async function getOwnDraft(tx: Tx, actor: Actor, reimbursementId: string) {
 
 /**
  * Validasi & ubah baris input → data Prisma. Fase 14 (2026-10-05): Company wajib dari master;
- * project harus milik company itu, atau ditandai prospek New Acquisition (tanpa project).
+ * project harus milik company itu, atau ditandai prospek Prospek Baru (tanpa project).
  */
-/** Satu-satunya tipe yang boleh tanpa Names – Position. */
+/** Satu-satunya tipe yang boleh tanpa Nama – Jabatan. */
 export const PARTICIPANTS_OPTIONAL_TYPE = "TRANSPORT";
 
 async function buildItems(tx: Tx, division: string, input: ReimbursementInput) {
@@ -57,13 +57,13 @@ async function buildItems(tx: Tx, division: string, input: ReimbursementInput) {
     // RMB-04: tipe harus sesuai divisi pemohon. Tipe Overtime hanya lewat pilihan overtime (2026-10-30).
     const type = typeById.get(item.typeId);
     if (!type || type.code === OVERTIME_REIMBURSE_TYPE) throw new ServiceError(`${row}: tipe reimburse tidak tersedia untuk divisi Anda`);
-    // Names – Position wajib untuk semua tipe kecuali Transport (2026-10-12).
+    // Nama – Jabatan wajib untuk semua tipe kecuali Transport (2026-10-12).
     if (type.code !== PARTICIPANTS_OPTIONAL_TYPE && item.participants.length < 2) {
-      throw new ServiceError(`${row}: Names – Position wajib diisi untuk tipe ${type.name}`);
+      throw new ServiceError(`${row}: Nama – Jabatan wajib diisi untuk tipe ${type.name}`);
     }
     const customer = customers.get(item.customerId);
-    if (!customer) throw new ServiceError(`${row}: company tidak ditemukan di master`);
-    if (item.projectId && item.newAcquisition) throw new ServiceError(`${row}: pilih project atau New Acquisition, bukan keduanya`);
+    if (!customer) throw new ServiceError(`${row}: perusahaan tidak ditemukan di master`);
+    if (item.projectId && item.newAcquisition) throw new ServiceError(`${row}: pilih project atau Prospek Baru, bukan keduanya`);
     if (item.projectId) {
       const project = await tx.project.findUnique({ where: { id: item.projectId } });
       if (!project?.isActive) throw new ServiceError(`${row}: project tidak ditemukan atau sudah tidak aktif`);
@@ -175,7 +175,7 @@ export async function submitReimbursement(db: PrismaClient, actor: Actor, reimbu
   return db.$transaction(async (tx) => {
     const employee = await getRequester(tx, actor);
     const draft = await getOwnDraft(tx, actor, reimbursementId);
-    if (draft.draftForm !== null) throw new ServiceError("Draft belum lengkap. Buka Edit untuk melengkapi isiannya sebelum mengajukan");
+    if (draft.draftForm !== null) throw new ServiceError("Draft belum lengkap. Tekan Lanjutkan Mengisi untuk melengkapi isiannya sebelum mengajukan");
     if (draft.items.length === 0) throw new ServiceError("Tambahkan minimal 1 baris sebelum mengajukan");
 
     // Ajukan ulang setelah ditolak: nomor tetap, approval dimulai lagi dari level 1.

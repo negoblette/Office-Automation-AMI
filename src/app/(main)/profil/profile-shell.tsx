@@ -24,7 +24,7 @@ export function ProfileShell({
   title: string;
   description: string;
   children: React.ReactNode;
-  /** Bila diisi, tampil tombol "Download Biodata (PDF)". */
+  /** Bila diisi, tampil tombol "Unduh Biodata (PDF)". */
   employeeId?: string | null;
 }) {
   const tab = TABS.find((t) => t.key === active);
@@ -37,7 +37,7 @@ export function ProfileShell({
         actions={
           employeeId ? (
             <Link href={`/biodata/${employeeId}`} className={buttonVariants({ variant: "outline", size: "lg" })}>
-              <FileDown aria-hidden /> Download Biodata (PDF)
+              <FileDown aria-hidden /> Unduh Biodata (PDF)
             </Link>
           ) : undefined
         }

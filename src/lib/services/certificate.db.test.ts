@@ -50,11 +50,11 @@ describe("certificateSchema", () => {
   const issues = (values: Record<string, unknown>) =>
     certificateSchema.safeParse(values).error?.issues.map((i) => [i.path.join("."), i.message]) ?? [];
 
-  it("profesional (2026-10-12): level wajib; masa berlaku wajib kecuali dicentang Permanent", () => {
+  it("profesional (2026-10-12): level wajib; masa berlaku wajib kecuali dicentang Permanen", () => {
     const base = { type: "PROFESSIONAL", name: "CCNA", startDate: "2024-01-01" };
     expect(issues({ ...base, endDate: "" })).toEqual([
       ["level", "Level wajib dipilih"],
-      ["endDate", 'Masa berlaku wajib diisi, atau centang "Tidak ada masa berlaku / Permanent"'],
+      ["endDate", 'Masa berlaku wajib diisi, atau centang "Tidak ada masa berlaku / Permanen"'],
     ]);
     expect(issues({ ...base, level: "1", endDate: "2023-12-31" })).toEqual([["endDate", "Tanggal berakhir tidak boleh sebelum tanggal diambil"]]);
     expect(certificateSchema.parse({ ...base, level: "3", endDate: "2027-01-01", noExpiry: true })).toMatchObject({ level: 3, endDate: null, degree: null });

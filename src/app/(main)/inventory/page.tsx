@@ -8,7 +8,7 @@ import { activeEmployeeOptions, listAssets } from "@/lib/services/asset-queries"
 import { AssetFormDialog } from "./asset-dialogs";
 import { InventoryTable } from "./inventory-table";
 
-export const metadata: Metadata = { title: "Inventory / Demo Unit" };
+export const metadata: Metadata = { title: "Inventaris / Unit Demo" };
 
 export default async function InventoryPage() {
   await requireAdmin();
@@ -19,9 +19,9 @@ export default async function InventoryPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Inventory & Demo Unit"
+        title="Inventaris & Unit Demo"
         description="Katalog perangkat kantor dan unit demo, serah terima ke karyawan, serta masa support & warranty."
-        breadcrumbs={[{ label: "Operasional & Aset" }, { label: "Inventory / Demo Unit" }]}
+        breadcrumbs={[{ label: "Operasional & Aset" }, { label: "Inventaris / Unit Demo" }]}
         actions={<AssetFormDialog />}
       />
       <div className={`${STAT_GRID} xl:grid-cols-4`}>

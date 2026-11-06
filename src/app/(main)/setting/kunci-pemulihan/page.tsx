@@ -58,7 +58,7 @@ export default async function RecoveryKeyPage() {
         <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-5 sm:px-6">
           <h2 className="text-base font-semibold">Pemegang kunci</h2>
           <StatusBadge variant={backupReady ? "success" : "warning"}>
-            {backupReady ? "Backup berjalan" : `Backup menunggu ${overview.minHolders} pemegang kunci (${overview.readyCount} dari ${overview.minHolders})`}
+            {backupReady ? "Pencadangan berjalan" : `Pencadangan menunggu ${overview.minHolders} pemegang kunci (${overview.readyCount} dari ${overview.minHolders})`}
           </StatusBadge>
         </div>
         <table className="mt-3 w-full min-w-[520px] text-sm">
@@ -104,7 +104,7 @@ export default async function RecoveryKeyPage() {
           <h2 className="mb-1 text-base font-semibold">{hasKey ? "Ganti kata sandi pemulihan" : "Buat kata sandi pemulihan"}</h2>
           <p className="mb-4 text-sm text-muted-foreground">
             {hasKey
-              ? "Pakai bila Anda lupa atau curiga kata sandi diketahui orang lain. Backup berikutnya memakai kata sandi baru; backup lama tetap terbuka dengan kata sandi lama."
+              ? "Pakai bila Anda lupa atau curiga kata sandi diketahui orang lain. Pencadangan berikutnya memakai kata sandi baru; backup lama tetap terbuka dengan kata sandi lama."
               : "Buat sekali saja. Simpan di ingatan atau pengelola password pribadi, jangan di kertas yang mudah ditemukan orang."}
           </p>
           <RecoveryKeyForm hasKey={hasKey} />

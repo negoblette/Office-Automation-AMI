@@ -45,7 +45,7 @@ describe("project ID & company → project (Fase 14)", () => {
     ).rejects.toThrow("sudah dipakai");
   });
 
-  it("project wajib milik company yang dipilih; tidak boleh project + New Acquisition sekaligus", async () => {
+  it("project wajib milik company yang dipilih; tidak boleh project + Prospek Baru sekaligus", async () => {
     const { mandiri, project, row } = await setup();
     const save = (over: Record<string, unknown>) => saveReimbursementDraft(testDb, actors.andi, null, reimbursementSchema.parse({ note: "", items: [row(over)] }));
     await expect(save({ projectId: project.id })).rejects.toThrow("project bukan milik PT BCA");
@@ -80,7 +80,7 @@ describe("subtotal per hari & rekap cetak per bulan (Fase 14)", () => {
     const data = await getReimbursePrintData(testDb, actors.andi.employeeId!, "2026-09");
     expect(data?.rows.map((r) => [r.date, r.amount, r.projectName, r.status])).toEqual([
       ["2026-09-12", 100_000, "PRJ-0012 - Core Network", "PENDING"],
-      ["2026-09-12", 40_000, "New Acquisition (prospek)", "PENDING"],
+      ["2026-09-12", 40_000, "Prospek Baru", "PENDING"],
     ]);
     expect((await getReimbursePrintData(testDb, actors.sinta.employeeId!, "2026-09"))?.rows).toEqual([]);
   });

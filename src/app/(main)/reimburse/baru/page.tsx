@@ -20,7 +20,7 @@ export default async function ReimburseBaruPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Pengajuan Reimburse"
-        description="Pilih tanggal, company, lalu project (atau New Acquisition) per kunjungan; isi satu baris per transaksi. Total dihitung otomatis."
+        description="Pilih tanggal, perusahaan, lalu project (atau Prospek Baru) per kunjungan; isi satu baris per transaksi. Total dihitung otomatis."
         breadcrumbs={[{ label: "Pengajuan & Keuangan" }, { label: "Reimburse", href: "/reimburse" }, { label: "Pengajuan Baru" }]}
       />
       {employee?.status === "ACTIVE" ? (

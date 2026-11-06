@@ -5,7 +5,7 @@ import { amountSchema, isoDateSchema, textSchema } from "./common";
 /** Master Customer (PRJ-01). */
 export const customerSchema = z.object({ name: textSchema("Nama customer", { min: 2, max: 150 }) });
 
-/** Master Project (PRJ-01): Berjalan / New Acquisition. */
+/** Master Project (PRJ-01): Berjalan / Prospek Baru. */
 export const projectSchema = z.object({
   customerId: z.string({ error: "Customer wajib dipilih" }).min(1, { error: "Customer wajib dipilih" }),
   /** ID project (Fase 14), mis. PRJ-0012 — unik, huruf besar. */

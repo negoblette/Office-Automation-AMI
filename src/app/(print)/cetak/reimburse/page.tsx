@@ -26,7 +26,7 @@ export default async function CetakReimbursePage({ searchParams }: { searchParam
     return (
       <>
         <PrintToolbar backHref="/reimburse" />
-        <p className="text-sm">Cetak / PDF dibuat per karyawan. Pilih satu karyawan, atau gunakan tombol Export Excel untuk semua karyawan.</p>
+        <p className="text-sm">Cetak / PDF dibuat per karyawan. Pilih satu karyawan, atau gunakan tombol Ekspor Excel untuk semua karyawan.</p>
       </>
     );
   }
@@ -60,7 +60,7 @@ export default async function CetakReimbursePage({ searchParams }: { searchParam
         <table className="w-full border-collapse text-xs">
           <thead>
             <tr className="border-b border-black text-left">
-              {["Tanggal", "No. Pengajuan", "Company / Project", "Aktivitas", "Names – Position", "Lokasi", "Tipe", "Payment", "Status", "Total"].map((h) => (
+              {["Tanggal", "No. Pengajuan", "Perusahaan / Project", "Aktivitas", "Nama – Jabatan", "Lokasi", "Tipe", "Pembayaran", "Status", "Total"].map((h) => (
                 <th key={h} className={`py-1.5 pr-2 font-semibold ${h === "Total" ? "text-right" : ""}`}>
                   {h}
                 </th>
@@ -100,11 +100,11 @@ export default async function CetakReimbursePage({ searchParams }: { searchParam
           </tbody>
           <tfoot className="text-sm">
             <tr>
-              <td colSpan={9} className="pt-3 pr-2 text-right">Total Personal (dibayarkan ke karyawan)</td>
+              <td colSpan={9} className="pt-3 pr-2 text-right">Total Pribadi (dibayarkan ke karyawan)</td>
               <td className="pt-3 text-right font-semibold tabular-nums">{formatRupiah(totals.personal)}</td>
             </tr>
             <tr>
-              <td colSpan={9} className="pr-2 text-right">Total Corporate</td>
+              <td colSpan={9} className="pr-2 text-right">Total Perusahaan</td>
               <td className="text-right font-semibold tabular-nums">{formatRupiah(totals.corporate)}</td>
             </tr>
             <tr className="text-base">

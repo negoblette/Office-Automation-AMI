@@ -17,7 +17,7 @@ export default async function ProfilDokumenPage() {
     <ProfileShell
       active="dokumen"
       title="Dokumen & Keluarga"
-      description="Upload dokumen pribadi dan data keluarga Anda. File hanya bisa dilihat oleh Anda dan Admin."
+      description="Unggah dokumen pribadi dan data keluarga Anda. File hanya bisa dilihat oleh Anda dan Admin."
     >
       {documents ? (
         <div className="flex flex-col gap-6">

@@ -11,7 +11,7 @@ import { canAddCustomerProject } from "@/lib/services/project";
 import { listReimbursableOvertimes } from "@/lib/services/overtime-queries";
 import { OvertimeReimbursementForm } from "../../overtime-reimbursement-form";
 
-export const metadata: Metadata = { title: "Edit Draft Reimburse" };
+export const metadata: Metadata = { title: "Ubah Draft Reimburse" };
 
 export default async function EditReimbursePage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -26,8 +26,8 @@ export default async function EditReimbursePage({ params }: { params: Promise<{ 
     return (
       <div className="flex flex-col gap-6">
         <PageHeader
-          title={detail.status === "REJECTED" ? "Revisi Reimburse Overtime" : "Edit Draft Reimburse Overtime"}
-          breadcrumbs={[{ label: "Pengajuan & Keuangan" }, { label: "Reimburse", href: "/reimburse" }, { label: "Draft", href: `/reimburse/${id}` }, { label: "Edit" }]}
+          title={detail.status === "REJECTED" ? "Revisi Reimburse Overtime" : "Ubah Draft Reimburse Overtime"}
+          breadcrumbs={[{ label: "Pengajuan & Keuangan" }, { label: "Reimburse", href: "/reimburse" }, { label: "Draft", href: `/reimburse/${id}` }, { label: "Ubah" }]}
         />
         <OvertimeReimbursementForm
           reimbursementId={id}
@@ -41,8 +41,8 @@ export default async function EditReimbursePage({ params }: { params: Promise<{ 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title={detail.status === "REJECTED" ? "Revisi Reimburse" : "Edit Draft Reimburse"}
-        breadcrumbs={[{ label: "Pengajuan & Keuangan" }, { label: "Reimburse", href: "/reimburse" }, { label: "Draft", href: `/reimburse/${id}` }, { label: "Edit" }]}
+        title={detail.status === "REJECTED" ? "Revisi Reimburse" : "Ubah Draft Reimburse"}
+        breadcrumbs={[{ label: "Pengajuan & Keuangan" }, { label: "Reimburse", href: "/reimburse" }, { label: "Draft", href: `/reimburse/${id}` }, { label: "Ubah" }]}
       />
       <ReimbursementForm
         reimbursementId={id}

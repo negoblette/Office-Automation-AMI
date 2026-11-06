@@ -16,7 +16,7 @@ function revalidateInventory() {
 }
 
 async function run(admin: { isSuperAdmin: boolean }, action: () => Promise<unknown>): Promise<ActionResult> {
-  if (!inventoryEnabled(admin)) return { ok: false, error: "Modul Inventory sedang ditunda." };
+  if (!inventoryEnabled(admin)) return { ok: false, error: "Modul Inventaris sedang ditunda." };
   try {
     await action();
     revalidateInventory();

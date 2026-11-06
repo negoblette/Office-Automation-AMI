@@ -4,16 +4,16 @@ import { z } from "zod";
 import { PaymentMethod } from "@/generated/prisma/enums";
 import { amountSchema, isoDateSchema, optionalField, textSchema } from "./common";
 
-/** Pilihan project khusus: prospek New Acquisition (tanpa project di master). */
+/** Pilihan project khusus: prospek Prospek Baru (tanpa project di master). */
 export const NEW_ACQUISITION = "__new_acquisition__";
 
 /** Satu baris tersimpan (ReimbursementItem). Header kunjungan disalin ke tiap baris. */
 export const reimbursementItemSchema = z.object({
   date: isoDateSchema,
   /** Company/Customer dari master (Fase 14: wajib, dropdown). */
-  customerId: z.string({ error: "Company wajib dipilih" }).min(1, { error: "Company wajib dipilih" }),
+  customerId: z.string({ error: "Perusahaan wajib dipilih" }).min(1, { error: "Perusahaan wajib dipilih" }),
   projectId: optionalField(z.string()),
-  /** Prospek New Acquisition tanpa project (tidak boleh bersamaan dengan projectId). */
+  /** Prospek Prospek Baru tanpa project (tidak boleh bersamaan dengan projectId). */
   newAcquisition: z.boolean().default(false),
   activity: textSchema("Aktivitas", { min: 2, max: 300 }),
   /** Wajib untuk semua tipe kecuali Transport (2026-10-12) — dicek di service karena butuh kode tipe. */
@@ -37,7 +37,7 @@ export type ReimbursementInput = z.infer<typeof reimbursementSchema>;
 
 /**
  * Form reimburse (Fase 14, keputusan user 2026-10-05): beberapa KUNJUNGAN (tanggal + company +
- * project / New Acquisition), masing-masing berisi beberapa BARIS (tipe, payment, total, lokasi,
+ * project / Prospek Baru), masing-masing berisi beberapa BARIS (tipe, payment, total, lokasi,
  * nama – jabatan, aktivitas). Output = baris datar `reimbursementSchema`.
  */
 export const reimbursementLineSchema = reimbursementItemSchema.pick({
@@ -52,7 +52,7 @@ export const reimbursementLineSchema = reimbursementItemSchema.pick({
 
 export const reimbursementVisitSchema = z.object({
   date: isoDateSchema,
-  customerId: z.string({ error: "Company wajib dipilih" }).min(1, { error: "Company wajib dipilih" }),
+  customerId: z.string({ error: "Perusahaan wajib dipilih" }).min(1, { error: "Perusahaan wajib dipilih" }),
   /** "" = tanpa project, NEW_ACQUISITION = prospek, selain itu id project. */
   project: z.string(),
   lines: z.array(reimbursementLineSchema).min(1, { error: "Minimal 1 baris" }),
@@ -145,7 +145,7 @@ export function itemsToVisits<T extends { date: string; customerId: string | nul
   return visits;
 }
 
-/** Subtotal Personal / Corporate / Total (RMB-06, 2026-10-12). Dipakai client (tampilan) & server (nilai yang disimpan). */
+/** Subtotal Pribadi / Corporate / Total (RMB-06, 2026-10-12). Dipakai client (tampilan) & server (nilai yang disimpan). */
 export function reimbursementTotals(items: { paymentMethod: PaymentMethod | string; amount: number | null | undefined }[]) {
   let personal = 0;
   let corporate = 0;

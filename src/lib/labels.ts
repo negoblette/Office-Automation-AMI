@@ -69,19 +69,19 @@ export const CERTIFICATE_TYPE_LABEL: Record<CertificateType, string> = {
 };
 
 export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
-  PERSONAL: "Personal",
-  CORPORATE: "Corporate",
+  PERSONAL: "Pribadi",
+  CORPORATE: "Perusahaan",
 };
 
 export const ASSET_CATEGORY_LABEL: Record<AssetCategory, string> = {
-  DEMO_UNIT: "Demo Unit",
-  BACKUP_UNIT: "Backup Unit",
-  INVENTORY: "Inventory",
+  DEMO_UNIT: "Unit Demo",
+  BACKUP_UNIT: "Unit Cadangan",
+  INVENTORY: "Inventaris",
 };
 
 export const PROJECT_TYPE_LABEL: Record<ProjectType, string> = {
   RUNNING: "Berjalan",
-  NEW_ACQUISITION: "New Acquisition",
+  NEW_ACQUISITION: "Prospek Baru",
 };
 
 export const CANDIDATE_STATUS_LABEL: Record<CandidateStatus, string> = {

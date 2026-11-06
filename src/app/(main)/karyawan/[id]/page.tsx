@@ -78,7 +78,7 @@ export default async function DetailKaryawanPage({
               Biodata (PDF)
             </Link>
             <Link href={`/karyawan/${employee.id}/edit`} className={buttonVariants({ variant: "outline", size: "lg" })}>
-              <Pencil aria-hidden /> Edit
+              <Pencil aria-hidden /> Ubah
             </Link>
             {isActive ? (
               <ResignButton employeeId={employee.id} name={employee.fullName} />

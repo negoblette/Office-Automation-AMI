@@ -70,10 +70,10 @@ describe("koreksi approver (Fase 14, diperluas 2026-10-06)", () => {
     expect(corrections.map((c) => [c.label, c.before, c.after])).toEqual([
       ["Baris 1 · Tanggal", "12 Sep 2026", "11 Sep 2026"],
       ["Baris 1 · Tipe", "Transport", "Meals"],
-      ["Baris 1 · Payment", "Personal", "Corporate"],
+      ["Baris 1 · Pembayaran", "Pribadi", "Perusahaan"],
       ["Baris 1 · Nominal", "Rp 200.000", "Rp 150.000"],
       ["Baris 1 · Aktivitas", "Tol", "Tol Cikampek"],
-      ["Baris 2 · Company", "PT Maju Selaras", "PT Lain"],
+      ["Baris 2 · Perusahaan", "PT Maju Selaras", "PT Lain"],
       ["Baris 2 · Project", "Tanpa project", "PRJ-0100 - Core"],
       ["Baris 2 · Ada kwitansi fisik", "Tidak", "Ya"],
     ]);
@@ -81,12 +81,12 @@ describe("koreksi approver (Fase 14, diperluas 2026-10-06)", () => {
     expect(await testDb.auditLog.count({ where: { entity: "ApprovalRequest", entityId: requestId, action: "UPDATE" } })).toBe(1);
   });
 
-  it("validasi: project harus milik company; New Acquisition; nominal > 0; tanggal tidak di masa depan; tanpa perubahan ditolak", async () => {
+  it("validasi: project harus milik company; Prospek Baru; nominal > 0; tanggal tidak di masa depan; tanpa perubahan ditolak", async () => {
     const { requestId } = await submitAndi();
     const project = await saveProject(testDb, u.ika, null, projectSchema.parse({ customerId: otherCustomerId, code: "PRJ-0100", name: "Core", type: "RUNNING", isActive: true }));
     const [first] = await getCorrectionTargets(testDb, requestId, u.yosep);
     const correct = (values: Record<string, string | number | boolean | null>) => correctRequest(testDb, u.yosep, requestId, [{ targetId: first.targetId, values }]);
-    await expect(correct({ project: project.id })).rejects.toThrow("tidak sesuai company");
+    await expect(correct({ project: project.id })).rejects.toThrow("tidak sesuai perusahaan");
     await expect(correct({ amount: 0 })).rejects.toThrow("lebih dari 0");
     await expect(correct({ date: "2999-01-01" })).rejects.toThrow("masa depan");
     await expect(correct({ typeId: "tidak-ada" })).rejects.toThrow("pilihan tidak valid");
