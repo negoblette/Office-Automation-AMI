@@ -3,6 +3,7 @@ import type { Role } from "@/generated/prisma/enums";
 import type { PrismaClient, RequestStatus } from "@/generated/prisma/client";
 import { fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { remainingPlafond } from "@/lib/health";
+import { exportOwnerFilter } from "@/lib/export-ids";
 import { rejectionsOf } from "./approval";
 
 const yearRange = (year: number) => ({ gte: fromIsoDate(`${year}-01-01`), lte: fromIsoDate(`${year}-12-31`) });
@@ -57,6 +58,7 @@ export async function getHealthSummary(db: PrismaClient, employeeId: string): Pr
 
 export type HealthClaimRow = {
   id: string;
+  employeeId: string;
   number: string;
   employeeName: string;
   employeePosition: string;
@@ -96,6 +98,7 @@ export async function listHealthClaims(db: PrismaClient, viewer: { role: Role; e
   const rejections = await rejectionsOf(db, "HEALTH", claims.filter((c) => c.status === "REJECTED").map((c) => c.id));
   return claims.map<HealthClaimRow>((claim) => ({
     id: claim.id,
+    employeeId: claim.employeeId,
     number: claim.number,
     employeeName: claim.employee.fullName,
     employeePosition: claim.employee.position,
@@ -184,6 +187,28 @@ export async function listPlafonds(db: PrismaClient, year: number): Promise<Plaf
       used: usedOf.get(e.id) ?? 0,
     };
   });
+}
+
+/**
+ * Klaim terpilih untuk ekspor (2026-11-09): kelompok per karyawan per tahun klaim (plafon per tahun). Selain Admin hanya
+ * miliknya sendiri; draft tidak ikut. Hasil = `[employeeId, year, claimIds]`, diurutkan nama karyawan lalu tahun.
+ */
+export async function healthExportGroups(db: PrismaClient, viewer: { role: string; employeeId: string | null }, ids: string[]) {
+  if (ids.length === 0) return [];
+  const claims = await db.healthClaim.findMany({
+    where: { id: { in: ids }, status: { not: "DRAFT" }, ...exportOwnerFilter(viewer) },
+    orderBy: [{ employee: { fullName: "asc" } }, { claimDate: "asc" }],
+    select: { id: true, employeeId: true, claimDate: true },
+  });
+  const groups = new Map<string, { employeeId: string; year: number; claimIds: Set<string> }>();
+  for (const claim of claims) {
+    const year = Number(toJakartaIsoDate(claim.claimDate).slice(0, 4));
+    const key = `${claim.employeeId}|${year}`;
+    const group = groups.get(key) ?? { employeeId: claim.employeeId, year, claimIds: new Set<string>() };
+    group.claimIds.add(claim.id);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
 }
 
 export async function listHealthCategories(db: PrismaClient) {

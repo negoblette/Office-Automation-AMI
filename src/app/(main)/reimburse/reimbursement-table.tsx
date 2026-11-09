@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { requestStatusBadge } from "@/components/shared/approval-status";
 import { FilterPills } from "@/components/shared/filter-pills";
+import { PersonFilter } from "@/components/shared/person-filter";
 import { PersonCell } from "@/components/shared/person-cell";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { DataTable, type DataTableColumn, dataTableColumnHelper } from "@/components/table/data-table";
@@ -75,7 +76,13 @@ type StatusFilter = "ALL" | "DRAFT" | "PENDING" | "APPROVED" | "REJECTED";
 
 export function ReimbursementTable({ rows, showRequester }: { rows: ReimbursementListRow[]; showRequester: boolean }) {
   const [status, setStatus] = useState<StatusFilter>("ALL");
-  const data = useMemo(() => (status === "ALL" ? rows : rows.filter((row) => row.status === status)), [rows, status]);
+  // Filter per nama karyawan (2026-11-09, Admin).
+  const [person, setPerson] = useState("");
+  const people = useMemo(() => [...new Map(rows.map((row) => [row.employeeId, row.employeeName])).entries()].sort((a, b) => a[1].localeCompare(b[1], "id")), [rows]);
+  const data = useMemo(
+    () => rows.filter((row) => (status === "ALL" || row.status === status) && (!person || row.employeeId === person)),
+    [rows, status, person],
+  );
   const columns = useMemo(
     () => [numberColumn, ...(showRequester ? [requesterColumn] : []), ...restColumns] as DataTableColumn<ReimbursementListRow>[],
     [showRequester],
@@ -103,6 +110,7 @@ export function ReimbursementTable({ rows, showRequester }: { rows: Reimbursemen
         searchPlaceholder="Cari nomor, pemohon, rincian…"
         rowNoun="pengajuan"
         emptyMessage="Belum ada pengajuan reimburse."
+        toolbar={showRequester && <PersonFilter value={person} onChange={setPerson} people={people} />}
       />
     </div>
   );

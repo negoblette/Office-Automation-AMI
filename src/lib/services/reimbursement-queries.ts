@@ -16,6 +16,7 @@ const listInclude = {
 
 export type ReimbursementListRow = {
   id: string;
+  employeeId: string;
   number: string | null;
   employeeName: string;
   employeePosition: string;
@@ -52,6 +53,7 @@ export async function listReimbursements(
   const levels = await currentLevels(db, rows.map((row) => row.id));
   return rows.map((row) => ({
     id: row.id,
+    employeeId: row.employeeId,
     number: row.status === "DRAFT" ? null : row.number,
     employeeName: row.employee.fullName,
     employeePosition: row.employee.position,
@@ -181,57 +183,3 @@ export async function getReimbursementFormOptions(db: PrismaClient, division: st
 }
 
 export type ReimbursementFormOptions = Awaited<ReturnType<typeof getReimbursementFormOptions>>;
-
-export type ReimbursePrintRow = {
-  id: string;
-  date: string;
-  number: string;
-  status: "PENDING" | "APPROVED" | "REJECTED" | "DRAFT";
-  customerName: string | null;
-  projectName: string | null;
-  activity: string;
-  participants: string;
-  location: string;
-  typeName: string;
-  paymentMethod: "PERSONAL" | "CORPORATE";
-  amount: number;
-};
-
-/**
- * Rekap reimburse satu karyawan untuk satu bulan transaksi (Fase 14: print / save as PDF).
- * Hanya pengajuan yang sudah diajukan (bukan draft) dan tidak dihapus.
- */
-export async function getReimbursePrintData(db: PrismaClient, employeeId: string, yearMonth: string) {
-  const [y, m] = yearMonth.split("-").map(Number);
-  const start = new Date(Date.UTC(y, m - 1, 1));
-  const end = new Date(Date.UTC(y, m, 0));
-  const [employee, items] = await Promise.all([
-    db.employee.findUnique({ where: { id: employeeId }, select: { fullName: true, position: true, division: true, employeeNo: true } }),
-    db.reimbursementItem.findMany({
-      where: { date: { gte: start, lte: end }, reimbursement: { employeeId, deletedAt: null, status: { not: "DRAFT" } } },
-      orderBy: [{ date: "asc" }, { id: "asc" }],
-      include: {
-        reimbursement: { select: { number: true, status: true } },
-        customer: { select: { name: true } },
-        project: { select: { code: true, name: true } },
-        type: { select: { name: true } },
-      },
-    }),
-  ]);
-  if (!employee) return null;
-  const rows: ReimbursePrintRow[] = items.map((i) => ({
-    id: i.id,
-    date: toJakartaIsoDate(i.date),
-    number: i.reimbursement.number,
-    status: i.reimbursement.status,
-    customerName: i.customer?.name ?? null,
-    projectName: i.project ? projectLabel(i.project) : i.newAcquisition ? "Prospek Baru" : null,
-    activity: i.activity,
-    participants: i.participants,
-    location: i.location,
-    typeName: i.type.name,
-    paymentMethod: i.paymentMethod,
-    amount: Number(i.amount),
-  }));
-  return { employee, rows };
-}

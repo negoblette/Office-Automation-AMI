@@ -1,18 +1,23 @@
-// Export reimburse ke Excel (.xlsx) per bulan transaksi (2026-10-16).
+// Ekspor reimburse ke Excel (.xlsx) & data cetak PDF (2026-10-16; 2026-11-09: pengajuan yang dipilih, bukan per bulan).
 import ExcelJS from "exceljs";
 import type { PaymentMethod, PrismaClient, RequestStatus } from "@/generated/prisma/client";
 import { toJakartaIsoDate } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL, projectLabel } from "@/lib/labels";
+import { exportOwnerFilter } from "@/lib/export-ids";
 import { divisionLabels } from "./division";
 
 const STATUS_LABEL: Record<RequestStatus, string> = { PENDING: "Menunggu", APPROVED: "Disetujui", REJECTED: "Ditolak", DRAFT: "Draft" };
 
 export type ReimburseExportRow = {
+  /** Id baris (ReimbursementItem). */
+  id: string;
   date: string;
   number: string;
   status: RequestStatus;
+  employeeId: string;
   employeeName: string;
   employeeNo: string | null;
+  employeePosition: string;
   division: string;
   customerName: string | null;
   projectName: string | null;
@@ -26,20 +31,19 @@ export type ReimburseExportRow = {
 };
 
 /**
- * Baris reimburse (per item) untuk satu bulan transaksi. `employeeId` null = semua karyawan (khusus Admin;
- * hak akses dicek di route). Sama dengan rekap cetak: draft dan pengajuan terhapus tidak ikut.
+ * Baris reimburse (per item) dari pengajuan yang dipilih (`ids` = id Reimbursement, 2026-11-09), dipakai ekspor Excel
+ * & PDF. Selain Admin hanya miliknya sendiri; draft dan pengajuan terhapus tidak ikut.
  */
-export async function listReimburseExportRows(db: PrismaClient, yearMonth: string, employeeId: string | null) {
-  const [y, m] = yearMonth.split("-").map(Number);
+export async function listReimburseExportRows(db: PrismaClient, viewer: { role: string; employeeId: string | null }, ids: string[]) {
+  if (ids.length === 0) return [];
   const [items, divisions] = await Promise.all([
     db.reimbursementItem.findMany({
-      where: {
-        date: { gte: new Date(Date.UTC(y, m - 1, 1)), lte: new Date(Date.UTC(y, m, 0)) },
-        reimbursement: { ...(employeeId ? { employeeId } : {}), deletedAt: null, status: { not: "DRAFT" } },
-      },
+      where: { reimbursementId: { in: ids }, reimbursement: { ...exportOwnerFilter(viewer), deletedAt: null, status: { not: "DRAFT" } } },
       orderBy: [{ reimbursement: { employee: { fullName: "asc" } } }, { date: "asc" }, { id: "asc" }],
       include: {
-        reimbursement: { select: { number: true, status: true, division: true, employee: { select: { fullName: true, employeeNo: true } } } },
+        reimbursement: {
+          select: { number: true, status: true, division: true, employeeId: true, employee: { select: { fullName: true, employeeNo: true, position: true } } },
+        },
         customer: { select: { name: true } },
         project: { select: { code: true, name: true } },
         type: { select: { name: true } },
@@ -49,11 +53,14 @@ export async function listReimburseExportRows(db: PrismaClient, yearMonth: strin
   ]);
   return items.map(
     (i): ReimburseExportRow => ({
+      id: i.id,
       date: toJakartaIsoDate(i.date),
       number: i.reimbursement.number,
       status: i.reimbursement.status,
+      employeeId: i.reimbursement.employeeId,
       employeeName: i.reimbursement.employee.fullName,
       employeeNo: i.reimbursement.employee.employeeNo,
+      employeePosition: i.reimbursement.employee.position,
       division: divisions[i.reimbursement.division] ?? i.reimbursement.division,
       customerName: i.customer?.name ?? null,
       projectName: i.project ? projectLabel(i.project) : i.newAcquisition ? "Prospek Baru" : null,
@@ -149,7 +156,7 @@ export async function buildReimburseWorkbook(rows: ReimburseExportRow[], title: 
     total.font = { bold: true };
     summary.getCell(`D${last + 1}`).numFmt = "0";
   } else {
-    summary.addRow(["Tidak ada reimburse untuk transaksi bulan ini."]);
+    summary.addRow(["Tidak ada reimburse yang dipilih."]);
   }
 
   return new Uint8Array(await wb.xlsx.writeBuffer());

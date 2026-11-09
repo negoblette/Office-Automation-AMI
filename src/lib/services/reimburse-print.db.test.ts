@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { Actor } from "@/lib/services/access";
 import { saveCustomer, saveProject } from "@/lib/services/project";
 import { saveReimbursementDraft, submitReimbursement } from "@/lib/services/reimbursement";
-import { getReimbursePrintData } from "@/lib/services/reimbursement-queries";
+import { listReimburseExportRows } from "@/lib/services/reimburse-export";
 import { projectLabel } from "@/lib/labels";
 import { projectSchema } from "@/lib/validators/project";
 import { dailySubtotals, reimbursementSchema } from "@/lib/validators/reimbursement";
@@ -69,7 +69,7 @@ describe("subtotal per hari & rekap cetak per bulan (Fase 14)", () => {
     ]);
   });
 
-  it("rekap bulan: hanya pengajuan yang sudah diajukan, transaksi di bulan itu, milik karyawan itu", async () => {
+  it("data PDF (2026-11-09): semua baris pengajuan yang dipilih, dengan project / Prospek Baru & status", async () => {
     const { mandiri, project, row } = await setup();
     const submitted = await saveReimbursementDraft(testDb, actors.andi, null, reimbursementSchema.parse({
       note: "",
@@ -77,11 +77,12 @@ describe("subtotal per hari & rekap cetak per bulan (Fase 14)", () => {
     }));
     await submitReimbursement(testDb, actors.andi, submitted.reimbursementId);
     await saveReimbursementDraft(testDb, actors.andi, null, reimbursementSchema.parse({ note: "", items: [row({ amount: 999_000 })] })); // draft
-    const data = await getReimbursePrintData(testDb, actors.andi.employeeId!, "2026-09");
-    expect(data?.rows.map((r) => [r.date, r.amount, r.projectName, r.status])).toEqual([
-      ["2026-09-12", 100_000, "PRJ-0012 - Core Network", "PENDING"],
-      ["2026-09-12", 40_000, "Prospek Baru", "PENDING"],
+    const rows = await listReimburseExportRows(testDb, actors.andi, [submitted.reimbursementId]);
+    expect(rows.map((r) => [r.date, r.amount, r.projectName, r.status, r.employeePosition])).toEqual([
+      ["2026-09-12", 100_000, "PRJ-0012 - Core Network", "PENDING", "Engineer"],
+      ["2026-09-12", 40_000, "Prospek Baru", "PENDING", "Engineer"],
+      ["2026-10-01", 70_000, null, "PENDING", "Engineer"],
     ]);
-    expect((await getReimbursePrintData(testDb, actors.sinta.employeeId!, "2026-09"))?.rows).toEqual([]);
+    expect(await listReimburseExportRows(testDb, actors.sinta, [submitted.reimbursementId])).toEqual([]);
   });
 });

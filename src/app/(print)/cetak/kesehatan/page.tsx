@@ -1,107 +1,119 @@
 import type { Metadata } from "next";
-import { notFound, redirect } from "next/navigation";
 import { PrintToolbar } from "@/components/print/print-button";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
-import { formatDate, formatRupiah, toJakartaIsoDate } from "@/lib/format";
+import { parseExportIds } from "@/lib/export-ids";
+import { formatDate, formatRupiah } from "@/lib/format";
 import { divisionLabels } from "@/lib/services/division";
-import { getHealthPrintData } from "@/lib/services/health-queries";
+import { getHealthPrintData, healthExportGroups } from "@/lib/services/health-queries";
 
 export const metadata: Metadata = { title: "Rekap Klaim Kesehatan" };
 
 const STATUS_LABEL = { PENDING: "Menunggu", APPROVED: "Disetujui", REJECTED: "Ditolak", DRAFT: "Draft" } as const;
 
 /**
- * Rekap klaim kesehatan per orang per tahun untuk dicetak / disimpan PDF (2026-10-16).
- * Admin boleh memilih karyawan; selain Admin hanya rekap dirinya sendiri.
+ * Ekspor PDF klaim kesehatan yang dipilih (2026-11-09: `?ids=`, dari panel "Pilih & Ekspor" atau tombol per klaim). Satu
+ * bagian per karyawan per tahun: ringkasan plafon tahun itu (semua klaim) + klaim yang dipilih; dialog cetak langsung
+ * terbuka untuk disimpan sebagai PDF. Selain Admin hanya miliknya sendiri (dicek di query).
  */
-export default async function CetakKesehatanPage({ searchParams }: { searchParams: Promise<{ karyawan?: string; tahun?: string }> }) {
+export default async function CetakKesehatanPage({ searchParams }: { searchParams: Promise<{ ids?: string }> }) {
   const user = await requireUser();
-  const { karyawan, tahun } = await searchParams;
-  if (karyawan && karyawan !== user.employeeId && user.role !== "ADMIN") redirect("/akses-ditolak");
-  const employeeId = user.role === "ADMIN" && karyawan ? karyawan : user.employeeId;
-  if (!employeeId) redirect("/akses-ditolak");
-  const thisYear = Number(toJakartaIsoDate().slice(0, 4));
-  const year = tahun && /^\d{4}$/.test(tahun) && Number(tahun) <= thisYear ? Number(tahun) : thisYear;
+  const { ids } = await searchParams;
+  const groups = await healthExportGroups(prisma, user, parseExportIds(ids));
 
-  const data = await getHealthPrintData(prisma, employeeId, year);
-  if (!data) notFound();
-  const { employee, rows, summary } = data;
+  if (groups.length === 0) {
+    return (
+      <>
+        <PrintToolbar backHref="/kesehatan" />
+        <p className="text-sm">Tidak ada klaim untuk diekspor. Pilih klaim dari halaman Kesehatan (tombol &ldquo;Pilih & Ekspor&rdquo;).</p>
+      </>
+    );
+  }
+
+  const [divisions, sections] = await Promise.all([
+    divisionLabels(prisma),
+    Promise.all(groups.map(async (group) => ({ group, data: (await getHealthPrintData(prisma, group.employeeId, group.year))! }))),
+  ]);
 
   return (
     <>
-      <PrintToolbar backHref="/kesehatan" />
-      <header className="mb-5 border-b-2 border-black pb-3">
-        <p className="text-xs font-bold tracking-widest">PT ARTHA MITRA INTERDATA</p>
-        <h1 className="text-2xl font-bold">Rekap Klaim Kesehatan — {year}</h1>
-        <p className="mt-1 text-sm">
-          {employee.fullName}
-          {employee.employeeNo && ` (${employee.employeeNo})`} · {employee.position} · {(await divisionLabels(prisma))[employee.division] ?? employee.division}
-        </p>
-      </header>
+      <PrintToolbar backHref="/kesehatan" autoPrint />
+      {sections.map(({ group, data }, index) => {
+        const { employee, summary } = data;
+        const rows = data.rows.filter((r) => group.claimIds.has(r.id));
+        const approvedSelected = rows.filter((r) => r.status === "APPROVED").reduce((n, r) => n + (r.approvedAmount ?? r.amount), 0);
+        return (
+          <section key={`${group.employeeId}-${group.year}`} className={index > 0 ? "mt-10 break-before-page" : undefined}>
+            <header className="mb-5 border-b-2 border-black pb-3">
+              <p className="text-xs font-bold tracking-widest">PT ARTHA MITRA INTERDATA</p>
+              <h1 className="text-2xl font-bold">Rekap Klaim Kesehatan — {group.year}</h1>
+              <p className="mt-1 text-sm">
+                {employee.fullName}
+                {employee.employeeNo && ` (${employee.employeeNo})`} · {employee.position} · {divisions[employee.division] ?? employee.division}
+              </p>
+            </header>
 
-      <section className="mb-5 grid grid-cols-4 gap-3 text-sm break-inside-avoid">
-        {[
-          ["Plafon tahunan", summary.annual === null ? "Belum diatur" : formatRupiah(summary.annual)],
-          ["Terpakai (disetujui)", formatRupiah(summary.approved)],
-          ["Menunggu approval", formatRupiah(summary.pending)],
-          ["Sisa plafon", summary.remaining === null ? "—" : formatRupiah(summary.remaining)],
-        ].map(([label, value]) => (
-          <div key={label} className="border border-black/40 p-2">
-            <p className="text-xs">{label}</p>
-            <p className="font-semibold tabular-nums">{value}</p>
-          </div>
-        ))}
-      </section>
-
-      {rows.length === 0 ? (
-        <p className="text-sm">Belum ada klaim kesehatan di tahun ini.</p>
-      ) : (
-        <table className="w-full border-collapse text-xs">
-          <thead>
-            <tr className="border-b border-black text-left">
-              {["Tanggal", "No. Klaim", "Kategori", "Keterangan", "Status", "Pembayaran", "Diajukan", "Disetujui"].map((h) => (
-                <th key={h} className={`py-1.5 pr-2 font-semibold ${h === "Diajukan" || h === "Disetujui" ? "text-right" : ""}`}>
-                  {h}
-                </th>
+            <section className="mb-5 grid grid-cols-4 gap-3 text-sm break-inside-avoid">
+              {[
+                ["Plafon tahunan", summary.annual === null ? "Belum diatur" : formatRupiah(summary.annual)],
+                ["Terpakai (disetujui)", formatRupiah(summary.approved)],
+                ["Menunggu approval", formatRupiah(summary.pending)],
+                ["Sisa plafon", summary.remaining === null ? "—" : formatRupiah(summary.remaining)],
+              ].map(([label, value]) => (
+                <div key={label} className="border border-black/40 p-2">
+                  <p className="text-xs">{label}</p>
+                  <p className="font-semibold tabular-nums">{value}</p>
+                </div>
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="border-b border-black/20 align-top">
-                <td className="py-1.5 pr-2 whitespace-nowrap">{formatDate(`${r.claimDate}T00:00:00Z`, "short")}</td>
-                <td className="py-1.5 pr-2 whitespace-nowrap">{r.number}</td>
-                <td className="py-1.5 pr-2">{r.category}</td>
-                <td className="py-1.5 pr-2">{r.note ?? "—"}</td>
-                <td className="py-1.5 pr-2">{STATUS_LABEL[r.status]}</td>
-                <td className="py-1.5 pr-2 whitespace-nowrap">
-                  {r.payout
-                    ? `${new Intl.DateTimeFormat("id-ID", { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${r.payout.month}-01T00:00:00Z`))}${r.payout.paid ? " · dibayar" : ""}`
-                    : "—"}
-                </td>
-                <td className="py-1.5 pr-2 text-right tabular-nums">{formatRupiah(r.amount)}</td>
-                <td className="py-1.5 text-right tabular-nums">{r.approvedAmount === null ? "—" : formatRupiah(r.approvedAmount)}</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot className="text-sm">
-            <tr>
-              <td colSpan={7} className="pt-3 pr-2 text-right font-bold">Total disetujui</td>
-              <td className="pt-3 text-right font-bold tabular-nums">{formatRupiah(summary.approved)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      )}
+            </section>
 
-      <footer className="mt-12 grid grid-cols-3 gap-8 text-center text-xs break-inside-avoid">
-        {["Diajukan", "Diperiksa", "Disetujui"].map((label, i) => (
-          <div key={label}>
-            <p>{label}</p>
-            <div className="mt-14 border-t border-black pt-1">{i === 0 ? employee.fullName : " "}</div>
-          </div>
-        ))}
-      </footer>
+            <table className="w-full border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-black text-left">
+                  {["Tanggal", "No. Klaim", "Kategori", "Keterangan", "Status", "Pembayaran", "Diajukan", "Disetujui"].map((h) => (
+                    <th key={h} className={`py-1.5 pr-2 font-semibold ${h === "Diajukan" || h === "Disetujui" ? "text-right" : ""}`}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id} className="border-b border-black/20 align-top">
+                    <td className="py-1.5 pr-2 whitespace-nowrap">{formatDate(`${r.claimDate}T00:00:00Z`, "short")}</td>
+                    <td className="py-1.5 pr-2 whitespace-nowrap">{r.number}</td>
+                    <td className="py-1.5 pr-2">{r.category}</td>
+                    <td className="py-1.5 pr-2">{r.note ?? "—"}</td>
+                    <td className="py-1.5 pr-2">{STATUS_LABEL[r.status]}</td>
+                    <td className="py-1.5 pr-2 whitespace-nowrap">
+                      {r.payout
+                        ? `${new Intl.DateTimeFormat("id-ID", { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${r.payout.month}-01T00:00:00Z`))}${r.payout.paid ? " · dibayar" : ""}`
+                        : "—"}
+                    </td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums">{formatRupiah(r.amount)}</td>
+                    <td className="py-1.5 text-right tabular-nums">{r.approvedAmount === null ? "—" : formatRupiah(r.approvedAmount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="text-sm">
+                <tr>
+                  <td colSpan={7} className="pt-3 pr-2 text-right font-bold">Total disetujui (klaim di atas)</td>
+                  <td className="pt-3 text-right font-bold tabular-nums">{formatRupiah(approvedSelected)}</td>
+                </tr>
+              </tfoot>
+            </table>
+
+            <footer className="mt-12 grid grid-cols-3 gap-8 text-center text-xs break-inside-avoid">
+              {["Diajukan", "Diperiksa", "Disetujui"].map((label, i) => (
+                <div key={label}>
+                  <p>{label}</p>
+                  <div className="mt-14 border-t border-black pt-1">{i === 0 ? employee.fullName : " "}</div>
+                </div>
+              ))}
+            </footer>
+          </section>
+        );
+      })}
     </>
   );
 }

@@ -257,6 +257,10 @@ Biaya project dihitung **per tahun kalender** (cutoff 31 Des; `?tahun=` untuk hi
 **Istilah tampilan (2026-11-06):** Perusahaan (bukan Company), Nama – Jabatan, Aktivitas, Pembayaran Pribadi / Perusahaan, Prospek Baru,
 Inventaris / Unit Demo, Ubah (bukan Edit), Unduh, Unggah, Ekspor. Istilah yang dipakai user tetap: Reimburse, Overtime, Approval,
 Dashboard, Setting, Project, Customer, Clock In/Out, Draft, Admin, Staff, Asset Kantor.
+**Ekspor (2026-11-09, reimburse & klaim kesehatan):** panel "Pilih & Ekspor" (`ExportSelector`): pilih karyawan (Admin; bisa semua) →
+daftar pengajuan non-draft (filter bulan, pilih semua) → Ekspor PDF (`/cetak/reimburse|kesehatan?ids=`, dialog cetak langsung terbuka →
+"Simpan sebagai PDF"; tanpa library PDF) / Ekspor Excel (`/api/export/reimburse|kesehatan?ids=`). Tombol ekspor juga per pengajuan
+(detail reimburse, baris klaim). Selain Admin hanya miliknya (`exportOwnerFilter`, `lib/export-ids.ts`); tabel punya filter per nama.
 **Draft (2026-11-04):** tombol Simpan Draft tidak mengecek kelengkapan: isian lengkap → draft biasa; belum lengkap → disimpan apa
 adanya di `Reimbursement.draftForm` tanpa baris (`saveIncompleteReimbursementDraft`, tidak bisa diajukan sampai lengkap; bukan untuk
 revisi yang ditolak). Kartu "Diajukan bulan ini" tidak menghitung pengajuan yang ditolak.

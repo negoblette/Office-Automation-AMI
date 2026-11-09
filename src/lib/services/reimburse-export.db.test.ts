@@ -23,8 +23,8 @@ afterAll(async () => {
   await testDb.$disconnect();
 });
 
-describe("export reimburse ke Excel (2026-10-16)", () => {
-  it("per bulan transaksi, satu atau semua karyawan, tanpa draft; workbook berisi detail + ringkasan", async () => {
+describe("ekspor reimburse ke Excel (2026-10-16; 2026-11-09: pengajuan yang dipilih)", () => {
+  it("hanya pengajuan yang dipilih, tanpa draft; selain Admin hanya miliknya; workbook berisi detail + ringkasan", async () => {
     const bca = await saveCustomer(testDb, u.ika, null, "PT BCA");
     const typeId = (await testDb.reimburseType.findUniqueOrThrow({ where: { code: "TRANSPORT" } })).id;
     const row = (over: Record<string, unknown> = {}) => ({
@@ -34,27 +34,33 @@ describe("export reimburse ke Excel (2026-10-16)", () => {
     const submit = async (actor: Actor, items: Record<string, unknown>[]) => {
       const draft = await saveReimbursementDraft(testDb, actor, null, reimbursementSchema.parse({ note: "", items }));
       await submitReimbursement(testDb, actor, draft.reimbursementId);
+      return draft.reimbursementId;
     };
-    await submit(actors.andi, [row(), row({ paymentMethod: "CORPORATE", amount: 50_000, date: "2026-09-13" }), row({ date: "2026-10-01" })]);
-    await submit(actors.sinta, [row({ amount: 70_000 })]);
-    await saveReimbursementDraft(testDb, actors.andi, null, reimbursementSchema.parse({ note: "", items: [row({ amount: 999_000 })] })); // draft
+    const andi = await submit(actors.andi, [row(), row({ paymentMethod: "CORPORATE", amount: 50_000, date: "2026-09-13" }), row({ date: "2026-10-01" })]);
+    const sinta = await submit(actors.sinta, [row({ amount: 70_000 })]);
+    await submit(actors.andi, [row({ amount: 5_000 })]);
+    const draft = (await saveReimbursementDraft(testDb, actors.andi, null, reimbursementSchema.parse({ note: "", items: [row({ amount: 999_000 })] }))).reimbursementId;
 
-    const mine = await listReimburseExportRows(testDb, "2026-09", actors.andi.employeeId!);
+    // Staf: pengajuan orang lain & draft diabaikan walau id-nya dikirim.
+    const mine = await listReimburseExportRows(testDb, actors.andi, [andi, sinta, draft]);
     expect(mine.map((r) => [r.date, r.amount, r.paymentMethod, r.employeeName])).toEqual([
       ["2026-09-12", 100_000, "PERSONAL", "Andi Pratama"],
       ["2026-09-13", 50_000, "CORPORATE", "Andi Pratama"],
+      ["2026-10-01", 100_000, "PERSONAL", "Andi Pratama"],
     ]);
-    const all = await listReimburseExportRows(testDb, "2026-09", null);
-    expect(all.map((r) => r.amount)).toEqual([100_000, 50_000, 70_000]);
+    const all = await listReimburseExportRows(testDb, actors.ika, [andi, sinta]);
+    expect(all.map((r) => r.amount)).toEqual([100_000, 50_000, 100_000, 70_000]);
+    expect(all.some((r) => r.amount === 5_000)).toBe(false); // pengajuan yang tidak dipilih
+    expect(await listReimburseExportRows(testDb, actors.ika, [])).toEqual([]);
 
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load((await buildReimburseWorkbook(all, "Rekap")).buffer as ArrayBuffer);
     const detail = wb.getWorksheet("Detail")!;
     expect(detail.getRow(1).getCell(3).value).toBe("No. Pengajuan");
-    expect(detail.rowCount).toBe(1 + 3 + 1); // header + 3 baris + total
+    expect(detail.rowCount).toBe(1 + 4 + 1); // header + 4 baris + total
     expect(detail.getRow(2).getCell(16).value).toBe(100_000);
     const summary = wb.getWorksheet("Ringkasan")!;
-    expect(summary.getRow(4).values).toEqual([undefined, "Andi Pratama", "", "Engineer", 1, 0, 150_000, 0, 100_000, 50_000]);
+    expect(summary.getRow(4).values).toEqual([undefined, "Andi Pratama", "", "Engineer", 1, 0, 250_000, 0, 200_000, 50_000]);
     expect(summary.getRow(5).getCell(1).value).toBe("Sinta Lestari");
   });
 });

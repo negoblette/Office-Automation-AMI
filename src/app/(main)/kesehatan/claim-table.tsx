@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { requestStatusBadge } from "@/components/shared/approval-status";
 import { PersonCell } from "@/components/shared/person-cell";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { DataTable, type DataTableColumn, dataTableColumnHelper } from "@/components/table/data-table";
 import { formatDate, formatRupiah } from "@/lib/format";
 import type { HealthClaimRow } from "@/lib/services/health-queries";
+import { ExportLinks } from "@/components/shared/export-selector";
+import { PersonFilter } from "@/components/shared/person-filter";
 import { HealthClaimDialog } from "./claim-form";
 
 const col = dataTableColumnHelper<HealthClaimRow>();
@@ -103,39 +105,45 @@ const restColumns = [
 export type ClaimReviseContext = { categories: { value: string; label: string }[]; remaining: number };
 
 export function HealthClaimTable({ rows, showRequester, revise }: { rows: HealthClaimRow[]; showRequester: boolean; revise?: ClaimReviseContext }) {
+  // Filter per nama karyawan (2026-11-09, Admin).
+  const [person, setPerson] = useState("");
+  const people = useMemo(() => [...new Map(rows.map((row) => [row.employeeId, row.employeeName])).entries()].sort((a, b) => a[1].localeCompare(b[1], "id")), [rows]);
+  const data = useMemo(() => (person ? rows.filter((row) => row.employeeId === person) : rows), [rows, person]);
   const columns = useMemo(
     () =>
       [
         numberColumn,
         ...(showRequester ? [requesterColumn] : []),
         ...restColumns,
-        ...(revise
-          ? [
-              col.display({
-                id: "actions",
-                header: () => <span className="sr-only">Aksi</span>,
-                cell: ({ row }) =>
-                  row.original.own && row.original.status === "REJECTED" ? (
-                    <HealthClaimDialog
-                      {...revise}
-                      revise={{
-                        id: row.original.id,
-                        number: row.original.number,
-                        items: row.original.items,
-                        note: row.original.note,
-                      }}
-                    />
-                  ) : null,
-              }),
-            ]
-          : []),
+        col.display({
+          id: "actions",
+          header: () => <span className="sr-only">Aksi</span>,
+          cell: ({ row }) => (
+            <div className="flex flex-col items-end gap-2">
+              {/* Ekspor klaim ini (2026-11-09). */}
+              {row.original.status !== "DRAFT" && <ExportLinks compact ids={[row.original.id]} pdfPath="/cetak/kesehatan" excelPath="/api/export/kesehatan" />}
+              {revise && row.original.own && row.original.status === "REJECTED" && (
+                <HealthClaimDialog
+                  {...revise}
+                  revise={{
+                    id: row.original.id,
+                    number: row.original.number,
+                    items: row.original.items,
+                    note: row.original.note,
+                  }}
+                />
+              )}
+            </div>
+          ),
+        }),
       ] as DataTableColumn<HealthClaimRow>[],
     [showRequester, revise],
   );
   return (
     <DataTable
       columns={columns}
-      data={rows}
+      data={data}
+      toolbar={showRequester && <PersonFilter value={person} onChange={setPerson} people={people} />}
       getRowId={(row) => row.id}
       searchPlaceholder="Cari nomor, karyawan, kategori…"
       rowNoun="klaim"

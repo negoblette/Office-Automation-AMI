@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { RowActions } from "@/app/(main)/approval/approval-tables";
 import { CorrectionList } from "@/app/(main)/approval/correction-ui";
 import { ApprovalStepper } from "@/components/shared/approval-stepper";
+import { ExportLinks } from "@/components/shared/export-selector";
 import { requestStatusBadge } from "@/components/shared/approval-status";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -51,11 +52,15 @@ export default async function DetailReimbursePage({ params }: { params: Promise<
           </span>
         }
         actions={
-          isOwner && (r.status === "DRAFT" || r.status === "REJECTED") ? (
-            <DraftActions reimbursementId={r.id} rejected={r.status === "REJECTED"} incomplete={r.draftForm !== null} />
-          ) : approval ? (
-            <RowActions row={approval} />
-          ) : undefined
+          <div className="flex flex-col items-end gap-2">
+            {isOwner && (r.status === "DRAFT" || r.status === "REJECTED") ? (
+              <DraftActions reimbursementId={r.id} rejected={r.status === "REJECTED"} incomplete={r.draftForm !== null} />
+            ) : (
+              approval && <RowActions row={approval} />
+            )}
+            {/* Ekspor pengajuan ini (2026-11-09): pemohon & Admin. */}
+            {r.status !== "DRAFT" && (isOwner || user.role === "ADMIN") && <ExportLinks ids={[r.id]} pdfPath="/cetak/reimburse" excelPath="/api/export/reimburse" />}
+          </div>
         }
       />
 

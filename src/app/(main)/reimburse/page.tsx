@@ -1,12 +1,13 @@
-import { CheckCheck, Clock, FileSpreadsheet, Plus, Printer, Wallet } from "lucide-react";
+import { CheckCheck, Clock, Plus, Wallet } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { type ExportItem, ExportSelector } from "@/components/shared/export-selector";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { buttonVariants } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
-import { formatRupiah, toJakartaIsoDate } from "@/lib/format";
+import { formatDate, formatRupiah, toJakartaIsoDate } from "@/lib/format";
 import { listReimbursements } from "@/lib/services/reimbursement-queries";
 import { ReimbursementTable } from "./reimbursement-table";
 
@@ -15,10 +16,21 @@ export const metadata: Metadata = { title: "Reimburse" };
 export default async function ReimbursePage() {
   const user = await requireUser();
   const isAdmin = user.role === "ADMIN";
-  const [rows, employees] = await Promise.all([
-    listReimbursements(prisma, user),
-    isAdmin ? prisma.employee.findMany({ where: { status: "ACTIVE" }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true } }).then((list) => list.map((e) => ({ value: e.id, label: e.fullName }))) : [],
-  ]);
+  const rows = await listReimbursements(prisma, user);
+  // Pilihan ekspor: pengajuan yang sudah diajukan (draft tidak ikut).
+  const exportItems: ExportItem[] = rows
+    .filter((row) => row.status !== "DRAFT" && row.number)
+    .map((row) => ({
+      id: row.id,
+      employeeId: row.employeeId,
+      employeeName: row.employeeName,
+      title: row.number!,
+      subtitle: `${formatDate(row.submittedAt ?? row.createdAt, "short")} · ${row.summary}${row.itemCount > 1 ? ` (+${row.itemCount - 1} baris)` : ""}`,
+      amount: row.total,
+      month: toJakartaIsoDate(row.submittedAt ?? row.createdAt).slice(0, 7),
+      status: row.status,
+      currentLevel: row.currentLevel,
+    }));
 
   const thisMonth = toJakartaIsoDate().slice(0, 7);
   // Pengajuan yang ditolak tidak dihitung (2026-11-04); dihitung lagi setelah direvisi & diajukan ulang.
@@ -39,32 +51,15 @@ export default async function ReimbursePage() {
         }
       />
 
-      {/* Rekap per orang per bulan: cetak / PDF (Fase 14) atau export Excel (2026-10-16; Admin bisa semua karyawan). Form GET biasa, tanpa JS. */}
-      <form action="/cetak/reimburse" method="get" className="flex flex-wrap items-end gap-3 rounded-2xl bg-card p-4 shadow-card">
-        <label className="flex flex-col gap-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-          Bulan transaksi
-          <input type="month" name="bulan" defaultValue={thisMonth} max={thisMonth} className="h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground" />
-        </label>
-        {isAdmin && (
-          <label className="flex flex-col gap-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-            Karyawan
-            <select name="karyawan" defaultValue={user.employeeId ?? ""} className="h-10 min-w-56 rounded-lg border border-input bg-background px-3 text-sm text-foreground">
-              {employees.map((e) => (
-                <option key={e.value} value={e.value}>
-                  {e.label}
-                </option>
-              ))}
-              <option value="semua">Semua karyawan (khusus Excel)</option>
-            </select>
-          </label>
-        )}
-        <button type="submit" className={buttonVariants({ variant: "outline", size: "lg" })}>
-          <Printer aria-hidden /> Cetak / Simpan PDF
-        </button>
-        <button type="submit" formAction="/api/export/reimburse" className={buttonVariants({ variant: "outline", size: "lg" })}>
-          <FileSpreadsheet aria-hidden /> Ekspor Excel
-        </button>
-      </form>
+      {/* Ekspor laporan (2026-11-09): pilih karyawan → pilih pengajuan → Ekspor PDF / Excel. */}
+      <ExportSelector
+        items={exportItems}
+        allowAllEmployees={isAdmin}
+        defaultEmployeeId={user.employeeId}
+        noun="reimburse"
+        pdfPath="/cetak/reimburse"
+        excelPath="/api/export/reimburse"
+      />
 
       {/* HP: kartu Rupiah selebar penuh, dua kartu jumlah berdampingan. */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 max-sm:[&>:first-child]:col-span-2">

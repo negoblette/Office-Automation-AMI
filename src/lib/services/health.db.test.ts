@@ -1,3 +1,4 @@
+import ExcelJS from "exceljs";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { toJakartaIsoDate } from "@/lib/format";
 import type { Actor } from "@/lib/services/access";
@@ -5,7 +6,8 @@ import { approveRequest, rejectRequest } from "@/lib/services/approval";
 import { listMyApprovalQueue } from "@/lib/services/approval-queries";
 import { setHealthPlafond, setPayoutPaid, submitHealthClaim } from "@/lib/services/health";
 import { applyApprovedHealthClaim } from "@/lib/services/health-payout";
-import { getHealthPrintData, listHealthClaims } from "@/lib/services/health-queries";
+import { buildHealthWorkbook, listHealthExportClaims } from "@/lib/services/health-export";
+import { getHealthPrintData, healthExportGroups, listHealthClaims } from "@/lib/services/health-queries";
 import { healthClaimSchema, healthPlafondSchema } from "@/lib/validators/health";
 import { testDb } from "@/test/db";
 import { resetAndSeed } from "@/test/seed";
@@ -167,6 +169,35 @@ describe("klaim beberapa baris (2026-11-06)", () => {
     await testDb.healthCategory.update({ where: { id: second.id }, data: { isActive: false } });
     const input = healthClaimSchema.parse({ items: lines([first.id, "2026-09-10", 1_000], [second.id, "2026-09-10", 1_000]), note: "" });
     await expect(submitHealthClaim(testDb, actors.andi, input)).rejects.toThrow("Baris 2: kategori klaim tidak tersedia");
+  });
+});
+
+describe("ekspor klaim terpilih (2026-11-09)", () => {
+  it("PDF dikelompokkan per karyawan & tahun; Excel klaim + rincian; selain Admin hanya miliknya", async () => {
+    await plafond("andi", 3_000_000, 2026);
+    await plafond("sinta", 3_000_000, 2026);
+    const categoryId = (await testDb.healthCategory.findFirstOrThrow()).id;
+    const submit = (key: string, items: [string, number][]) =>
+      submitHealthClaim(testDb, actors[key], healthClaimSchema.parse({ items: items.map(([date, amount]) => ({ categoryId, date, amount, note: "Kontrol" })), note: "" }));
+    const andi = await submit("andi", [["2026-09-10", 100_000], ["2026-09-11", 50_000]]);
+    const sinta = await submit("sinta", [["2026-09-12", 70_000]]);
+
+    const groups = await healthExportGroups(testDb, actors.ika, [andi.claimId, sinta.claimId]);
+    expect(groups.map((g) => [g.employeeId, g.year, [...g.claimIds]])).toEqual([
+      [actors.andi.employeeId, 2026, [andi.claimId]],
+      [actors.sinta.employeeId, 2026, [sinta.claimId]],
+    ]);
+    expect((await healthExportGroups(testDb, actors.andi, [andi.claimId, sinta.claimId])).map((g) => g.employeeId)).toEqual([actors.andi.employeeId]);
+
+    const claims = await listHealthExportClaims(testDb, actors.ika, [andi.claimId, sinta.claimId]);
+    expect(claims.map((c) => [c.employeeName, c.amount, c.items.length])).toEqual([
+      ["Andi Pratama", 150_000, 2],
+      ["Sinta Lestari", 70_000, 1],
+    ]);
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load((await buildHealthWorkbook(claims)).buffer as ArrayBuffer);
+    expect(wb.getWorksheet("Klaim")!.rowCount).toBe(1 + 2 + 1); // header + 2 klaim + total
+    expect(wb.getWorksheet("Rincian")!.rowCount).toBe(1 + 3);
   });
 });
 
