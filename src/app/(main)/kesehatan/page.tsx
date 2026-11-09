@@ -19,9 +19,9 @@ export default async function KesehatanPage() {
     listHealthClaims(prisma, user),
     listHealthCategories(prisma),
   ]);
-  // Pilihan ekspor: klaim yang sudah diajukan (draft tidak ikut).
+  // Pilihan ekspor: klaim yang menunggu / disetujui (draft & yang ditolak tidak ikut).
   const exportItems: ExportItem[] = rows
-    .filter((row) => row.status !== "DRAFT")
+    .filter((row) => row.status === "PENDING" || row.status === "APPROVED")
     .map((row) => ({
       id: row.id,
       employeeId: row.employeeId,

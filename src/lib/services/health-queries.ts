@@ -3,7 +3,7 @@ import type { Role } from "@/generated/prisma/enums";
 import type { PrismaClient, RequestStatus } from "@/generated/prisma/client";
 import { fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { remainingPlafond } from "@/lib/health";
-import { exportOwnerFilter } from "@/lib/export-ids";
+import { EXPORTABLE_STATUSES, exportOwnerFilter } from "@/lib/export-ids";
 import { rejectionsOf } from "./approval";
 
 const yearRange = (year: number) => ({ gte: fromIsoDate(`${year}-01-01`), lte: fromIsoDate(`${year}-12-31`) });
@@ -191,12 +191,12 @@ export async function listPlafonds(db: PrismaClient, year: number): Promise<Plaf
 
 /**
  * Klaim terpilih untuk ekspor (2026-11-09): kelompok per karyawan per tahun klaim (plafon per tahun). Selain Admin hanya
- * miliknya sendiri; draft tidak ikut. Hasil = `[employeeId, year, claimIds]`, diurutkan nama karyawan lalu tahun.
+ * miliknya sendiri; draft & yang ditolak tidak ikut. Hasil = `[employeeId, year, claimIds]`, diurutkan nama karyawan lalu tahun.
  */
 export async function healthExportGroups(db: PrismaClient, viewer: { role: string; employeeId: string | null }, ids: string[]) {
   if (ids.length === 0) return [];
   const claims = await db.healthClaim.findMany({
-    where: { id: { in: ids }, status: { not: "DRAFT" }, ...exportOwnerFilter(viewer) },
+    where: { id: { in: ids }, status: { in: [...EXPORTABLE_STATUSES] }, ...exportOwnerFilter(viewer) },
     orderBy: [{ employee: { fullName: "asc" } }, { claimDate: "asc" }],
     select: { id: true, employeeId: true, claimDate: true },
   });

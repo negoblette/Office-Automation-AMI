@@ -17,9 +17,9 @@ export default async function ReimbursePage() {
   const user = await requireUser();
   const isAdmin = user.role === "ADMIN";
   const rows = await listReimbursements(prisma, user);
-  // Pilihan ekspor: pengajuan yang sudah diajukan (draft tidak ikut).
+  // Pilihan ekspor: pengajuan yang menunggu / disetujui (draft & yang ditolak tidak ikut).
   const exportItems: ExportItem[] = rows
-    .filter((row) => row.status !== "DRAFT" && row.number)
+    .filter((row) => (row.status === "PENDING" || row.status === "APPROVED") && row.number)
     .map((row) => ({
       id: row.id,
       employeeId: row.employeeId,

@@ -3,7 +3,7 @@ import ExcelJS from "exceljs";
 import type { PaymentMethod, PrismaClient, RequestStatus } from "@/generated/prisma/client";
 import { toJakartaIsoDate } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL, projectLabel } from "@/lib/labels";
-import { exportOwnerFilter } from "@/lib/export-ids";
+import { EXPORTABLE_STATUSES, exportOwnerFilter } from "@/lib/export-ids";
 import { divisionLabels } from "./division";
 
 const STATUS_LABEL: Record<RequestStatus, string> = { PENDING: "Menunggu", APPROVED: "Disetujui", REJECTED: "Ditolak", DRAFT: "Draft" };
@@ -32,13 +32,13 @@ export type ReimburseExportRow = {
 
 /**
  * Baris reimburse (per item) dari pengajuan yang dipilih (`ids` = id Reimbursement, 2026-11-09), dipakai ekspor Excel
- * & PDF. Selain Admin hanya miliknya sendiri; draft dan pengajuan terhapus tidak ikut.
+ * & PDF. Selain Admin hanya miliknya sendiri; draft, yang ditolak, dan pengajuan terhapus tidak ikut.
  */
 export async function listReimburseExportRows(db: PrismaClient, viewer: { role: string; employeeId: string | null }, ids: string[]) {
   if (ids.length === 0) return [];
   const [items, divisions] = await Promise.all([
     db.reimbursementItem.findMany({
-      where: { reimbursementId: { in: ids }, reimbursement: { ...exportOwnerFilter(viewer), deletedAt: null, status: { not: "DRAFT" } } },
+      where: { reimbursementId: { in: ids }, reimbursement: { ...exportOwnerFilter(viewer), deletedAt: null, status: { in: [...EXPORTABLE_STATUSES] } } },
       orderBy: [{ reimbursement: { employee: { fullName: "asc" } } }, { date: "asc" }, { id: "asc" }],
       include: {
         reimbursement: {

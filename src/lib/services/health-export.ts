@@ -1,7 +1,7 @@
 // Ekspor klaim kesehatan terpilih ke Excel (.xlsx) (2026-11-09), pasangan ekspor PDF di /cetak/kesehatan.
 import ExcelJS from "exceljs";
 import type { PrismaClient, RequestStatus } from "@/generated/prisma/client";
-import { exportOwnerFilter } from "@/lib/export-ids";
+import { EXPORTABLE_STATUSES, exportOwnerFilter } from "@/lib/export-ids";
 import { toJakartaIsoDate } from "@/lib/format";
 import { divisionLabels } from "./division";
 
@@ -23,12 +23,12 @@ export type HealthExportClaim = {
   items: { date: string; category: string; note: string | null; amount: number }[];
 };
 
-/** Klaim terpilih (`ids`) beserta barisnya. Selain Admin hanya miliknya sendiri; draft tidak ikut. */
+/** Klaim terpilih (`ids`) beserta barisnya. Selain Admin hanya miliknya sendiri; draft & yang ditolak tidak ikut. */
 export async function listHealthExportClaims(db: PrismaClient, viewer: { role: string; employeeId: string | null }, ids: string[]): Promise<HealthExportClaim[]> {
   if (ids.length === 0) return [];
   const [claims, divisions] = await Promise.all([
     db.healthClaim.findMany({
-      where: { id: { in: ids }, status: { not: "DRAFT" }, ...exportOwnerFilter(viewer) },
+      where: { id: { in: ids }, status: { in: [...EXPORTABLE_STATUSES] }, ...exportOwnerFilter(viewer) },
       orderBy: [{ employee: { fullName: "asc" } }, { claimDate: "asc" }, { number: "asc" }],
       include: {
         employee: { select: { fullName: true, employeeNo: true, division: true } },

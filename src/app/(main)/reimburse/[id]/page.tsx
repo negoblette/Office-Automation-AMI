@@ -59,7 +59,7 @@ export default async function DetailReimbursePage({ params }: { params: Promise<
               approval && <RowActions row={approval} />
             )}
             {/* Ekspor pengajuan ini (2026-11-09): pemohon & Admin. */}
-            {r.status !== "DRAFT" && (isOwner || user.role === "ADMIN") && <ExportLinks ids={[r.id]} pdfPath="/cetak/reimburse" excelPath="/api/export/reimburse" />}
+            {(r.status === "PENDING" || r.status === "APPROVED") && (isOwner || user.role === "ADMIN") && <ExportLinks ids={[r.id]} pdfPath="/cetak/reimburse" excelPath="/api/export/reimburse" />}
           </div>
         }
       />

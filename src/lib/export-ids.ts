@@ -14,6 +14,9 @@ export function parseExportIds(value: string | null | undefined): string[] {
   return [...new Set(ids)].slice(0, MAX_EXPORT_IDS);
 }
 
+/** Status yang bisa diekspor (2026-11-09): draft & yang ditolak tidak ikut. */
+export const EXPORTABLE_STATUSES = ["PENDING", "APPROVED"] as const;
+
 /** Pemilik data yang boleh diekspor viewer: Admin semua, selain itu hanya miliknya. */
 export function exportOwnerFilter(viewer: { role: string; employeeId: string | null }) {
   return viewer.role === "ADMIN" ? {} : { employeeId: viewer.employeeId ?? "__none__" };

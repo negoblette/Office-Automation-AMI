@@ -121,7 +121,7 @@ export function HealthClaimTable({ rows, showRequester, revise }: { rows: Health
           cell: ({ row }) => (
             <div className="flex flex-col items-end gap-2">
               {/* Ekspor klaim ini (2026-11-09). */}
-              {row.original.status !== "DRAFT" && <ExportLinks compact ids={[row.original.id]} pdfPath="/cetak/kesehatan" excelPath="/api/export/kesehatan" />}
+              {(row.original.status === "PENDING" || row.original.status === "APPROVED") && <ExportLinks compact ids={[row.original.id]} pdfPath="/cetak/kesehatan" excelPath="/api/export/kesehatan" />}
               {revise && row.original.own && row.original.status === "REJECTED" && (
                 <HealthClaimDialog
                   {...revise}
