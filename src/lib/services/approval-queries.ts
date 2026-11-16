@@ -28,6 +28,12 @@ export async function countPendingApprovals(db: PrismaClient, userId: string): P
   return db.approvalRequest.count({ where: await pendingQueueWhere(db, userId) });
 }
 
+/** Id pengajuan yang sedang menunggu persetujuan user ini — filter sama dengan `countPendingApprovals` (lonceng notifikasi). */
+export async function pendingApprovalIds(db: PrismaClient, userId: string): Promise<string[]> {
+  const rows = await db.approvalRequest.findMany({ where: await pendingQueueWhere(db, userId), select: { id: true } });
+  return rows.map((row) => row.id);
+}
+
 export type ApprovalRow = {
   id: string;
   module: ApprovalModule;

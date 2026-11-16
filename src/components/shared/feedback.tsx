@@ -25,9 +25,14 @@ export type ConfirmOptions = {
 
 export type NotifyTone = "success" | "danger" | "info";
 
+export type NotifyOptions = {
+  /** Satu tombol di notifikasi, mis. "Urungkan" (2026-11-16). Notifikasi tampil 6 detik lalu tertutup setelah ditekan. */
+  action?: { label: string; onClick: () => void };
+};
+
 type FeedbackApi = {
   confirm: (options: ConfirmOptions) => Promise<boolean>;
-  notify: (message: string, tone?: NotifyTone) => void;
+  notify: (message: string, tone?: NotifyTone, options?: NotifyOptions) => void;
 };
 
 const FeedbackContext = createContext<FeedbackApi | null>(null);
@@ -75,8 +80,24 @@ function FeedbackLayer({ children }: { children: React.ReactNode }) {
     [],
   );
   const notify = useCallback(
-    (message: string, tone: NotifyTone = "success") => {
-      toasts.add({ title: message, type: tone, priority: tone === "danger" ? "high" : "low", timeout: tone === "danger" ? 0 : undefined });
+    (message: string, tone: NotifyTone = "success", options?: NotifyOptions) => {
+      const action = options?.action;
+      const id = toasts.add({
+        title: message,
+        type: tone,
+        priority: tone === "danger" ? "high" : "low",
+        // Ada tombol aksi: sedikit lebih lama supaya sempat ditekan.
+        timeout: tone === "danger" ? 0 : action ? 6000 : undefined,
+        actionProps: action
+          ? {
+              children: action.label,
+              onClick: () => {
+                toasts.close(id);
+                action.onClick();
+              },
+            }
+          : undefined,
+      });
     },
     [toasts],
   );
@@ -152,10 +173,13 @@ function ToastList() {
         )}
       >
         <Icon className={cn("mt-px size-5 shrink-0", className)} aria-hidden />
-        <Toast.Content className="min-w-0">
+        <Toast.Content className="min-w-0 flex-1">
           <Toast.Title className="font-semibold text-ink">{toast.title}</Toast.Title>
           {toast.description && <Toast.Description className="mt-0.5 text-ink-3">{toast.description}</Toast.Description>}
         </Toast.Content>
+        {toast.actionProps && (
+          <Toast.Action className="-my-1.5 inline-flex min-h-9 shrink-0 cursor-pointer items-center rounded-[12px] px-2.5 text-sm font-bold text-brand-deep transition-colors hover:bg-brand-soft focus-visible:outline-2 focus-visible:outline-ink" />
+        )}
         <Toast.Close
           aria-label="Tutup notifikasi"
           className="absolute top-2 right-2 flex size-9 items-center justify-center rounded-[12px] text-ink-3 transition-colors hover:bg-ink/[0.07] hover:text-ink focus-visible:outline-2 focus-visible:outline-ink"

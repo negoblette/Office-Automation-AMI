@@ -34,7 +34,7 @@ Skema lengkap ada di `prisma/schema.prisma`. Ringkasan:
 | Kesehatan | `HealthCategory`, `HealthPlafond`, `HealthClaim`, `HealthPayout` |
 | Kandidat | `Candidate` (+ `Document`) |
 | Approval | `ApprovalFlow`, `ApprovalFlowStep`, `ApprovalStepApprover`, `ApprovalRequest`, `ApprovalRequestStep` |
-| Sistem | `NumberSequence`, `AppSetting`, `AuditLog`, `EmailLog` |
+| Sistem | `NumberSequence`, `AppSetting`, `AuditLog`, `EmailLog`, `NotificationDismissal` |
 
 Keputusan desain:
 - **Uang** disimpan `BigInt` (IDR tanpa desimal). Dikonversi ke `number` di boundary server→client.
@@ -212,6 +212,22 @@ semua direktur auto-approve; bila flow REGULAR tidak ditemukan, engine melempar 
 | `attendance.auto-clock-out` | tiap 5 menit | absen tanpa clock out yang sudah lewat jam pulang (`attendance.workHours`) → clock out = jam pulang, `Attendance.autoClockOut = true` (clock in setelah jam pulang → 23:59). Karyawan yang lembur masih bisa clock out sendiri sekali di hari yang sama (2026-10-30) |
 
 Template email: `approval-requested`, `approval-progress`, `approval-final`, `reminder-expiry`. Semua berisi nomor dokumen, ringkasan, dan link ke halaman detail.
+
+**Lonceng notifikasi** (`services/notifications.ts`): isinya dihitung dari data terkini (dokumen/sertifikat akan berakhir,
+antrian approval, pengajuan ditolak 30 hari terakhir). Sejak 2026-11-16 notifikasi yang **dibuka** (diklik) atau
+**dihapus** (tombol ×, bisa diurungkan ±6 detik) disembunyikan untuk user itu lewat `NotificationDismissal` (`userId` +
+`key`, berlaku di semua perangkat, tanpa data pribadi). Kunci memuat versi notifikasi, jadi kejadian baru tetap muncul:
+
+| Notifikasi | Kunci | Muncul lagi bila |
+|---|---|---|
+| Pengajuan ditolak | `rejected:<id approval>:<waktu tolak>` | diajukan ulang lalu ditolak lagi (approval baru) |
+| Dokumen / sertifikat | `expiry:<doc\|cert>-<id>:<tanggal berakhir>:<month\|week\|expired>` | naik tahap (30 hari → ≤ 7 hari → kadaluarsa) atau tanggal berakhir diganti |
+| Antrian approval | `approval` + `context` = id pengajuan yang dilihat saat dihapus | ada pengajuan menunggu yang belum ada di `context` |
+
+Catatan berlaku 60 hari (`DISMISSAL_RETENTION_DAYS`; lebih lama diabaikan & dibersihkan saat user menghapus notifikasi
+berikutnya). Aksi `dismissNotificationAction` / `restoreNotificationAction` hanya menerima kunci berformat di atas
+(`validators/notification.ts`) dan hanya mencatat notifikasi yang memang sedang berlaku untuk user itu. Tidak ditulis ke
+AuditLog (preferensi tampilan pribadi, bukan data bisnis).
 
 ## 8. File Storage (`lib/storage/`)
 Interface `put(bytes, ext) → key`, `get(key) → bytes`, `delete(key)`. Implementasi awal `LocalStorage` (`UPLOAD_DIR`), siap ditambah `S3Storage`. Key = `<uuid>.<pdf|jpg|png>` (format lain ditolak → aman dari path traversal). Upload lewat `saveUpload(file)`: validasi magic bytes + ukuran, lalu simpan. Isi file disimpan terenkripsi AES-256-GCM (header `OAE1`, key file sebagai AAD) dan dibuka di dalam `get()`, jadi ukuran, unduhan, dan hak akses tidak berubah; file lama tanpa header tetap terbaca (hardening Tahap 4).

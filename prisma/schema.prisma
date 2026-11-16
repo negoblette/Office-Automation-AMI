@@ -205,6 +205,7 @@ model User {
   mfaBackupCodes   MfaBackupCode[]
   uploads          UploadedFile[]
   recoveryKeys     RecoveryKey[]
+  notificationDismissals NotificationDismissal[]
 }
 
 /// File yang di-upload lewat aplikasi (hardening Tahap 7): pengunggahnya — hanya dia yang boleh menautkan file ke data —
@@ -790,6 +791,22 @@ model AppSetting {
   key       String   @id // mis. "leave.maxCarryOver" = 3
   value     Json
   updatedAt DateTime @updatedAt
+}
+
+/// Notifikasi lonceng yang sudah dibuka atau dihapus user (2026-11-16). Lonceng tetap dihitung dari data terkini
+/// (services/notifications.ts); baris ini hanya menyembunyikan satu notifikasi untuk user itu. `key` memuat versi
+/// notifikasi (id approval + waktu tolak, tanggal berakhir + tahap dokumen), jadi kejadian baru = kunci baru = muncul lagi.
+/// Notifikasi antrian approval memakai `context` = id pengajuan yang menunggu saat dihapus; muncul lagi bila ada yang baru.
+/// Tanpa data pribadi. Baris > 60 hari dibersihkan saat user menghapus notifikasi berikutnya.
+model NotificationDismissal {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key         String
+  context     String[]
+  dismissedAt DateTime @default(now())
+
+  @@unique([userId, key])
 }
 
 model AuditLog {

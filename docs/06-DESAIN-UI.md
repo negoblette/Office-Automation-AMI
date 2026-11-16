@@ -66,7 +66,8 @@ pemisah, lalu Keluar. **HP (< 640 px):** avatar membuka menu akun (nama + role, 
 | `ApprovalStepper` | status reimburse | langkah "1. L1 ✓ → 2. L2 → Disetujui" sesuai step di `ApprovalRequestStep` |
 | `ProgressBar` | saldo cuti, plafon | biru / hijau / merah sesuai persentase; `label` wajib (+ `valueText`, mis. "8 dari 12 hari") |
 | `EmptyState` | tabel kosong | teks Bahasa Indonesia + aksi |
-| `useFeedback()` (`FeedbackProvider` di root layout) | semua aksi | `confirm()` = dialog konfirmasi aplikasi (pengganti `window.confirm`); `notify()` = notifikasi kecil kanan bawah (sukses ±4,5 dtk, error menetap sampai ditutup) |
+| `useFeedback()` (`FeedbackProvider` di root layout) | semua aksi | `confirm()` = dialog konfirmasi aplikasi (pengganti `window.confirm`); `notify()` = notifikasi kecil kanan bawah (sukses ±4,5 dtk, error menetap sampai ditutup; opsi satu tombol aksi, mis. "Urungkan", tampil 6 dtk) |
+| `NotificationBell` | topbar | panel (bukan menu): tiap notifikasi = tautan + tombol × "Hapus notifikasi" terpisah (≥ 44 px di layar sentuh). Diklik / dihapus → hilang dari daftar & angka merah; hapus bisa diurungkan; fokus keyboard pindah ke notifikasi berikutnya. Aturan muncul lagi: Tech Spec §7 |
 | `StatusScreen` / `ErrorScreen` | 404, error | `not-found.tsx`, `error.tsx`, `global-error.tsx` berbahasa Indonesia + jalan kembali; `(main)/loading.tsx` = kerangka abu saat pindah halaman |
 | `PasswordInput` | semua kolom password | tombol mata tampilkan/sembunyikan; dipakai otomatis oleh `TextInputField type="password"` |
 | `useUnsavedChangesGuard` / `useFormDraft` | form panjang | tanya sebelum meninggalkan form yang sudah diubah; draft sementara (sessionStorage) **hanya** untuk form tanpa data pribadi (reimburse) |
@@ -117,7 +118,7 @@ Jangan dibuat sampai ada jawaban. Setelah diputuskan, perbarui tabel ini (dan UR
 | D-08 | Statistik anggaran, budget per kategori, "Insight AI Finansial" | Tidak ada anggaran; laporan di luar scope | Tidak dibuat |
 | D-09 | Unduh Ringkasan, Export CSV | Modul laporan di luar scope | Tidak dibuat |
 | D-10 | Form "Fast Track" dengan auto-extract nominal dari foto nota (OCR) | Tidak ada | Form reimburse multi-baris biasa (RMB-02/03) |
-| D-11 | Pencarian global di topbar & lonceng notifikasi | Tidak ada (notifikasi via email) | Search & lonceng tidak dibuat |
+| D-11 | Pencarian global di topbar & lonceng notifikasi | Lonceng dibuat 2026-10-13 (dokumen berakhir, antrian approval, pengajuan ditolak); dibuka/dihapus 2026-11-16 | Search tidak dibuat |
 | D-12 | Filter periode "Bulan Ini" di dashboard | Tidak ada | Tidak dibuat |
 | D-13 | Distribusi divisi custom (Engineering & IT Ops, dll.) | Divisi: SALES / ENGINEER / UMUM / DIRECTOR | Pakai 4 divisi tersebut |
 | D-14 | Batas upload "max 8MB" | Spec: 5 MB | 5 MB |

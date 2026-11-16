@@ -434,8 +434,10 @@ staf mengetik alamat halaman Admin secara manual, server tetap menolaknya.
 | Kalender cuti & libur pekan ini | Kalender cuti & libur pekan ini |
 
 **Lonceng notifikasi** di kanan atas menampilkan tiga hal: dokumen/sertifikat yang akan habis, pengajuan yang
-menunggu persetujuan Anda, dan pengajuan Anda yang ditolak dalam 30 hari terakhir. Lonceng ini tidak punya tabel
-sendiri; isinya selalu dihitung langsung dari data, jadi selalu sesuai kondisi terkini.
+menunggu persetujuan Anda, dan pengajuan Anda yang ditolak dalam 30 hari terakhir. Isinya selalu dihitung langsung dari
+data, jadi selalu sesuai kondisi terkini. Notifikasi yang sudah dibuka atau dihapus (tombol ×, bisa diurungkan) hilang
+dari daftar di semua perangkat, dan muncul lagi hanya bila ada kejadian baru: pengajuan ditolak lagi, pengajuan baru
+masuk antrian, atau dokumen makin mendekati / melewati tanggal berakhirnya (tabel `NotificationDismissal`, 2026-11-16).
 
 **File kode:** `src/lib/services/dashboard-queries.ts`, `notifications.ts`, halaman `src/app/(main)/dashboard`.
 
