@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CalendarCog, ChevronRight, Clock, Database, GitBranch, HeartPulse, KeyRound, UserCog, type LucideIcon } from "lucide-react";
+import { CalendarCog, ChevronRight, Clock, Database, GitBranch, HeartPulse, KeyRound, UserCog, Warehouse, type LucideIcon } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { requireAdmin } from "@/lib/auth/guards";
 import { isRecoveryKeyHolder } from "@/lib/services/recovery-key";
@@ -43,6 +43,12 @@ const SETTING_SECTIONS: { title: string; description: string; href: string; icon
     description: "Tipe reimburse per divisi dan kategori klaim kesehatan.",
     href: "/setting/master",
     icon: Database,
+  },
+  {
+    title: "Inventaris & Rak",
+    description: "Siapa Operational peminjaman unit demo, dan daftar rak penyimpanan unit.",
+    href: "/setting/inventaris",
+    icon: Warehouse,
   },
 ];
 

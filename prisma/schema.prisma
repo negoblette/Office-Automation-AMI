@@ -138,6 +138,7 @@ enum ApprovalModule {
   OVERTIME // sesi overtime engineer yang sudah di-finalize (2026-10-30, Ko Yosep)
   /// Hanya untuk memilih Approval Flow reimburse overtime (2026-10-30, Ci Ika); ApprovalRequest-nya tetap modul REIMBURSE.
   OVERTIME_REIMBURSE
+  DEMO_LOAN // peminjaman unit demo / Product Trial Form (Fase 16, 2026-11-17, Ko Yosep)
 }
 
 /// Jenis perubahan data karyawan yang menunggu persetujuan (2026-10-12).
@@ -206,6 +207,8 @@ model User {
   uploads          UploadedFile[]
   recoveryKeys     RecoveryKey[]
   notificationDismissals NotificationDismissal[]
+  demoLoansRequested     DemoLoan[]             @relation("DemoLoanRequester")
+  demoLoansPrepared      DemoLoan[]             @relation("DemoLoanOperational")
 }
 
 /// File yang di-upload lewat aplikasi (hardening Tahap 7): pengunggahnya — hanya dia yang boleh menautkan file ke data —
@@ -299,6 +302,8 @@ model Employee {
   attendanceAppeals AttendanceAppeal[]
   overtimes         Overtime[]
   fromCandidate     Candidate?
+  demoLoansAsSales  DemoLoan[]         @relation("DemoLoanSalesPerson")
+  demoLoansAsSender DemoLoan[]         @relation("DemoLoanItemSender")
 
   @@index([status, division])
 }
@@ -395,11 +400,130 @@ model Asset {
   warrantyEnd   DateTime?     @db.Date
   warrantyNote  String?
   notes         String?
+  /// Kepemilikan (2026-11-17): unit yang dipinjamkan bisa milik AMI atau titipan principal / distributor.
+  ownership     AssetOwnership @default(AMI)
+  /// Nama principal / distributor (wajib bila bukan milik AMI).
+  ownerName     String?
+  /// Lokasi penyimpanan (2026-11-17): rak + posisi "A1" (huruf kolom + nomor baris). Satu posisi boleh banyak unit.
+  rackId        String?
+  rack          StorageRack?  @relation(fields: [rackId], references: [id])
+  rackPosition  String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
   assignments AssetAssignment[]
+  loanItems   DemoLoanItem[]
   deletedAt   DateTime? // soft delete: data tidak dihapus permanen (NFR v1.14)
+
+  @@index([rackId, rackPosition])
+}
+
+/// Rak penyimpanan unit Inventory (2026-11-17), diatur Admin di Setting → Inventaris & Rak. Posisi di rak = huruf kolom
+/// (A, B, …) + nomor baris (1, 2, …), mis. "A1". Hapus = soft delete; nama yang pernah dihapus dipulihkan bila ditambah lagi.
+model StorageRack {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  columns   Int // jumlah kolom (1–26) → huruf A..Z
+  rows      Int // jumlah baris (1–50)
+  note      String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  assets    Asset[]
+  loanItems DemoLoanItem[]
+}
+
+/// Status peminjaman unit ke perusahaan lain lewat Product Trial Form (Fase 16, 2026-11-17).
+enum DemoLoanStatus {
+  PENDING // diajukan Engineer/Sales, menunggu approval (Approval Flow modul DEMO_LOAN, Ko Yosep)
+  APPROVED // disetujui → masuk antrian Operational (Devi): siapkan barang & cetak form
+  REJECTED // ditolak approver (alasan wajib) → pemohon bisa revisi lalu ajukan ulang
+  CANCELLED // dibatalkan pemohon sebelum disetujui
+  ON_LOAN // barang sudah diantar ke peminjam (Tahap 16.3)
+  RETURNED // barang kembali & sudah dicek Operational (Tahap 16.5)
+}
+
+/// Kegunaan peminjaman (2026-11-17).
+enum LoanPurpose {
+  BACKUP_UNIT // pengganti sementara unit customer yang bermasalah
+  POC // unit untuk pengujian (proof of concept) di customer
+  OTHER // lainnya — detail wajib di DemoLoan.purposeDetail
+}
+
+/// Kepemilikan unit Inventory (2026-11-17): milik AMI, atau titipan principal / distributor (nama di Asset.ownerName).
+enum AssetOwnership {
+  AMI
+  PRINCIPAL
+  DISTRIBUTOR
+}
+
+/// Peminjaman unit demo ke perusahaan lain (Fase 16, 2026-11-17) = satu Product Trial Form. Unit yang sedang ada di
+/// peminjaman PENDING / APPROVED / ON_LOAN tidak bisa diajukan di peminjaman lain (dikunci di services/demo-loan.ts).
+/// Nomor `NNN/AMI-PTF/<bulan Romawi>/<tahun>` terbit saat diajukan (seperti nomor pengajuan lain), urut ulang tiap tahun.
+/// Persetujuan lewat approval engine (modul DEMO_LOAN); keputusan & alasan tolak ada di ApprovalRequest.
+model DemoLoan {
+  id            String           @id @default(cuid())
+  number        String           @unique
+  status        DemoLoanStatus   @default(PENDING)
+  purpose       LoanPurpose
+  /// Detail kegunaan bila `purpose` = OTHER (wajib), selain itu kosong.
+  purposeDetail String?
+  /// Pemohon = "Prepared By" di form.
+  requesterId   String
+  requester     User             @relation("DemoLoanRequester", fields: [requesterId], references: [id])
+  salesPersonId String
+  salesPerson   Employee         @relation("DemoLoanSalesPerson", fields: [salesPersonId], references: [id])
+  /// Peminjam: dipilih dari master Customer (customerId terisi) atau diketik bebas (hanya borrowerName).
+  customerId    String?
+  customer      Customer?        @relation(fields: [customerId], references: [id])
+  borrowerName  String
+  /// PIC peminjam ("up:" di form) & emailnya — penerima email pengingat jatuh tempo (Tahap 16.4).
+  picName       String
+  picEmail      String
+  /// Jangka pinjam = tanggal mulai s/d tanggal selesai (keduanya diisi pengaju, inklusif). Lamanya (tahun / bulan / hari)
+  /// dihitung dari kedua tanggal ini (lib/demo-loan.ts#loanSpan), tidak disimpan.
+  startDate     DateTime         @db.Date
+  /// Tanggal selesai = hari terakhir peminjaman = jatuh tempo.
+  dueDate       DateTime         @db.Date
+  remarks       String?
+  submittedAt   DateTime
+  /// Disetujui final (approval engine) → masuk antrian Operational.
+  approvedAt    DateTime?
+  /// Pengantar barang ("Item Sender" di form), dipilih Operational saat menyiapkan barang.
+  itemSenderId  String?
+  itemSender    Employee?        @relation("DemoLoanItemSender", fields: [itemSenderId], references: [id])
+  /// Operational yang menyiapkan (memilih Item Sender) — "Operational" di form cetak (Tahap 16.3).
+  operationalId String?
+  operational   User?            @relation("DemoLoanOperational", fields: [operationalId], references: [id])
+  /// Barang diantar ke peminjam (Tahap 16.3): tanggal & nama penerima ("Received By").
+  deliveredAt   DateTime?        @db.Date
+  receivedByName String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  items DemoLoanItem[]
+
+  @@index([status, dueDate])
+  @@index([requesterId, status])
+}
+
+/// Unit di dalam peminjaman. Nama, SN, dan posisi rak disalin saat diajukan / disetujui supaya form cetak & riwayat
+/// tidak berubah walau data unit diubah belakangan.
+model DemoLoanItem {
+  id           String       @id @default(cuid())
+  loanId       String
+  loan         DemoLoan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  assetId      String
+  asset        Asset        @relation(fields: [assetId], references: [id])
+  deviceName   String
+  serialNo     String
+  rackId       String?
+  rack         StorageRack? @relation(fields: [rackId], references: [id])
+  rackPosition String?
+
+  @@unique([loanId, assetId])
+  @@index([assetId])
 }
 
 model AssetAssignment {
@@ -427,6 +551,7 @@ model Customer {
 
   reimbursementItems ReimbursementItem[]
   overtimes          Overtime[]
+  demoLoans          DemoLoan[]
   deletedAt          DateTime? // soft delete: data tidak dihapus permanen (NFR v1.14)
 }
 

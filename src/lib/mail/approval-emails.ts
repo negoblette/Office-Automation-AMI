@@ -1,8 +1,10 @@
 // Ubah notifikasi approval engine (user id penerima) → email siap kirim (URD NTF-01..03).
 import type { ApprovalModule, PrismaClient } from "@/generated/prisma/client";
 import { formatDuration } from "@/lib/attendance";
-import { formatDate, formatRupiah, formatTime } from "@/lib/format";
+import { formatDate, formatRupiah, formatTime, toJakartaIsoDate } from "@/lib/format";
 import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
+import { formatLoanDuration, groupLoanItems, LOAN_PURPOSE_HINT, LOAN_PURPOSE_LABEL } from "@/lib/demo-loan";
+import { enqueueDemoLoanEmails } from "./demo-loan-emails";
 import { LEAVE_TYPE_LABEL, leaveDeductLabel, projectLabel } from "@/lib/labels";
 import { overtimeMinutes } from "@/lib/validators/overtime";
 import type { ApprovalNotification } from "@/lib/services/approval";
@@ -39,6 +41,16 @@ async function detailLines(db: PrismaClient, module: ApprovalModule, entityId: s
     case "HEALTH": {
       const c = await db.healthClaim.findUnique({ where: { id: entityId }, include: { category: { select: { name: true } }, _count: { select: { items: true } } } });
       return c ? [`Klaim ${c._count.items > 1 ? `${c._count.items} baris` : c.category.name}: ${formatRupiah(Number(c.amount))}`] : [];
+    }
+    case "DEMO_LOAN": {
+      const loan = await db.demoLoan.findUnique({ where: { id: entityId }, include: { items: { select: { deviceName: true, serialNo: true }, orderBy: { id: "asc" } } } });
+      if (!loan) return [];
+      return [
+        loan.purpose === "OTHER" ? `Kegunaan: Lainnya — ${loan.purposeDetail ?? "-"}` : `Kegunaan: ${LOAN_PURPOSE_LABEL[loan.purpose]} (${LOAN_PURPOSE_HINT[loan.purpose].toLowerCase()})`,
+        `Peminjam: ${loan.borrowerName} (up: ${loan.picName})`,
+        `Periode: ${formatDate(loan.startDate)} – ${formatDate(loan.dueDate)} (${formatLoanDuration(toJakartaIsoDate(loan.startDate), toJakartaIsoDate(loan.dueDate))})`,
+        ...groupLoanItems(loan.items).map((group) => `${group.deviceName} ×${group.serials.length} — SN ${group.serials.join(", ")}`),
+      ];
     }
     default:
       return [];
@@ -119,5 +131,10 @@ export async function buildApprovalEmails(db: PrismaClient, notification: Approv
 export async function enqueueApprovalNotifications(db: PrismaClient, notifications: ApprovalNotification[]) {
   for (const notification of notifications) {
     await enqueueEmails(db, await buildApprovalEmails(db, notification));
+    // Peminjaman unit disetujui final (Fase 16): Operational diberi tahu untuk menyiapkan barang & mencetak form.
+    if (notification.template === "approval-final") {
+      const request = await db.approvalRequest.findUnique({ where: { id: notification.requestId }, select: { module: true, entityId: true } });
+      if (request?.module === "DEMO_LOAN") await enqueueDemoLoanEmails(db, request.entityId, "loan-approved");
+    }
   }
 }

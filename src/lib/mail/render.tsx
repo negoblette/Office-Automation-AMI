@@ -2,6 +2,7 @@
 import { render } from "@react-email/components";
 import type { ReactElement } from "react";
 import { ApprovalEmail, type ApprovalEmailProps } from "./templates/approval-email";
+import { DemoLoanEmail, type DemoLoanEmailProps } from "./templates/demo-loan-email";
 import { ReminderEmail, type ReminderEmailProps } from "./templates/reminder-email";
 import { SecurityEmail, type SecurityEmailProps } from "./templates/security-email";
 
@@ -14,14 +15,18 @@ export type EmailTemplates = {
   "reminder-expiry": ReminderEmailProps;
   "security-notice": SecurityEmailProps;
   "security-alert": SecurityEmailProps;
+  "loan-approved": DemoLoanEmailProps;
 };
 
 export type EmailTemplateName = keyof EmailTemplates;
+
+const LOAN_TEMPLATES = new Set<EmailTemplateName>(["loan-approved"]);
 
 function buildElement<T extends EmailTemplateName>(template: T, props: EmailTemplates[T]): ReactElement {
   if (template === "reminder-expiry") return <ReminderEmail {...(props as ReminderEmailProps)} />;
   if (template === "security-notice") return <SecurityEmail {...(props as SecurityEmailProps)} />;
   if (template === "security-alert") return <SecurityEmail {...(props as SecurityEmailProps)} variant="admin" />;
+  if (LOAN_TEMPLATES.has(template)) return <DemoLoanEmail {...(props as DemoLoanEmailProps)} />;
   return <ApprovalEmail {...(props as ApprovalEmailProps)} template={template as ApprovalEmailProps["template"]} />;
 }
 

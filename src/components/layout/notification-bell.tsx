@@ -1,7 +1,7 @@
 "use client";
 
 import { Popover } from "@base-ui/react/popover";
-import { Bell, CircleAlert, FileWarning, Inbox, X } from "lucide-react";
+import { Bell, Boxes, CircleAlert, FileWarning, Inbox, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
@@ -12,7 +12,7 @@ import type { NotificationItem } from "@/lib/services/notifications";
 import { cn } from "@/lib/utils";
 import { dismissNotificationAction, restoreNotificationAction } from "./actions";
 
-const ICON = { expiry: FileWarning, approval: Inbox, rejected: CircleAlert } as const;
+const ICON = { expiry: FileWarning, approval: Inbox, rejected: CircleAlert, loan: Boxes } as const;
 const TILE: Record<NotificationItem["tone"], string> = {
   danger: "bg-danger-soft text-danger",
   warning: "bg-warning-soft text-warning",
@@ -20,10 +20,10 @@ const TILE: Record<NotificationItem["tone"], string> = {
 };
 
 /**
- * Penanda "disembunyikan" di browser. Antrian approval selalu berkunci "approval", jadi penandanya memuat id pengajuan
- * yang dilihat — begitu server mengirim antrian dengan pengajuan baru, notifikasi tampil lagi tanpa muat ulang.
+ * Penanda "disembunyikan" di browser. Antrian (approval, tinjauan peminjaman) berkunci tetap, jadi penandanya memuat id
+ * pengajuan yang dilihat — begitu server mengirim antrian dengan pengajuan baru, notifikasi tampil lagi tanpa muat ulang.
  */
-const localId = (item: NotificationItem) => (item.kind === "approval" ? `approval|${[...(item.seen ?? [])].sort().join(",")}` : item.key);
+const localId = (item: NotificationItem) => (item.seen ? `${item.key}|${[...item.seen].sort().join(",")}` : item.key);
 
 /**
  * Ikon lonceng di topbar (2026-10-13). Sejak 2026-11-16 berupa panel (bukan menu): tiap notifikasi = tautan + tombol

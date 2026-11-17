@@ -1,6 +1,7 @@
 // Query halaman Inventory & tab inventory karyawan. Tanggal sebagai ISO string (aman ke client).
-import type { AssetCategory, PrismaClient } from "@/generated/prisma/client";
+import type { AssetCategory, AssetOwnership, DemoLoanStatus, PrismaClient } from "@/generated/prisma/client";
 import { type CertificateStatus, certificateStatus } from "@/lib/certificate-status";
+import { ACTIVE_LOAN_STATUSES } from "@/lib/demo-loan";
 import { toJakartaIsoDate } from "@/lib/format";
 
 const iso = (date: Date | null) => (date ? toJakartaIsoDate(date) : null);
@@ -16,47 +17,62 @@ export type AssetRow = {
   warrantyEnd: string | null;
   warrantyNote: string | null;
   notes: string | null;
+  /** Kepemilikan (2026-11-17): milik AMI atau titipan principal / distributor. */
+  ownership: AssetOwnership;
+  ownerName: string | null;
+  /** Lokasi penyimpanan (2026-11-17); null = tidak disimpan di rak. */
+  rackId: string | null;
+  rackName: string | null;
+  rackPosition: string | null;
   /** Status akhir support/warranty (sama dengan aturan sertifikat: ≤ 30 hari = akan berakhir). */
   supportStatus: CertificateStatus | null;
   warrantyStatus: CertificateStatus | null;
-  holder: { employeeId: string; name: string; position: string; assignedAt: string } | null;
+  /** Riwayat serah terima lama ke karyawan (tidak dipakai lagi sejak 2026-11-17); > 0 = unit tidak bisa dihapus. */
   assignmentCount: number;
+  /** Pernah masuk peminjaman (Product Trial Form); > 0 = unit tidak bisa dihapus. */
+  loanCount: number;
+  /** Peminjaman aktif yang menahan unit ini (Menunggu tinjauan / Disiapkan / Dipinjam); null = tersedia. */
+  activeLoan: { id: string; status: DemoLoanStatus; borrowerName: string } | null;
 };
 
-export async function listAssets(db: PrismaClient): Promise<AssetRow[]> {
+/** Semua unit aktif, atau satu unit (`assetId`, halaman detail). */
+export async function listAssets(db: PrismaClient, assetId?: string): Promise<AssetRow[]> {
   const today = toJakartaIsoDate();
   const assets = await db.asset.findMany({
-    where: { deletedAt: null },
+    where: { deletedAt: null, ...(assetId ? { id: assetId } : {}) },
     orderBy: [{ category: "asc" }, { deviceName: "asc" }],
     include: {
-      assignments: {
-        where: { returnedAt: null },
-        include: { employee: { select: { id: true, fullName: true, position: true } } },
+      rack: { select: { name: true } },
+      _count: { select: { assignments: true, loanItems: true } },
+      loanItems: {
+        where: { loan: { status: { in: [...ACTIVE_LOAN_STATUSES] } } },
+        select: { loan: { select: { id: true, status: true, borrowerName: true } } },
+        take: 1,
       },
-      _count: { select: { assignments: true } },
     },
   });
-  return assets.map((asset) => {
-    const current = asset.assignments[0];
-    return {
-      id: asset.id,
-      deviceName: asset.deviceName,
-      serialNo: asset.serialNo,
-      category: asset.category,
-      supportStart: iso(asset.supportStart),
-      supportEnd: iso(asset.supportEnd),
-      warrantyStart: iso(asset.warrantyStart),
-      warrantyEnd: iso(asset.warrantyEnd),
-      warrantyNote: asset.warrantyNote,
-      notes: asset.notes,
-      supportStatus: asset.supportEnd ? certificateStatus(iso(asset.supportEnd), today) : null,
-      warrantyStatus: asset.warrantyEnd ? certificateStatus(iso(asset.warrantyEnd), today) : null,
-      holder: current
-        ? { employeeId: current.employee.id, name: current.employee.fullName, position: current.employee.position, assignedAt: iso(current.assignedAt)! }
-        : null,
-      assignmentCount: asset._count.assignments,
-    };
-  });
+  return assets.map((asset) => ({
+    id: asset.id,
+    deviceName: asset.deviceName,
+    serialNo: asset.serialNo,
+    category: asset.category,
+    supportStart: iso(asset.supportStart),
+    supportEnd: iso(asset.supportEnd),
+    warrantyStart: iso(asset.warrantyStart),
+    warrantyEnd: iso(asset.warrantyEnd),
+    warrantyNote: asset.warrantyNote,
+    notes: asset.notes,
+    ownership: asset.ownership,
+    ownerName: asset.ownerName,
+    rackId: asset.rackId,
+    rackName: asset.rack?.name ?? null,
+    rackPosition: asset.rackPosition,
+    supportStatus: asset.supportEnd ? certificateStatus(iso(asset.supportEnd), today) : null,
+    warrantyStatus: asset.warrantyEnd ? certificateStatus(iso(asset.warrantyEnd), today) : null,
+    assignmentCount: asset._count.assignments,
+    loanCount: asset._count.loanItems,
+    activeLoan: asset.loanItems[0]?.loan ?? null,
+  }));
 }
 
 export type AssignmentRow = {
@@ -97,17 +113,7 @@ function toAssignmentRow(a: {
   };
 }
 
-/** Riwayat serah terima satu aset (terbaru dulu). */
-export async function getAssetHistory(db: PrismaClient, assetId: string) {
-  const assignments = await db.assetAssignment.findMany({
-    where: { assetId },
-    orderBy: { assignedAt: "desc" },
-    include: assignmentInclude,
-  });
-  return assignments.map(toAssignmentRow);
-}
-
-/** Aset yang pernah/sedang dipegang karyawan (INV-03). */
+/** Aset yang pernah/sedang dipegang karyawan (INV-03; data lama, tampil di Asset Kantor — serah terima baru tidak ada lagi). */
 export async function listEmployeeAssets(db: PrismaClient, employeeId: string) {
   const assignments = await db.assetAssignment.findMany({
     where: { employeeId },
@@ -115,9 +121,4 @@ export async function listEmployeeAssets(db: PrismaClient, employeeId: string) {
     include: assignmentInclude,
   });
   return assignments.map(toAssignmentRow);
-}
-
-export async function activeEmployeeOptions(db: PrismaClient) {
-  const employees = await db.employee.findMany({ where: { status: "ACTIVE" }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true, position: true } });
-  return employees.map((e) => ({ value: e.id, label: `${e.fullName} — ${e.position}` }));
 }

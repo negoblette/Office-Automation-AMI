@@ -44,7 +44,7 @@ describe("getAdminDashboard", () => {
     expect(yosep.queue.map((r) => r.entityNumber)).toEqual(["RMB/2026/09/0001"]);
     expect(yosep.pendingAll).toBe(1);
     if (FEATURES.inventory) {
-      expect(yosep.assets).toEqual({ total: 1, assigned: 1 });
+      expect(yosep.assets).toEqual({ total: 1, inRack: 0 }); // unit uji tidak disimpan di rak
       expect(yosep.expiring.map((i) => [i.name, i.daysLeft])).toEqual([
         ["CCNA", 6],
         ["Router", 7],

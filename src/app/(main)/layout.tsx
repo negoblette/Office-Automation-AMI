@@ -6,6 +6,8 @@ import { prisma } from "@/lib/db";
 import { canApprove } from "@/lib/roles";
 import { countPendingApprovals } from "@/lib/services/approval-queries";
 import { listDivisions } from "@/lib/services/division";
+import { inventoryEnabled } from "@/lib/features";
+import { inventoryAccess } from "@/lib/services/inventory-access";
 import { getNotifications } from "@/lib/services/notifications";
 import { canUseOvertime } from "@/lib/services/overtime";
 import { DivisionsProvider } from "@/components/shared/divisions-context";
@@ -23,7 +25,12 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   const user = await requireUser();
   const badges = canApprove(user.role) ? { "/approval": await countPendingApprovals(prisma, user.id) } : undefined;
   const divisions = (await listDivisions(prisma, { includeInactive: true })).map((d) => ({ code: d.code, name: d.name, isActive: d.isActive }));
-  const viewer = { role: user.role, isSuperAdmin: user.isSuperAdmin, canOvertime: await canUseOvertime(prisma, user.employeeId) };
+  const viewer = {
+    role: user.role,
+    isSuperAdmin: user.isSuperAdmin,
+    canOvertime: await canUseOvertime(prisma, user.employeeId),
+    canInventory: inventoryEnabled(user) && (await inventoryAccess(prisma, user)).canView,
+  };
 
   return (
     <div className={cn("flex min-h-screen flex-1 flex-col", shell.ground)}>

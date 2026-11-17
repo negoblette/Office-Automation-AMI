@@ -2,6 +2,7 @@
 // Counter per (prefix, tahun, bulan) dinaikkan dengan SATU statement atomik sehingga
 // tidak ada nomor ganda walau banyak submit bersamaan. Panggil di dalam transaksi submit.
 import type { Prisma } from "@/generated/prisma/client";
+import { formatTrialFormNumber } from "@/lib/demo-loan";
 import { toJakartaIsoDate } from "@/lib/format";
 
 export const DOCUMENT_PREFIX = {
@@ -35,4 +36,22 @@ export async function nextDocumentNumber(
     DO UPDATE SET "lastValue" = "NumberSequence"."lastValue" + 1
     RETURNING "lastValue"`;
   return formatDocumentNumber(prefix, year, month, row.lastValue);
+}
+
+/**
+ * Product Trial Form (Fase 16, 2026-11-17): `NNN/AMI-PTF/<bulan Romawi>/<tahun>`, urut ulang tiap TAHUN — counter
+ * disimpan di NumberSequence dengan `month = 0`. Nomor awal bisa diatur Admin (services/demo-loan.ts).
+ */
+export const TRIAL_FORM_PREFIX = "PTF";
+
+/** Nomor form berikutnya (bulan & tahun kalender Jakarta dari `at`). Panggil di dalam transaksi pengajuan. */
+export async function nextTrialFormNumber(tx: Prisma.TransactionClient, at: Date = new Date()): Promise<string> {
+  const [year, month] = toJakartaIsoDate(at).split("-").map(Number);
+  const [row] = await tx.$queryRaw<{ lastValue: number }[]>`
+    INSERT INTO "NumberSequence" ("prefix", "year", "month", "lastValue")
+    VALUES (${TRIAL_FORM_PREFIX}, ${year}, 0, 1)
+    ON CONFLICT ("prefix", "year", "month")
+    DO UPDATE SET "lastValue" = "NumberSequence"."lastValue" + 1
+    RETURNING "lastValue"`;
+  return formatTrialFormNumber(row.lastValue, month, year);
 }

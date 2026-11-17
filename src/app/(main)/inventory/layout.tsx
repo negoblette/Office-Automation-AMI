@@ -1,9 +1,7 @@
-import { notFound } from "next/navigation";
-import { requireUser } from "@/lib/auth/guards";
-import { inventoryEnabled } from "@/lib/features";
+import { requireInventory } from "@/lib/auth/inventory";
 
-/** Modul Inventaris ditunda (FEATURES.inventory) → semua halaman /inventory 404, kecuali untuk super admin (2026-10-30). */
+/** Inventory (2026-11-17): hanya Admin, Operational, dan divisi Engineer & Sales — selain itu 404. Tiap page tetap memanggil guard sendiri. */
 export default async function InventoryLayout({ children }: { children: React.ReactNode }) {
-  if (!inventoryEnabled(await requireUser())) notFound();
+  await requireInventory("view");
   return children;
 }

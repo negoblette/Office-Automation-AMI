@@ -3,7 +3,9 @@ import type { ApprovalModule, Prisma, PrismaClient, RequestStatus } from "@/gene
 import type { ApprovalStepView } from "@/components/shared/approval-stepper";
 import { CORRECTABLE_MODULES, type CorrectionView, listCorrections } from "./approval-correction";
 import { APPEAL_REASON_LABEL, formatDuration } from "@/lib/attendance";
-import { formatDate, formatRupiah, formatTime } from "@/lib/format";
+import { formatLoanDuration, LOAN_PURPOSE_LABEL, loanPurposeDescription, loanPurposeText } from "@/lib/demo-loan";
+import { ownershipText } from "@/lib/inventory";
+import { formatDate, formatRupiah, formatTime, toJakartaIsoDate } from "@/lib/format";
 import { overtimeMinutes } from "@/lib/validators/overtime";
 import { EDUCATION_LEVEL_LABEL, LEAVE_TYPE_LABEL, leaveDeductLabel, projectLabel } from "@/lib/labels";
 import { canRevoke } from "./approval";
@@ -129,6 +131,18 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
     ? await db.overtime.findMany({ where: { id: { in: overtimeIds } }, include: { customer: { select: { name: true } }, project: { select: { code: true, name: true } } } })
     : [];
   const overtimeOf = new Map(overtimes.map((o) => [o.id, o]));
+  // Peminjaman unit (Fase 16, 2026-11-17): kegunaan, peminjam, periode, unit + SN + posisi rak.
+  const loanIds = requests.filter((r) => r.module === "DEMO_LOAN").map((r) => r.entityId);
+  const loans = loanIds.length
+    ? await db.demoLoan.findMany({
+        where: { id: { in: loanIds } },
+        include: {
+          salesPerson: { select: { fullName: true } },
+          items: { orderBy: { id: "asc" }, include: { rack: { select: { name: true } }, asset: { select: { ownership: true, ownerName: true } } } },
+        },
+      })
+    : [];
+  const loanOf = new Map(loans.map((loan) => [loan.id, loan]));
 
   return requests.map((request) => ({
     id: request.id,
@@ -181,6 +195,30 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
           overtime.activity,
         ];
         return { headline: parts.slice(0, 2).filter(Boolean).join(" · "), summary: parts.filter(Boolean).join(" · "), file: null };
+      }
+      const loan = loanOf.get(request.entityId);
+      if (request.module === "DEMO_LOAN" && loan) {
+        const period = `${formatDate(loan.startDate, "short")} – ${formatDate(loan.dueDate, "short")} (${formatLoanDuration(toJakartaIsoDate(loan.startDate), toJakartaIsoDate(loan.dueDate))})`;
+        const units = loan.items.map(
+          (item) =>
+            `${item.deviceName} · SN ${item.serialNo}${item.rack && item.rackPosition ? ` · ${item.rack.name} ${item.rackPosition}` : ""}${
+              item.asset.ownership === "AMI" ? "" : ` · ${ownershipText(item.asset.ownership, item.asset.ownerName)}`
+            }`,
+        );
+        return {
+          headline: `${loanPurposeText(loan.purpose, loan.purposeDetail)} · ${loan.borrowerName} · ${loan.items.length} unit`,
+          summary: [
+            `${LOAN_PURPOSE_LABEL[loan.purpose]} — ${loanPurposeDescription(loan.purpose, loan.purposeDetail)}`,
+            `Peminjam: ${loan.borrowerName} (up: ${loan.picName})`,
+            `Periode: ${period}`,
+            `Sales Person: ${loan.salesPerson.fullName}`,
+            ...units,
+            loan.remarks && `Keperluan: ${loan.remarks}`,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          file: null,
+        };
       }
       const otLines = overtimeLinesOf.get(request.entityId);
       if (otLines) {

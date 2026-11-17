@@ -2,24 +2,122 @@
 
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useEffect, useMemo, useTransition } from "react";
+import { Controller, useFormContext, useWatch } from "react-hook-form";
 import { DateInputField, SelectInputField, TextareaField, TextInputField } from "@/components/form/fields";
 import { FormDialog } from "@/components/form/form-dialog";
+import { fieldDescriptionId, FormField } from "@/components/form/form-field";
+import { SelectField } from "@/components/form/select-field";
 import { useFeedback } from "@/components/shared/feedback";
 import { Button } from "@/components/ui/button";
-import { toJakartaIsoDate } from "@/lib/format";
+import type { AssetOwnership } from "@/generated/prisma/enums";
+import { ASSET_OWNERSHIP_LABEL, rackPositions, rackRangeLabel } from "@/lib/inventory";
 import { ASSET_CATEGORY_LABEL, toOptions } from "@/lib/labels";
 import type { AssetRow } from "@/lib/services/asset-queries";
-import { assetSchema, assignAssetSchema, returnAssetSchema } from "@/lib/validators/asset";
-import { assignAssetAction, deleteAssetAction, returnAssetAction, saveAssetAction } from "./actions";
+import { assetSchema } from "@/lib/validators/asset";
+import { deleteAssetAction, saveAssetAction } from "./actions";
 
-/** Daftarkan unit baru / ubah data unit (INV-01). */
-export function AssetFormDialog({ asset }: { asset?: AssetRow }) {
+export type RackOption = { id: string; name: string; columns: number; rows: number };
+
+const NO_RACK = "__none__";
+
+/**
+ * Rak + posisi (2026-11-17). Posisi mengikuti ukuran rak yang dipilih (A1…); ganti rak → posisi dikosongkan bila tidak
+ * ada di rak baru. "Tidak disimpan di rak" untuk unit yang sedang di luar gudang.
+ */
+function RackFields({ racks }: { racks: RackOption[] }) {
+  const { control, setValue, formState } = useFormContext();
+  const rackId = useWatch({ control, name: "rackId" }) as string;
+  const position = useWatch({ control, name: "rackPosition" }) as string;
+  const rack = racks.find((r) => r.id === rackId);
+  const positions = useMemo(() => (rack ? rackPositions(rack.columns, rack.rows) : []), [rack]);
+
+  useEffect(() => {
+    if (position && !positions.includes(position)) setValue("rackPosition", "", { shouldDirty: true });
+  }, [position, positions, setValue]);
+
+  const rackError = formState.errors.rackId?.message as string | undefined;
+  const positionError = formState.errors.rackPosition?.message as string | undefined;
+  return (
+    <>
+      <FormField label="Rak" htmlFor="rackId" error={rackError} hint={racks.length ? undefined : "Belum ada rak. Admin menambahkannya di Setting → Inventaris & Rak."}>
+        <Controller
+          control={control}
+          name="rackId"
+          render={({ field }) => (
+            <SelectField
+              id="rackId"
+              options={[{ value: NO_RACK, label: "Tidak disimpan di rak" }, ...racks.map((r) => ({ value: r.id, label: `${r.name} (${rackRangeLabel(r)})` }))]}
+              value={field.value || NO_RACK}
+              onChange={(value) => field.onChange(value && value !== NO_RACK ? value : "")}
+              aria-invalid={rackError ? true : undefined}
+              aria-describedby={fieldDescriptionId("rackId")}
+            />
+          )}
+        />
+      </FormField>
+      <FormField label="Posisi" htmlFor="rackPosition" required={Boolean(rack)} error={positionError} hint={rack ? "Huruf = kolom, angka = baris. Satu posisi boleh berisi beberapa unit." : "Pilih rak dulu"}>
+        <Controller
+          control={control}
+          name="rackPosition"
+          render={({ field }) => (
+            <SelectField
+              id="rackPosition"
+              options={positions.map((p) => ({ value: p, label: p }))}
+              value={field.value || null}
+              onChange={(value) => field.onChange(value ?? "")}
+              placeholder={rack ? "Pilih posisi…" : "—"}
+              disabled={!rack}
+              aria-required={Boolean(rack) || undefined}
+              aria-invalid={positionError ? true : undefined}
+              aria-describedby={fieldDescriptionId("rackPosition")}
+            />
+          )}
+        />
+      </FormField>
+    </>
+  );
+}
+
+/**
+ * Kepemilikan (2026-11-17): milik AMI, atau titipan principal / distributor — nama pemiliknya wajib diisi (kolom muncul
+ * setelah memilih Principal / Distributor).
+ */
+function OwnershipFields() {
+  const { control } = useFormContext();
+  const ownership = (useWatch({ control, name: "ownership" }) ?? "AMI") as AssetOwnership;
+  return (
+    <>
+      <SelectInputField
+        name="ownership"
+        label="Kepemilikan"
+        required
+        options={toOptions(ASSET_OWNERSHIP_LABEL)}
+        hint={ownership === "AMI" ? "Unit dari principal / distributor dipisahkan dari milik AMI." : undefined}
+      />
+      {ownership !== "AMI" && (
+        <TextInputField
+          name="ownerName"
+          label={ownership === "PRINCIPAL" ? "Nama principal" : "Nama distributor"}
+          required
+          placeholder={ownership === "PRINCIPAL" ? "mis. Cisco, Fortinet" : "mis. PT Datascrip"}
+          className="sm:col-span-2"
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Daftarkan unit baru / ubah data unit (INV-01). Setiap simpan tercatat di Riwayat Unit (siapa, kapan, apa yang berubah).
+ * `trigger` = tombol pengganti (mis. "Ubah Unit" di halaman detail).
+ */
+export function AssetFormDialog({ asset, racks, trigger }: { asset?: AssetRow; racks: RackOption[]; trigger?: React.ReactElement }) {
   return (
     <FormDialog
       wide
       trigger={
-        asset ? (
+        trigger ?? (asset ? (
           <Button variant="ghost" size="icon-sm" aria-label={`Ubah ${asset.deviceName}`}>
             <Pencil />
           </Button>
@@ -27,9 +125,10 @@ export function AssetFormDialog({ asset }: { asset?: AssetRow }) {
           <Button size="lg">
             <Plus aria-hidden /> Daftarkan Unit
           </Button>
-        )
+        ))
       }
       title={asset ? `Ubah ${asset.deviceName}` : "Daftarkan Unit"}
+      description={asset ? "Perubahan tercatat di Riwayat Unit beserta nama Anda." : undefined}
       schema={assetSchema}
       defaults={{
         deviceName: asset?.deviceName ?? "",
@@ -41,60 +140,27 @@ export function AssetFormDialog({ asset }: { asset?: AssetRow }) {
         warrantyEnd: asset?.warrantyEnd ?? "",
         warrantyNote: asset?.warrantyNote ?? "",
         notes: asset?.notes ?? "",
+        ownership: asset?.ownership ?? "AMI",
+        ownerName: asset?.ownerName ?? "",
+        rackId: asset?.rackId ?? "",
+        rackPosition: asset?.rackPosition ?? "",
       }}
       submitLabel="Simpan"
       action={(values) => saveAssetAction(asset?.id ?? null, values)}
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <TextInputField name="deviceName" label="Nama perangkat" required />
+        <TextInputField name="deviceName" label="Part number / deskripsi" required placeholder="mis. SFP+ (10G)" />
         <TextInputField name="serialNo" label="Serial number" required hint="Disimpan dalam huruf besar" />
         <SelectInputField name="category" label="Kategori" required options={toOptions(ASSET_CATEGORY_LABEL)} />
-        <div className="hidden sm:block" />
+        <OwnershipFields />
+        <RackFields racks={racks} />
         <DateInputField name="supportStart" label="Support mulai" />
         <DateInputField name="supportEnd" label="Support berakhir" />
         <DateInputField name="warrantyStart" label="Warranty mulai" />
         <DateInputField name="warrantyEnd" label="Warranty berakhir" />
         <TextInputField name="warrantyNote" label="Catatan warranty" className="sm:col-span-2" />
-        <TextareaField name="notes" label="Catatan / lokasi" className="sm:col-span-2" />
+        <TextareaField name="notes" label="Catatan" className="sm:col-span-2" />
       </div>
-    </FormDialog>
-  );
-}
-
-/** Serahkan unit ke karyawan (INV-02). */
-export function AssignAssetDialog({ asset, employees }: { asset: AssetRow; employees: { value: string; label: string }[] }) {
-  return (
-    <FormDialog
-      trigger={<Button size="sm" className="bg-foreground text-background hover:bg-foreground/90">Pinjamkan</Button>}
-      title={`Pinjamkan ${asset.deviceName}`}
-      description={`Serial ${asset.serialNo}`}
-      schema={assignAssetSchema}
-      defaults={{ employeeId: "", assignedAt: toJakartaIsoDate(), note: "" }}
-      submitLabel="Pinjamkan"
-      successMessage="Unit dipinjamkan"
-      action={(values) => assignAssetAction(asset.id, values)}
-    >
-      <SelectInputField name="employeeId" label="Karyawan" required options={employees} />
-      <DateInputField name="assignedAt" label="Tanggal serah" required />
-      <TextareaField name="note" label="Catatan (tujuan / klien)" />
-    </FormDialog>
-  );
-}
-
-/** Catat pengembalian unit (INV-02). */
-export function ReturnAssetDialog({ asset }: { asset: AssetRow }) {
-  return (
-    <FormDialog
-      trigger={<Button size="sm" variant="outline">Kembalikan</Button>}
-      title={`Kembalikan ${asset.deviceName}`}
-      description={asset.holder ? `Dipegang ${asset.holder.name}` : undefined}
-      schema={returnAssetSchema}
-      defaults={{ returnedAt: toJakartaIsoDate(), note: "" }}
-      submitLabel="Simpan"
-      action={(values) => returnAssetAction(asset.id, values)}
-    >
-      <DateInputField name="returnedAt" label="Tanggal kembali" required />
-      <TextareaField name="note" label="Catatan kondisi (opsional)" />
     </FormDialog>
   );
 }
@@ -103,7 +169,8 @@ export function DeleteAssetButton({ asset }: { asset: AssetRow }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const { confirm, notify } = useFeedback();
-  if (asset.assignmentCount > 0) return null;
+  // Unit yang punya riwayat (serah terima lama / peminjaman) tidak bisa dihapus — dicek juga di server.
+  if (asset.assignmentCount > 0 || asset.loanCount > 0) return null;
   return (
     <Button
       variant="ghost"

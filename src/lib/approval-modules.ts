@@ -11,4 +11,6 @@ export const APPROVAL_MODULE_META: Record<ApprovalModule, { label: string; path:
   OVERTIME: { label: "Overtime", path: () => "/overtime" },
   // Hanya untuk Approval Flow (pengajuannya tercatat sebagai Reimburse).
   OVERTIME_REIMBURSE: { label: "Reimburse Overtime", path: (id) => `/reimburse/${id}` },
+  // Fase 16 (2026-11-17): peminjaman unit demo / Product Trial Form → Ko Yosep, lalu Operational.
+  DEMO_LOAN: { label: "Peminjaman Unit", path: (id) => `/inventory/peminjaman/${id}` },
 };

@@ -117,11 +117,11 @@ async function AdminDashboard({ user, calendar }: { user: CurrentUser; calendar:
         />
         {data.assets && (
           <StatItem
-            label="Unit dipinjam"
-            value={data.assets.assigned}
+            label="Unit di rak"
+            value={data.assets.inRack}
             unit={`/ ${data.assets.total} unit`}
             order={3}
-            footer={<ProgressBar value={data.assets.total ? (data.assets.assigned / data.assets.total) * 100 : 0} label="Unit dipinjam" />}
+            footer={<ProgressBar value={data.assets.total ? (data.assets.inRack / data.assets.total) * 100 : 0} label="Unit tercatat di rak" />}
           />
         )}
       </StatsBand>

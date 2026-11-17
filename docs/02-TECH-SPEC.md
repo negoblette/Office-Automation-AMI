@@ -27,7 +27,7 @@ Skema lengkap ada di `prisma/schema.prisma`. Ringkasan:
 |---|---|
 | Auth | `User` (role ADMIN/STAFF, relasi 1–1 ke Employee) |
 | Karyawan | `Employee`, `EmploymentPeriod`, `FamilyMember`, `Document`, `Certificate` |
-| Inventory | `Asset`, `AssetAssignment` |
+| Inventory | `Asset` (+ `rackId`, `rackPosition`), `AssetAssignment`, `StorageRack`, `DemoLoan` + `DemoLoanItem` (peminjaman / Product Trial Form) |
 | Project | `Customer`, `Project`, `ProjectExpense` |
 | Reimburse | `ReimburseType`, `Reimbursement`, `ReimbursementItem` |
 | Cuti | `LeavePolicy`, `LeaveBalance`, `LeaveRequest`, `Holiday` |
@@ -201,6 +201,69 @@ semua direktur auto-approve; bila flow REGULAR tidak ditemukan, engine melempar 
 ### 6.5 Project
 - Total expense project = Σ `ReimbursementItem` APPROVED dengan projectId + Σ `ProjectExpense` APPROVED.
 
+### 6.6 Inventaris & unit demo (aktif lagi 2026-11-17)
+Modul dinyalakan (`FEATURES.inventory = true`) untuk peminjaman unit demo ke perusahaan lain (Product Trial Form). Dikerjakan
+bertahap (docs/05-TAHAPAN.md Fase 16); Tahap 1 = data, akses, rak; Tahap 2 = pengajuan, approval Ko Yosep, antrian Operational, riwayat unit.
+- **Akses** (`services/inventory-access.ts`, dicek di server per halaman & aksi; `lib/auth/inventory.ts#requireInventory`):
+  - lihat (stok, lokasi, riwayat): Admin, **Operational**, karyawan aktif divisi `ENGINEER` / `SALES` (kode persis);
+  - kelola (daftar/ubah/hapus unit, rak & posisi): Admin & Operational.
+- **Serah terima ke karyawan tidak dipakai** (2026-11-17): unit dipinjamkan ke perusahaan lain, bukan dipegang karyawan.
+  Tombol, aksi, kolom Pemegang & riwayatnya dihapus dari Inventaris; data lama `AssetAssignment` dibiarkan (masih tampil
+  sebagai riwayat di Asset Kantor) dan unit yang punya riwayat itu tetap tidak bisa dihapus.
+- **Operational** = user aktif (role apa pun) yang dipilih Admin di Setting → Inventaris & Rak (`AppSetting
+  inventory.operationalUserIds`, tercatat di audit). Mereka menyiapkan peminjaman yang sudah disetujui (Item Sender, cetak form),
+  mengecek barang yang kembali, dan menerima peringatan jatuh tempo.
+- **Rak** (`StorageRack`): nama unik (tanpa beda huruf besar/kecil), kolom 1–26 (huruf A–Z) × baris 1–50. Posisi = huruf
+  kolom + nomor baris (`A1`); satu posisi boleh banyak unit. Rak tidak bisa dihapus selama berisi unit dan tidak bisa
+  diperkecil bila ada unit di posisi yang hilang. Hapus = soft delete; nama yang dihapus dipulihkan bila ditambah lagi.
+- **Kepemilikan unit** (2026-11-17): `Asset.ownership` = `AMI` (bawaan) / `PRINCIPAL` / `DISTRIBUTOR`, `ownerName` wajib
+  bila bukan AMI (dikosongkan bila diganti ke AMI). Unit titipan bisa disimpan di rak & dipinjamkan seperti unit AMI;
+  dipisahkan lewat filter & label (`lib/inventory.ts#ownershipText`).
+- **Lokasi unit:** `Asset.rackId` + `rackPosition` opsional tapi berpasangan, posisi harus di dalam rak (dicek service).
+  Nama perangkat tampil sebagai "Part number / deskripsi" (sesuai kolom Product Trial Form). Posisi rak tetap melekat
+  selama unit dipinjam = tempat kembalinya.
+- **Peminjaman** (`DemoLoan`, `services/demo-loan.ts`; Tahap 16.2, direvisi 2026-11-17):
+  - **Kegunaan** (`LoanPurpose`, wajib): `BACKUP_UNIT` (pengganti sementara unit customer yang bermasalah) / `POC`
+    (pengujian di customer) / `OTHER` + `purposeDetail` wajib (disimpan hanya untuk OTHER; tampil lewat
+    `lib/demo-loan.ts#loanPurposeText`).
+  - Pengaju: semua yang boleh melihat Inventaris (wajib punya data karyawan untuk Approval Flow). Saat diajukan nomor form
+    terbit dan approval engine dibangun dengan **modul `DEMO_LOAN`** (Approval Flow; seed: Ko Yosep). Efek engine:
+    disetujui final → `APPROVED` + `approvedAt`; ditolak → `REJECTED`; persetujuan dibatalkan → kembali `PENDING`
+    (ditolak bila barang sudah diantar).
+  - Status `PENDING` (menunggu approval) → `APPROVED` (disiapkan = antrian Operational) / `REJECTED` / `CANCELLED`;
+    `ON_LOAN` (diantar) & `RETURNED` (kembali) untuk tahap berikutnya. Pemohon boleh mengubah selama `REJECTED`, atau
+    `PENDING` yang belum disetujui level mana pun; revisi pengajuan yang ditolak = `restartApproval` (nomor sama, dari
+    level 1). Batal (pemohon, `PENDING` / `REJECTED`): approval yang menunggu ditutup seperti sertifikat yang dihapus
+    (level → `REJECTED` "Dibatalkan pemohon"; tidak muncul sebagai "ditolak" di lonceng).
+  - Operational / Admin memilih **Item Sender** (karyawan aktif) setelah `APPROVED`; yang memilih tercatat di
+    `operationalId` (nama di kolom "Operational" form cetak).
+  - **Cetak** (Tahap 16.3): `/cetak/peminjaman/[id]` (layout `(print)`), sejak `APPROVED`, semua user Inventaris. Satu
+    lembar A4 lewat `<style>@page</style>` di halaman itu saja (bukan `@page` bernama — elemen kosong sebelum form
+    membuat Chrome menyisipkan lembar kosong). Identitas kantor di `lib/company.ts`, logo `src/assets/brand/`.
+  - **Sudah Diantar** (Operational / Admin, `APPROVED` + Item Sender sudah dipilih): `ON_LOAN`, `deliveredAt`
+    (≤ hari ini, ≥ tanggal pengajuan), `receivedByName` opsional; audit memuat `items` (Riwayat Unit). Setelah itu efek
+    revert approval ditolak & Item Sender terkunci. Jatuh tempo tidak berubah (perpanjangan di 16.4).
+  - Unit di peminjaman `PENDING` / `APPROVED` / `ON_LOAN` tidak bisa diajukan lagi; baris `Asset` dikunci `FOR UPDATE`
+    (urut id) saat mengajukan, merevisi, dan menghapus unit. Unit yang pernah diajukan tidak bisa dihapus.
+  - `DemoLoanItem` menyalin nama, SN, rak & posisi saat diajukan (form cetak & riwayat tidak berubah walau data unit
+    diubah belakangan).
+  - Peminjam: `borrowerName` wajib; `customerId` terisi bila nama sama dengan Customer aktif (tanpa beda huruf, ejaan
+    diseragamkan). Nama baru tidak menambah Customer. Input: Base UI Autocomplete (`components/form/autocomplete-input.tsx`).
+  - **Jangka pinjam** (2026-11-17): pengaju mengisi tanggal mulai & tanggal selesai (`dueDate` = hari terakhir =
+    jatuh tempo). Lamanya dihitung, tidak disimpan (`lib/demo-loan.ts#loanSpan` / `formatLoanDuration`): bulan penuh =
+    tanggal yang sama di bulan berikutnya (dijepit ke akhir bulan), sisanya hari, keduanya inklusif — 14 Mar – 13 Apr =
+    "1 bulan", 17 Nov – 31 Des = "1 bulan 15 hari", 17 Nov 2026 – 21 Jan 2028 = "1 tahun 2 bulan 5 hari". Tanggal mulai:
+    hari ini s/d 1 tahun ke depan; tanggal selesai ≥ tanggal mulai, maks. 2 tahun (`maxLoanEnd`). Form cetak:
+    "1 Year 2 Months 5 Days (21 January 2028)".
+  - Sales Person = karyawan aktif divisi `SALES`. Email PIC hanya kontak — sistem tidak mengirim email ke peminjam.
+  - Nomor form `NNN/AMI-PTF/<bulan Romawi>/<tahun>` terbit saat diajukan; counter `NumberSequence` prefix `PTF`,
+    `month = 0` (urut per tahun). Admin mengatur nomor terakhir tahun berjalan (Setting → Inventaris & Rak), minimal
+    nomor tertinggi yang sudah dipakai.
+- **Riwayat Unit** (`services/asset-history.ts`, halaman detail unit): disusun dari AuditLog — `Asset` CREATE/UPDATE/DELETE
+  (pelaku, waktu, kolom sebelum → sesudah; lokasi memakai nama rak), `DemoLoan` yang memuat unit di `before`/`after.items`
+  (diajukan, diajukan ulang, ditambahkan/dikeluarkan saat revisi, dibatalkan, diantar, kembali), dan keputusan
+  `ApprovalRequest` APPROVE/REJECT peminjaman itu (dicocokkan lewat nomor form; hanya selama unit masih ada di pengajuan).
+  Tahap berikutnya wajib mencatat audit `DemoLoan` dengan `items` supaya ikut riwayat.
 ## 7. Notifikasi & Job (pg-boss, `worker/`)
 
 | Job | Jadwal | Isi |
@@ -212,6 +275,9 @@ semua direktur auto-approve; bila flow REGULAR tidak ditemukan, engine melempar 
 | `attendance.auto-clock-out` | tiap 5 menit | absen tanpa clock out yang sudah lewat jam pulang (`attendance.workHours`) → clock out = jam pulang, `Attendance.autoClockOut = true` (clock in setelah jam pulang → 23:59). Karyawan yang lembur masih bisa clock out sendiri sekali di hari yang sama (2026-10-30) |
 
 Template email: `approval-requested`, `approval-progress`, `approval-final`, `reminder-expiry`. Semua berisi nomor dokumen, ringkasan, dan link ke halaman detail.
+Peminjaman unit (Fase 16.2): pengajuan, keputusan & pembatalan persetujuan memakai email approval engine (rincian
+kegunaan, peminjam, periode, unit + SN). Setelah disetujui final, `loan-approved` (`lib/mail/demo-loan-emails.ts`) ke
+Operational aktif (belum diatur → Admin aktif): "siapkan barang & cetak form". Tidak ada email ke perusahaan peminjam.
 
 **Lonceng notifikasi** (`services/notifications.ts`): isinya dihitung dari data terkini (dokumen/sertifikat akan berakhir,
 antrian approval, pengajuan ditolak 30 hari terakhir). Sejak 2026-11-16 notifikasi yang **dibuka** (diklik) atau
@@ -223,6 +289,7 @@ antrian approval, pengajuan ditolak 30 hari terakhir). Sejak 2026-11-16 notifika
 | Pengajuan ditolak | `rejected:<id approval>:<waktu tolak>` | diajukan ulang lalu ditolak lagi (approval baru) |
 | Dokumen / sertifikat | `expiry:<doc\|cert>-<id>:<tanggal berakhir>:<month\|week\|expired>` | naik tahap (30 hari → ≤ 7 hari → kadaluarsa) atau tanggal berakhir diganti |
 | Antrian approval | `approval` + `context` = id pengajuan yang dilihat saat dihapus | ada pengajuan menunggu yang belum ada di `context` |
+| Peminjaman unit disetujui, siap disiapkan (Operational & Admin, 2026-11-17) | `loanqueue` + `context` (sama dengan antrian approval) | ada peminjaman disetujui baru yang belum ada di `context` |
 
 Catatan berlaku 60 hari (`DISMISSAL_RETENTION_DAYS`; lebih lama diabaikan & dibersihkan saat user menghapus notifikasi
 berikutnya). Aksi `dismissNotificationAction` / `restoreNotificationAction` hanya menerima kunci berformat di atas

@@ -1,9 +1,12 @@
-// Inventory / demo unit — URD INV-01..03. Dikelola Admin; riwayat serah terima di AssetAssignment.
+// Inventory / demo unit — URD INV-01..03. Dikelola Admin & Operational (2026-11-17). Serah terima ke karyawan
+// (assignAsset/returnAsset, AssetAssignment) tidak dipakai lagi sejak 2026-11-17 — tidak ada aksi/tampilannya; fungsi
+// & data lama dibiarkan untuk riwayat. Unit dipinjamkan ke perusahaan lain lewat Product Trial Form (Fase 16).
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { formatDate, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import type { AssetInput, AssignAssetInput, ReturnAssetInput } from "@/lib/validators/asset";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
+import { assertRackPosition } from "./storage-rack";
 
 type Tx = Prisma.TransactionClient;
 
@@ -19,6 +22,11 @@ function assetData(input: AssetInput) {
     warrantyEnd: date(input.warrantyEnd),
     warrantyNote: input.warrantyNote,
     notes: input.notes,
+    ownership: input.ownership,
+    // Milik AMI tidak menyimpan nama pemilik (isian lama dibuang bila kepemilikan diganti ke AMI).
+    ownerName: input.ownership === "AMI" ? null : input.ownerName,
+    rackId: input.rackId,
+    rackPosition: input.rackId ? input.rackPosition : null,
   };
 }
 
@@ -36,6 +44,7 @@ async function openAssignment(tx: Tx, assetId: string) {
 export async function createAsset(db: PrismaClient, actorId: string, input: AssetInput) {
   return db.$transaction(async (tx) => {
     await assertSerialAvailable(tx, input.serialNo);
+    await assertRackPosition(tx, input.rackId, input.rackPosition);
     const asset = await tx.asset.create({ data: assetData(input) });
     await logAudit(tx, { actorId, action: "CREATE", entity: "Asset", entityId: asset.id, after: asset });
     return asset;
@@ -47,18 +56,22 @@ export async function updateAsset(db: PrismaClient, actorId: string, assetId: st
     const before = await tx.asset.findUnique({ where: { id: assetId, deletedAt: null } });
     if (!before) throw new ServiceError("Aset tidak ditemukan");
     await assertSerialAvailable(tx, input.serialNo, assetId);
+    await assertRackPosition(tx, input.rackId, input.rackPosition);
     const after = await tx.asset.update({ where: { id: assetId }, data: assetData(input) });
     await logAudit(tx, { actorId, action: "UPDATE", entity: "Asset", entityId: assetId, before, after });
     return after;
   });
 }
 
-/** Hapus aset — hanya jika belum pernah diserahterimakan (riwayat tidak boleh hilang). */
+/** Hapus aset — hanya jika belum pernah diserahterimakan / diajukan pinjam (riwayat tidak boleh hilang). */
 export async function deleteAsset(db: PrismaClient, actorId: string, assetId: string) {
   return db.$transaction(async (tx) => {
-    const asset = await tx.asset.findUnique({ where: { id: assetId }, include: { _count: { select: { assignments: true } } } });
+    // Dikunci: pengajuan peminjaman yang sedang berjalan menunggu, jadi unit tidak terhapus di tengah pengajuan.
+    await tx.$queryRaw`SELECT id FROM "Asset" WHERE id = ${assetId} FOR UPDATE`;
+    const asset = await tx.asset.findUnique({ where: { id: assetId }, include: { _count: { select: { assignments: true, loanItems: true } } } });
     if (!asset || asset.deletedAt) throw new ServiceError("Aset tidak ditemukan");
     if (asset._count.assignments > 0) throw new ServiceError("Aset yang sudah punya riwayat serah terima tidak bisa dihapus");
+    if (asset._count.loanItems > 0) throw new ServiceError("Unit yang pernah diajukan pinjam tidak bisa dihapus — riwayat peminjamannya tetap disimpan");
     await tx.asset.update({ where: { id: assetId }, data: { deletedAt: new Date() } }); // soft delete (NFR v1.14)
     await logAudit(tx, { actorId, action: "DELETE", entity: "Asset", entityId: assetId, before: asset });
   });

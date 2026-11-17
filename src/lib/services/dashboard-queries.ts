@@ -149,7 +149,7 @@ async function weekEvents(db: PrismaClient, todayIso: string, staffEmployeeId?: 
 
 export async function getAdminDashboard(db: PrismaClient, userId: string, todayIso = toJakartaIsoDate()) {
   const month = todayIso.slice(0, 7);
-  const [employees, joinedThisMonth, queue, pendingAll, activeProjects, assetTotal, assetAssigned, expiring, week] = await Promise.all([
+  const [employees, joinedThisMonth, queue, pendingAll, activeProjects, assetTotal, assetInRack, expiring, week] = await Promise.all([
     listEmployees(db, "ACTIVE"),
     db.employee.count({
       where: {
@@ -161,7 +161,8 @@ export async function getAdminDashboard(db: PrismaClient, userId: string, todayI
     db.approvalRequest.count({ where: { status: "PENDING" } }),
     db.project.count({ where: { isActive: true } }),
     FEATURES.inventory ? db.asset.count({ where: { deletedAt: null } }) : 0,
-    FEATURES.inventory ? db.asset.count({ where: { deletedAt: null, assignments: { some: { returnedAt: null } } } }) : 0,
+    // Unit yang tercatat di rak (2026-11-17; serah terima ke karyawan tidak dipakai lagi). Ringkasan peminjaman → Fase 16.
+    FEATURES.inventory ? db.asset.count({ where: { deletedAt: null, rackId: { not: null } } }) : 0,
     expiringItems(db, todayIso),
     weekEvents(db, todayIso),
   ]);
@@ -177,7 +178,7 @@ export async function getAdminDashboard(db: PrismaClient, userId: string, todayI
     pendingAll,
     activeProjects,
     /** null = modul Inventory ditunda. */
-    assets: FEATURES.inventory ? { total: assetTotal, assigned: assetAssigned } : null,
+    assets: FEATURES.inventory ? { total: assetTotal, inRack: assetInRack } : null,
     expiring,
     /** Dokumen & sertifikat semua karyawan yang akan / sudah habis masa berlakunya (2026-10-12). */
     alerts,

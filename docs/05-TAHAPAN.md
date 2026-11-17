@@ -524,3 +524,117 @@ diingatkan); Cash → Personal, CC → Corporate; jenjang ijazah SMA/SMK, D1–D
 - [x] Urutan kategori kesehatan: Rawat Jalan Dokter, Obat-obatan, Vitamin, Kacamata (`HealthCategory.sortOrder`, migrasi `health_category_order`; kategori baru di akhir, lalu A–Z)
 - [x] **Export reimburse ke Excel** `/api/export/reimburse?bulan=YYYY-MM&karyawan=<id>|semua` (library `exceljs`): sheet *Detail* (satu baris per item, filter + header beku + total) & *Ringkasan* per karyawan (disetujui / menunggu / ditolak, Personal / Corporate). Tombol "Export Excel" di halaman Reimburse; Admin bisa pilih "Semua karyawan"; staf hanya miliknya
 - **Cek 15.14:** [x] 3 DB test baru · [x] smoke Andi & Ika (export 200 / 403)
+
+## Fase 16 — Inventaris & Peminjaman Unit Demo (Product Trial Form, permintaan 2026-11-17)
+
+Alur (direvisi user 2026-11-17): Engineer/Sales mengajukan dengan **kegunaan Backup Unit** (pengganti sementara unit
+customer yang bermasalah) **atau POC** (pengujian di customer) → **approval Ko Yosep** (Approval Center, modul
+`DEMO_LOAN`) → muncul di **Operational (Devi)** → Devi mencetak Product Trial Form & barang diantar → menjelang jatuh tempo
+email peringatan ke **pemohon & Operational** (tidak ke perusahaan peminjam) → barang kembali, Devi mengecek & menaruh di
+posisi yang sesuai. Akses: divisi Engineer & Sales + Admin + Operational (Setting, khusus Admin). Nomor form
+`NNN/AMI-PTF/<bulan Romawi>/<tahun>`, terbit saat diajukan, urut per tahun, nomor awal diatur Admin. Peringatan: 1 bulan
+sebelum jatuh tempo (pinjaman < 1 bulan: 1 minggu sebelum). Setiap unit punya **Riwayat Unit** (setiap edit + setiap
+pengajuan pinjam).
+
+### 16.1 Data, akses & rak ✅
+- [x] Modul Inventaris dinyalakan (`FEATURES.inventory = true`); akses per user (`inventory-access.ts`): lihat = Admin,
+      Operational, divisi Engineer & Sales; kelola = Admin & Operational. Menu, layout, setiap page & aksi memakai aturan ini
+- [x] Setting → **Inventaris & Rak** (Admin): pilih Operational (role apa pun, user aktif), daftar rak (kolom × baris,
+      catatan; ubah, hapus rak kosong, pulihkan nama yang dihapus, tolak memperkecil bila ada unit di posisi yang hilang)
+- [x] Unit: **Rak + Posisi** (posisi mengikuti ukuran rak; satu posisi banyak unit), kolom Lokasi di tabel & detail;
+      Engineer/Sales hanya melihat (tanpa tombol kelola)
+- [x] Migrasi `storage_rack` (tanpa drift)
+- [x] **Serah terima ke karyawan dihapus dari Inventaris** (permintaan user: unit tidak pernah diserahkan ke karyawan):
+      tombol Pinjamkan/Kembalikan, kolom Pemegang, filter & aksi server-nya. Diganti filter "Di rak / Tidak di rak",
+      kartu "Di rak / Tidak di rak", dashboard Admin "Unit di rak". Data lama `AssetAssignment` dibiarkan
+- **Cek 16.1:** [x] unit test posisi & validasi · [x] 5 DB test (akses, Operational, rak, lokasi) · [x] uji browser 16/16
+  (Admin, Devi Operational di HP, Andi Engineer lihat saja, axe 0) · [x] lint/typecheck · [x] test penuh: 3 gagal lama
+  dari `main` (label "Staff", alur Overtime Ko Yosep, nomor `OVT/2026/10`) — bukan dari fase ini
+
+### 16.2 Pengajuan, approval Ko Yosep & antrian Operational ✅ (direvisi 2026-11-17)
+- [x] Tabel `DemoLoan` + `DemoLoanItem` (migrasi `demo_loan` + `demo_loan_approval`, tanpa drift). Status: Menunggu
+      approval → Disiapkan (antrian Operational) / Ditolak / Dibatalkan (Dipinjam & Selesai dipakai 16.3 & 16.5)
+- [x] Menu Inventaris punya sub-menu **Daftar Unit** & **Peminjaman** (`/inventory/peminjaman`): daftar + filter status
+      ("Pengajuan saya", Menunggu approval, Disiapkan, …), form **Ajukan** (`/baru`, juga dari tombol di detail unit),
+      detail, **Ubah / Revisi** (`/[id]/ubah`)
+- [x] Form: **Kegunaan** (kartu Backup Unit / POC, wajib), pilih unit (cari nama/SN/rak; unit yang sedang diajukan /
+      dipinjam nonaktif + alasannya; SN & posisi rak otomatis), peminjam **hybrid** dengan **dropdown bergaya sistem**
+      (Base UI Autocomplete: saran dari Customer, nama yang sama ditautkan, nama lain tersimpan di peminjaman saja), PIC
+      (up:), email PIC (kontak saja), Sales Person (karyawan aktif divisi Sales; pemohon Sales terpilih otomatis), tanggal
+      mulai (hari ini s/d 1 tahun) + lama (hari/minggu/bulan; *diganti tanggal selesai, lihat tambahan "jangka pinjam
+      berbasis tanggal"*) → **jatuh tempo = hari terakhir** (14 Mar + 1 bulan → 13 Apr),
+      keperluan. Draft sementara & peringatan tinggalkan halaman seperti form lain
+- [x] Diajukan → nomor form terbit (counter `NumberSequence` PTF bulan 0) + **approval engine modul `DEMO_LOAN`** (Approval
+      Flow, seed: Ko Yosep). Ko Yosep menyetujui / menolak / membatalkan persetujuan di Approval Center atau langsung di
+      halaman detail. Ditolak → pemohon revisi & ajukan ulang (nomor sama, approval dari awal) atau batalkan (approval
+      yang menunggu ditutup "Dibatalkan pemohon", tidak muncul sebagai "ditolak"). Persetujuan dibatalkan sebelum diantar
+      → kembali menunggu
+- [x] Disetujui final → status **Disiapkan** = antrian Operational: lonceng `loanqueue` (Operational & Admin) + email
+      "Siapkan" ke Operational (belum diatur → Admin); Operational memilih **Item Sender**
+- [x] Unit dikunci (`FOR UPDATE`) selama Menunggu approval / Disiapkan / Dipinjam → tidak bisa diajukan dua kali; unit yang
+      pernah diajukan tidak bisa dihapus. Daftar Unit menampilkan status pinjamnya
+- [x] Detail unit: tombol **Ubah Unit** (Admin & Operational), daftar **Peminjaman**, dan **Riwayat Unit** dari audit log:
+      unit didaftarkan, setiap perubahan (siapa, kapan, kolom: sebelum → sesudah, termasuk lokasi rak), diajukan pinjam /
+      diajukan ulang / dikeluarkan dari pengajuan / dibatalkan, keputusan approval (hanya selama unit ada di pengajuan itu)
+- [x] Setting → Inventaris & Rak: **Nomor Product Trial Form** (nomor terakhir tahun ini, mis. lanjut dari form manual;
+      tidak boleh di bawah nomor yang sudah terpakai)
+- [x] DB dev: Approval Flow `DEMO_LOAN` → Ko Yosep ditambahkan (sama dengan seed). Lingkungan lain: Admin menambahkannya di
+      Setting → Approval Flow (modul "Peminjaman Unit"), atau `db:seed` yang hanya menambah flow yang belum ada
+- **Cek 16.2:** [x] 9 unit test (jatuh tempo, nomor, validasi, kunci lonceng) · [x] 9 DB test (ajukan + approval, kunci
+  unit, batal, setuju → Operational, Item Sender, batalkan persetujuan, tolak → revisi, riwayat unit, nomor, email) ·
+  [x] uji browser 27/28 (Ika Setting, Sinta ajukan dengan dropdown baru, Yosep tolak lalu setujui, Devi Operational di
+  HP, Andi lihat saja; tanpa geser samping di HP). 1 catatan axe: saat daftar saran Autocomplete **terbuka**, Base UI
+  menandai sisa halaman `aria-hidden` (pola combobox modal untuk pembaca layar, tidak bisa dimatikan); Tab langsung
+  menutup daftar & menghapus tanda itu, form tertutup axe 0 · [x] lint/typecheck · [x] test penuh 580 lulus, 3 gagal lama
+  dari `main`
+
+### 16.3 Cetak Product Trial Form & pengantaran ✅
+- [x] Logo resmi dari user (`src/assets/brand/artha-mitra-logo.png`, dipotong ruang kosongnya) & identitas kantor di satu
+      tempat (`lib/company.ts`). Telepon memakai Product Trial Form 2025 — **menunggu konfirmasi** (HAF 2023 memuat nomor
+      lain); awalan "Jl." alamat terpotong di foto
+- [x] Halaman cetak `/cetak/peminjaman/[id]` (tanpa sidebar, tombol Simpan PDF), meniru form kertas: kop logo + "Product
+      Trial Form" + nomor; kotak Date (tanggal mulai) / Sales Person / Prepared By (pemohon) / Trial Periode ("1 Month
+      (13 April 2025)", bahasa Inggris seperti form); Lend To + up:; tabel Item / Qty / Part Number + semua S/N (unit sama
+      dikelompokkan) / Remarks (kegunaan + keperluan); tanda tangan Operational / Sales Person / Item Sender (nama
+      tercetak), Received By (Name & Date, terisi setelah diantar); alamat di kaki. **Satu lembar A4** (`@page` hanya di
+      halaman ini), latar putih. Bisa dibuka semua user Inventaris sejak disetujui
+- [x] Operational: pilih Item Sender (yang memilih tercatat sebagai "Operational" di form) → Cetak Form → **Sudah Diantar**
+      (tanggal ≤ hari ini & ≥ tanggal pengajuan, nama penerima opsional; Item Sender wajib) → status **Dipinjam**,
+      keluar dari antrian Operational, tercatat "Diantar ke peminjam" di Riwayat Unit. Setelah diantar persetujuan tidak
+      bisa dibatalkan & Item Sender tidak bisa diganti; form bisa dicetak ulang (Received By terisi)
+- [x] Migrasi `demo_loan_delivery` (`operationalId`, `deliveredAt`, `receivedByName`; tanpa drift)
+- [x] **Hardware Admission Form (HAF) belum dikerjakan** — user belum yakin kegunaannya (2026-11-17)
+- **Cek 16.3:** [x] unit test teks form (tanggal & Trial Periode bahasa Inggris) · [x] DB test Sudah Diantar (aturan,
+  status, riwayat unit, antrian, kunci setelah diantar) · [x] uji browser 14/14 (isi form, Qty per part number, nama
+  tanda tangan, logo, PDF tepat 1 lembar, Sudah Diantar, cetak ulang, Andi lihat saja; axe 0) · [x] lint/typecheck
+
+### Tambahan 2026-11-17: kegunaan "Lainnya" & kepemilikan unit ✅
+- [x] Kegunaan ketiga **Lainnya** (kartu di form) + kolom **Detail kegunaan** wajib (3–200 karakter); detail tampil di
+      daftar, detail, Approval Center, email, Remarks form cetak, dan riwayat unit. Detail diabaikan untuk Backup Unit/POC
+- [x] Unit punya **Kepemilikan**: Milik AMI (bawaan, unit lama otomatis) / **Principal** / **Distributor** + nama
+      pemiliknya (wajib bila bukan AMI). Daftar Unit: filter Kepemilikan, label "Principal · Cisco", kartu Total unit
+      memisahkan milik AMI vs titipan; detail unit & pemilih unit di form pinjam menampilkan pemiliknya (bisa dicari);
+      ringkasan Approval Center menandai unit titipan; perubahan kepemilikan tercatat di Riwayat Unit
+- [x] Migrasi `loan_purpose_other_asset_ownership` (tanpa drift)
+- **Cek:** [x] unit test (teks kegunaan, kepemilikan, validasi) · [x] DB test (detail Lainnya, unit principal di pilihan,
+  Approval Center, riwayat) · [x] uji browser 15/15 (Ika daftar unit principal + filter, Sinta di HP: Lainnya + detail
+  wajib, cari unit titipan; axe 0, tanpa geser samping) · [x] lint/typecheck
+
+### Tambahan 2026-11-17: jangka pinjam berbasis tanggal ✅
+- [x] Form: **Tanggal mulai** & **Tanggal selesai (jatuh tempo)** menggantikan "lama + satuan"; kotak **Lama pinjam**
+      dihitung langsung dalam tahun / bulan / hari (mis. "1 tahun 2 bulan 5 hari"), bawaan 1 bulan, tanggal selesai
+      dibatasi ≥ mulai & maks. 2 tahun. Detail, daftar, Approval Center, email, riwayat unit, & form cetak memakai hitungan
+      yang sama
+- [x] Migrasi `loan_period_dates` (hapus `durationValue` / `durationUnit` / enum `LoanDurationUnit`; tanpa drift)
+- **Cek:** [x] unit test hitungan (inklusif, lintas tahun, akhir bulan, batas 2 tahun) · [x] DB test · [x] uji browser
+  12/12 (hitungan langsung, tolak tanggal salah, detail tersimpan, HP tanpa geser samping, axe 0) · [x] lint/typecheck
+
+### 16.4 Peringatan jatuh tempo
+- [ ] Job harian: email & lonceng peringatan ke **pemohon & Operational** (tidak ke perusahaan peminjam), Terlambat,
+      perpanjangan
+### 16.5 Pengembalian
+- [ ] Cek kondisi per unit, kembali ke posisi rak, riwayat peminjaman per unit
+
+### 16.6 Dashboard Inventaris
+- [ ] Unit di gudang (per rak/posisi), sedang dipinjam (ke mana, PIC, sampai kapan, sisa hari), terlambat, akan jatuh tempo;
+      kartu ringkas di Dashboard utama untuk user terkait

@@ -209,6 +209,8 @@ export const APPROVAL_FLOWS: SeedFlow[] = [
   // Overtime engineer (2026-10-30): sesi -> Ko Yosep; reimburse overtime -> Ci Ika (mengisi nominal).
   { scope: "REGULAR", module: "OVERTIME", division: null, steps: [["yosep"]] },
   { scope: "REGULAR", module: "OVERTIME_REIMBURSE", division: null, steps: [["ika"]] },
+  // Peminjaman unit demo / Product Trial Form (2026-11-17) -> Ko Yosep, lalu Operational menyiapkan barang.
+  { scope: "REGULAR", module: "DEMO_LOAN", division: null, steps: [["yosep"]] },
   // Klaim kesehatan -> Bu Ika; klaim Bu Ika sendiri -> Fallback.
   { scope: "REGULAR", module: "HEALTH", division: null, steps: [["ika"]] },
   { scope: "FALLBACK", module: null, division: null, steps: [["rudy", "leonard"]] },

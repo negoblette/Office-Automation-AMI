@@ -18,7 +18,11 @@ approval flow pengajuan tersebut.
 | └ Tombol Resign & Rehire | di `/karyawan/[id]` | ✔ | — |
 | └ Arsip (Resign) | `/karyawan/arsip` | ✔ | — |
 | **Kandidat** | `/kandidat` | ✔ | — |
-| **Inventory / Demo Unit** *(ditunda)* | `/inventory` | ✔ Kelola & assign | — |
+| **Inventaris / Unit Demo** *(aktif lagi 2026-11-17)* | `/inventory` | ✔ Kelola (daftar unit, rak & posisi) | Divisi **Engineer & Sales**: lihat stok & lokasi. User yang ditunjuk **Operational** (Setting, role apa pun): lihat + kelola |
+| └ Daftar Unit & detail unit (peminjaman, Riwayat Unit, tombol Ubah Unit) | `/inventory`, `/inventory/[id]` | ✔ | Sama dengan di atas (Ubah Unit: Admin & Operational) |
+| └ Peminjaman (daftar, detail) | `/inventory/peminjaman`, `/inventory/peminjaman/[id]` | ✔ Lihat semua + ajukan + siapkan (Item Sender) | Engineer & Sales: lihat semua + ajukan. Approver di Approval Flow "Peminjaman Unit" (Ko Yosep): Setujui / Tolak di Approval Center atau di detail. Operational: siapkan yang sudah disetujui (Item Sender) |
+| └ Ajukan / Ubah / Revisi peminjaman | `/inventory/peminjaman/baru`, `/inventory/peminjaman/[id]/ubah` | ✔ | Pemohon (selama belum disetujui) |
+| └ Cetak Product Trial Form | `/cetak/peminjaman/[id]` | ✔ (sejak disetujui) | Semua user Inventaris; tombol Sudah Diantar hanya Operational |
 | **Reimburse** | `/reimburse` | Ajukan + lihat semua | Ajukan + milik sendiri |
 | └ Pengajuan Baru | `/reimburse/baru` | ✔ | ✔ |
 | └ Detail | `/reimburse/[id]` | ✔ | Milik sendiri |
@@ -38,5 +42,6 @@ approval flow pengajuan tersebut.
 | └ Plafon Kesehatan | `/setting/kesehatan` | ✔ | — |
 | └ Jam Kerja & Absensi | `/setting/absensi` | ✔ | — |
 | └ Master Data (tipe reimburse, kategori klaim) | `/setting/master` | ✔ | — |
+| └ Inventaris & Rak (Operational, nomor Product Trial Form, daftar rak) | `/setting/inventaris` | ✔ | — |
 | └ Kunci Pemulihan (kartu di halaman Setting) | `/setting/kunci-pemulihan` | Hanya pemegang kunci (`RECOVERY_KEY_HOLDERS`: Pak Rudy & Pak Leonard) | — |
 | Laporan | — | *(menyusul)* | — |

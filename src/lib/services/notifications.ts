@@ -9,27 +9,51 @@
 // - ditolak  → id approval + waktu tolak (diajukan ulang lalu ditolak lagi = approval baru = kunci baru)
 // - dokumen  → id + tanggal berakhir + tahap (30 hari → ≤ 7 hari → kadaluarsa; diperpanjang = tanggal baru)
 // - antrian  → kunci tetap "approval"; muncul lagi bila ada pengajuan menunggu yang belum ada saat dihapus
+//
+// Peminjaman unit demo (Fase 16, 2026-11-17): disetujui & ditolak lewat approval engine (antrian approval Ko Yosep,
+// "ditolak" untuk pemohon). Tambahan untuk Operational & Admin: peminjaman yang sudah disetujui & menunggu disiapkan
+// (kunci tetap "loanqueue", aturannya sama dengan antrian approval).
 import { Prisma, type PrismaClient, type Role } from "@/generated/prisma/client";
 import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
+import { inventoryEnabled } from "@/lib/features";
 import { toJakartaIsoDate } from "@/lib/format";
 import { canApprove } from "@/lib/roles";
 import { pendingApprovalIds } from "./approval-queries";
 import { expiryAlerts } from "./dashboard-queries";
+import { loansAwaitingOperational } from "./demo-loan-queries";
+import { inventoryAccess } from "./inventory-access";
 
 export type NotificationItem = {
   /** Kunci + versi notifikasi; dipakai untuk menyembunyikan (lihat atas). */
   key: string;
-  kind: "expiry" | "approval" | "rejected";
+  kind: "expiry" | "approval" | "rejected" | "loan";
   title: string;
   detail: string;
   href: string;
   /** danger = sudah lewat / ditolak; warning = segera; info = antrian approval. */
   tone: "danger" | "warning" | "info";
-  /** Antrian approval: id pengajuan menunggu yang dilihat user — dikirim balik saat menghapus. */
+  /** Antrian (approval / tinjauan peminjaman): id pengajuan menunggu yang dilihat user — dikirim balik saat menghapus. */
   seen?: string[];
 };
 
-type NotificationUser = { id: string; role: Role; employeeId: string | null };
+type NotificationUser = { id: string; role: Role; employeeId: string | null; isSuperAdmin?: boolean };
+
+/** Antrian Operational (Operational & Admin): peminjaman yang sudah disetujui & menunggu disiapkan / dicetak. */
+async function loanQueue(db: PrismaClient, user: NotificationUser): Promise<NotificationItem | null> {
+  if (!inventoryEnabled({ isSuperAdmin: Boolean(user.isSuperAdmin) })) return null;
+  if (!(await inventoryAccess(db, user)).canManage) return null;
+  const ids = await loansAwaitingOperational(db);
+  if (ids.length === 0) return null;
+  return {
+    key: "loanqueue",
+    kind: "loan",
+    title: `${ids.length} peminjaman unit disetujui, siap disiapkan`,
+    detail: "Siapkan barang, pilih Item Sender, cetak form",
+    href: "/inventory/peminjaman",
+    tone: "info",
+    seen: ids,
+  };
+}
 
 const DAY_MS = 86_400_000;
 const REJECTED_WINDOW_DAYS = 30;
@@ -47,7 +71,7 @@ const retentionStart = (now: Date) => new Date(now.getTime() - DISMISSAL_RETENTI
 async function collectNotifications(db: PrismaClient, user: NotificationUser, todayIso: string, now: Date): Promise<NotificationItem[]> {
   const isAdmin = user.role === "ADMIN";
   const since = new Date(now.getTime() - REJECTED_WINDOW_DAYS * DAY_MS);
-  const [expiring, pendingIds, rejected] = await Promise.all([
+  const [expiring, pendingIds, rejected, loanQueueItem] = await Promise.all([
     isAdmin ? expiryAlerts(db, todayIso) : user.employeeId ? expiryAlerts(db, todayIso, user.employeeId) : [],
     canApprove(user.role) ? pendingApprovalIds(db, user.id) : [],
     db.approvalRequest.findMany({
@@ -56,13 +80,18 @@ async function collectNotifications(db: PrismaClient, user: NotificationUser, to
       take: 10,
       select: { id: true, module: true, entityId: true, entityNumber: true, completedAt: true },
     }),
+    loanQueue(db, user),
   ]);
 
-  // Sertifikat yang dihapus pemohon juga membuat verifikasinya REJECTED ("dibatalkan") — bukan penolakan.
+  // Sertifikat yang dihapus / peminjaman yang dibatalkan pemohon juga membuat approval-nya REJECTED ("dibatalkan") —
+  // bukan penolakan.
   const certIds = rejected.filter((r) => r.module === "CERTIFICATE").map((r) => r.entityId);
-  const deletedCerts = new Set(
-    certIds.length ? (await db.certificate.findMany({ where: { id: { in: certIds }, deletedAt: { not: null } }, select: { id: true } })).map((c) => c.id) : [],
-  );
+  const loanIds = rejected.filter((r) => r.module === "DEMO_LOAN").map((r) => r.entityId);
+  const [deletedCertRows, cancelledLoanRows] = await Promise.all([
+    certIds.length ? db.certificate.findMany({ where: { id: { in: certIds }, deletedAt: { not: null } }, select: { id: true } }) : [],
+    loanIds.length ? db.demoLoan.findMany({ where: { id: { in: loanIds }, status: "CANCELLED" }, select: { id: true } }) : [],
+  ]);
+  const cancelled = new Set([...deletedCertRows, ...cancelledLoanRows].map((row) => row.id));
 
   const items: NotificationItem[] = [];
   if (pendingIds.length > 0) {
@@ -76,8 +105,10 @@ async function collectNotifications(db: PrismaClient, user: NotificationUser, to
       seen: pendingIds,
     });
   }
+  // Antrian Operational tepat setelah antrian approval.
+  if (loanQueueItem) items.push(loanQueueItem);
   for (const r of rejected) {
-    if (r.module === "CERTIFICATE" && deletedCerts.has(r.entityId)) continue;
+    if ((r.module === "CERTIFICATE" || r.module === "DEMO_LOAN") && cancelled.has(r.entityId)) continue;
     const meta = APPROVAL_MODULE_META[r.module];
     items.push({
       key: `rejected:${r.id}:${r.completedAt?.getTime() ?? 0}`,
@@ -116,8 +147,8 @@ export async function getNotifications(
   return items.filter((item) => {
     const context = dismissed.get(item.key);
     if (!context) return true;
-    // Antrian approval: tampil lagi hanya bila ada pengajuan yang belum ada saat dihapus.
-    if (item.kind === "approval") return (item.seen ?? []).some((id) => !context.includes(id));
+    // Antrian (approval / tinjauan peminjaman): tampil lagi hanya bila ada pengajuan yang belum ada saat dihapus.
+    if (item.seen) return item.seen.some((id) => !context.includes(id));
     return false;
   });
 }
@@ -137,8 +168,7 @@ export async function dismissNotification(
 ): Promise<boolean> {
   const item = (await collectNotifications(db, user, todayIso, now)).find((candidate) => candidate.key === input.key);
   if (!item) return false;
-  const current = item.seen ?? [];
-  const context = item.kind === "approval" ? current.filter((id) => (input.seen ?? []).includes(id)) : [];
+  const context = item.seen ? item.seen.filter((id) => (input.seen ?? []).includes(id)) : [];
   await saveDismissal(db, user.id, item.key, context, now);
   // Bersihkan catatan lama milik user ini (lihat DISMISSAL_RETENTION_DAYS).
   await db.notificationDismissal.deleteMany({ where: { userId: user.id, dismissedAt: { lt: retentionStart(now) } } });

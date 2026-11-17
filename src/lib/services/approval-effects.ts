@@ -38,6 +38,10 @@ export const FINAL_EFFECTS: Partial<Record<ApprovalModule, FinalEffect>> = {
   OVERTIME: async (tx, entityId, approvedAt) => {
     await tx.overtime.update({ where: { id: entityId }, data: { status: "APPROVED", approvedAt } });
   },
+  // Fase 16 (2026-11-17): peminjaman unit disetujui (Ko Yosep) → masuk antrian Operational untuk disiapkan & dicetak.
+  DEMO_LOAN: async (tx, entityId, approvedAt) => {
+    await tx.demoLoan.update({ where: { id: entityId }, data: { status: "APPROVED", approvedAt } });
+  },
 };
 
 export type RevertEffect = (tx: Prisma.TransactionClient, entityId: string) => Promise<void>;
@@ -66,6 +70,12 @@ export const REVERT_EFFECTS: Partial<Record<ApprovalModule, RevertEffect>> = {
     const used = await tx.reimbursementItem.findFirst({ where: { overtimeId: entityId, reimbursement: { deletedAt: null } } });
     if (used) throw new ServiceError("Overtime ini sudah dipakai di reimburse — persetujuannya tidak bisa dibatalkan");
     await tx.overtime.update({ where: { id: entityId }, data: { status: "PENDING", approvedAt: null } });
+  },
+  // Barang yang sudah diantar tidak bisa "tidak jadi disetujui"; sebelum itu peminjaman kembali menunggu approval.
+  DEMO_LOAN: async (tx, entityId) => {
+    const loan = await tx.demoLoan.findUniqueOrThrow({ where: { id: entityId }, select: { status: true } });
+    if (loan.status !== "APPROVED") throw new ServiceError("Barang sudah diantar — persetujuan peminjaman ini tidak bisa dibatalkan");
+    await tx.demoLoan.update({ where: { id: entityId }, data: { status: "PENDING", approvedAt: null, itemSenderId: null } });
   },
 };
 
@@ -96,5 +106,8 @@ export const REJECT_EFFECTS: Partial<Record<ApprovalModule, RejectEffect>> = {
   },
   OVERTIME: async (tx, entityId) => {
     await tx.overtime.update({ where: { id: entityId }, data: { status: "REJECTED" } });
+  },
+  DEMO_LOAN: async (tx, entityId) => {
+    await tx.demoLoan.update({ where: { id: entityId }, data: { status: "REJECTED" } });
   },
 };

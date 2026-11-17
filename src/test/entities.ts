@@ -80,5 +80,22 @@ export async function createApprovalEntity(module: ApprovalModule, requesterUser
       });
       return appeal.id;
     }
+    case "DEMO_LOAN": {
+      const loan = await testDb.demoLoan.create({
+        data: {
+          number: `UJI-${randomUUID()}`,
+          purpose: "POC",
+          requesterId: requesterUserId,
+          salesPersonId: user.employeeId!,
+          borrowerName: "PT Uji",
+          picName: "PIC Uji",
+          picEmail: "pic@uji.test",
+          startDate: new Date(),
+          dueDate: new Date(Date.now() + 30 * 86_400_000),
+          submittedAt: new Date(),
+        },
+      });
+      return loan.id;
+    }
   }
 }
