@@ -7,8 +7,9 @@ import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { inventoryEnabled } from "@/lib/features";
 import { enqueueApprovalNotifications } from "@/lib/mail/approval-emails";
-import { cancelDemoLoan, markDemoLoanDelivered, reviseDemoLoan, setItemSender, submitDemoLoan } from "@/lib/services/demo-loan";
-import { deliverDemoLoanSchema, demoLoanSchema, itemSenderSchema } from "@/lib/validators/demo-loan";
+import { cancelDemoLoan, markDemoLoanDelivered, returnDemoLoan, reviseDemoLoan, setItemSender, submitDemoLoan } from "@/lib/services/demo-loan";
+import { cancelLoanExtension, requestLoanExtension } from "@/lib/services/demo-loan-extension";
+import { deliverDemoLoanSchema, demoLoanExtensionSchema, demoLoanSchema, itemSenderSchema, returnDemoLoanSchema } from "@/lib/validators/demo-loan";
 
 // Peminjaman unit demo (Fase 16, Tahap 16.2). Persetujuan lewat Approval Center (approval engine, modul DEMO_LOAN);
 // hak akses dicek ulang di service. Email di-enqueue SETELAH transaksi commit.
@@ -56,6 +57,34 @@ export async function cancelDemoLoanAction(loanId: string): Promise<ActionResult
 export async function markDeliveredAction(loanId: string, values: unknown): Promise<ActionResult> {
   return run(async (user) => {
     await markDemoLoanDelivered(prisma, user, id(loanId), deliverDemoLoanSchema.parse(values));
+    return undefined;
+  });
+}
+
+/** Operational / Admin: barang kembali & sudah dicek → status Selesai, nomor HAF terbit (Tahap 16.5). */
+export async function returnDemoLoanAction(loanId: string, values: unknown): Promise<ActionResult<{ loanId: string }>> {
+  return run(async (user) => {
+    const loan = await returnDemoLoan(prisma, user, id(loanId), returnDemoLoanSchema.parse(values));
+    return { loanId: loan.id };
+  });
+}
+
+/**
+ * Ajukan perpanjangan jatuh tempo (Tahap 16.4): pemohon peminjaman / Operational / Admin, selama barang masih dipinjam.
+ * Email approval ke approver (dan email "diperpanjang" ke Operational bila langsung disetujui) setelah commit.
+ */
+export async function requestLoanExtensionAction(loanId: string, values: unknown): Promise<ActionResult<{ approved: boolean }>> {
+  return run(async (user) => {
+    const result = await requestLoanExtension(prisma, user, id(loanId), demoLoanExtensionSchema.parse(values));
+    await enqueueApprovalNotifications(prisma, result.notifications);
+    return { approved: result.status === "APPROVED" };
+  });
+}
+
+/** Batalkan perpanjangan yang belum diputuskan (hanya yang mengajukan). */
+export async function cancelLoanExtensionAction(extensionId: string): Promise<ActionResult> {
+  return run(async (user) => {
+    await cancelLoanExtension(prisma, user, id(extensionId));
     return undefined;
   });
 }

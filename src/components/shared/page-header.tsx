@@ -32,7 +32,8 @@ export function PageHeader({ title, description, breadcrumbs, actions, className
       <div className="relative flex max-w-[700px] min-w-0 flex-col gap-1.5">
         {breadcrumbs && breadcrumbs.length > 0 && (
           <nav aria-label="Breadcrumb" className={riseClassName} style={riseStyle(0)}>
-            <ol className="flex flex-wrap items-center gap-1.5 text-[13px] text-ink-3">
+            {/* gap-y-3: link setinggi 28px (−6px atas/bawah) tidak saling menimpa saat breadcrumb turun baris di HP (target ≥ 24px). */}
+            <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-3 text-[13px] text-ink-3">
               {breadcrumbs.map((item, index) => {
                 const isLast = index === breadcrumbs.length - 1;
                 return (

@@ -128,10 +128,12 @@ export async function addHolidays(db: PrismaClient, actorId: string, holidays: H
       const date = fromIsoDate(holiday.date);
       const existing = await tx.holiday.findUnique({ where: { date } });
       if (existing && !existing.deletedAt) continue;
-      // Tanggal yang pernah dihapus (soft delete) dipulihkan dengan nama baru.
+      // Tanggal yang pernah dihapus (soft delete) dipulihkan dengan nama baru. Diisi Admin = MANUAL (2026-11-18):
+      // sinkronisasi kalender Google tidak pernah mengubahnya.
+      const data = { name: holiday.name, isNational: holiday.isNational, source: "MANUAL" as const, removedBySync: false };
       const saved = existing
-        ? await tx.holiday.update({ where: { id: existing.id }, data: { name: holiday.name, isNational: holiday.isNational, deletedAt: null } })
-        : await tx.holiday.create({ data: { date, name: holiday.name, isNational: holiday.isNational } });
+        ? await tx.holiday.update({ where: { id: existing.id }, data: { ...data, deletedAt: null } })
+        : await tx.holiday.create({ data: { ...data, date } });
       await logAudit(tx, { actorId, action: "CREATE", entity: "Holiday", entityId: saved.id, before: existing, after: saved });
       added++;
     }

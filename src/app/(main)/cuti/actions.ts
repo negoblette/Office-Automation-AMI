@@ -10,6 +10,23 @@ import { ServiceError } from "@/lib/services/errors";
 import { addHolidays, deleteHoliday, submitLeaveRequest } from "@/lib/services/leave";
 import { holidayImportSchema, holidaySchema, leaveAdjustmentSchema, leaveRequestSchema, parseHolidayLines } from "@/lib/validators/leave";
 import { adjustLeaveBalance } from "@/lib/services/leave-adjust";
+import { enqueueJob } from "@/lib/mail/queue";
+import { HOLIDAY_SYNC_QUEUE } from "@/lib/services/holiday-sync";
+
+/**
+ * Admin: jalankan sinkronisasi libur nasional sekarang (2026-11-18). Dikerjakan worker — hanya worker yang memegang token
+ * API & akses internet; aplikasi web cukup mengirim job. Maksimal sekali per menit (klik berulang diabaikan).
+ */
+export async function syncHolidaysNowAction(): Promise<ActionResult> {
+  const admin = await requireAdmin();
+  try {
+    await enqueueJob(HOLIDAY_SYNC_QUEUE, { requestedBy: admin.id }, { singletonKey: "holiday-sync", singletonSeconds: 60 });
+    return { ok: true, data: undefined };
+  } catch (error) {
+    console.error("[holiday.sync] gagal masuk antrian", error);
+    return { ok: false, error: "Gagal menjalankan sinkronisasi — pastikan worker berjalan" };
+  }
+}
 
 function revalidateLeave() {
   revalidatePath("/cuti", "layout");

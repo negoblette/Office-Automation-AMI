@@ -3,6 +3,7 @@ import type { AssetCategory, AssetOwnership, DemoLoanStatus, PrismaClient } from
 import { type CertificateStatus, certificateStatus } from "@/lib/certificate-status";
 import { ACTIVE_LOAN_STATUSES } from "@/lib/demo-loan";
 import { toJakartaIsoDate } from "@/lib/format";
+import { type LastReturn, lastReturnConditions } from "./demo-loan-queries";
 
 const iso = (date: Date | null) => (date ? toJakartaIsoDate(date) : null);
 
@@ -33,6 +34,8 @@ export type AssetRow = {
   loanCount: number;
   /** Peminjaman aktif yang menahan unit ini (Menunggu tinjauan / Disiapkan / Dipinjam); null = tersedia. */
   activeLoan: { id: string; status: DemoLoanStatus; borrowerName: string } | null;
+  /** Kondisi saat terakhir kembali dari peminjaman (Tahap 16.5); null = belum pernah kembali. */
+  lastReturn: LastReturn | null;
 };
 
 /** Semua unit aktif, atau satu unit (`assetId`, halaman detail). */
@@ -51,6 +54,7 @@ export async function listAssets(db: PrismaClient, assetId?: string): Promise<As
       },
     },
   });
+  const lastReturns = await lastReturnConditions(db, assetId ? [assetId] : undefined);
   return assets.map((asset) => ({
     id: asset.id,
     deviceName: asset.deviceName,
@@ -72,6 +76,7 @@ export async function listAssets(db: PrismaClient, assetId?: string): Promise<As
     assignmentCount: asset._count.assignments,
     loanCount: asset._count.loanItems,
     activeLoan: asset.loanItems[0]?.loan ?? null,
+    lastReturn: lastReturns.get(asset.id) ?? null,
   }));
 }
 

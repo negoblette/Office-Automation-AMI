@@ -12,26 +12,35 @@ import { RACK_LIMITS } from "@/lib/inventory";
 import type { RackView } from "@/lib/services/storage-rack";
 import { trialFormCounterSchema } from "@/lib/validators/demo-loan";
 import { operationalUsersSchema, rackSchema } from "@/lib/validators/inventory";
-import { deleteRackAction, saveOperationalUsersAction, saveRackAction, saveTrialFormCounterAction } from "./actions";
+import { deleteRackAction, saveFormCounterAction, saveOperationalUsersAction, saveRackAction } from "./actions";
 
-/** Nomor terakhir Product Trial Form tahun ini — form berikutnya memakai nomor ini + 1. */
-export function TrialFormCounterDialog({ year, lastValue }: { year: number; lastValue: number }) {
+const FORM_NAME = { PTF: "Product Trial Form", HAF: "Hardware Admission Form" } as const;
+const FORM_EXAMPLE = { PTF: "008/AMI-PTF/III/2026", HAF: "033/AMI-HAF//2026" } as const;
+
+/** Nomor terakhir Product Trial Form / Hardware Admission Form tahun ini — form berikutnya memakai nomor ini + 1. */
+export function FormCounterDialog({ kind, year, lastValue }: { kind: "PTF" | "HAF"; year: number; lastValue: number }) {
   return (
     <FormDialog
       trigger={
-        <Button variant="outline" size="lg">
+        <Button variant="outline" size="sm" aria-label={`Atur nomor ${FORM_NAME[kind]}`}>
           <Hash aria-hidden /> Atur Nomor
         </Button>
       }
-      title="Nomor Product Trial Form"
+      title={`Nomor ${FORM_NAME[kind]}`}
       description={`Isi nomor form terakhir yang sudah dipakai di tahun ${year} (termasuk form manual sebelum memakai sistem). Form berikutnya memakai nomor ini + 1. Nomor kembali ke 001 setiap awal tahun.`}
       schema={trialFormCounterSchema}
       defaults={{ lastNumber: String(lastValue) as never }}
       submitLabel="Simpan"
       successMessage="Nomor form tersimpan"
-      action={saveTrialFormCounterAction}
+      action={(values) => saveFormCounterAction(kind, values)}
     >
-      <TextInputField name="lastNumber" label={`Nomor terakhir tahun ${year}`} required inputMode="numeric" hint="Contoh: form terakhir 008/AMI-PTF/III/2026 → isi 8" />
+      <TextInputField
+        name="lastNumber"
+        label={`Nomor terakhir tahun ${year}`}
+        required
+        inputMode="numeric"
+        hint={`Contoh: form terakhir ${FORM_EXAMPLE[kind]} → isi ${Number(FORM_EXAMPLE[kind].slice(0, 3))}`}
+      />
     </FormDialog>
   );
 }

@@ -1,7 +1,8 @@
 // Masukan peminjaman unit demo / Product Trial Form (Fase 16, 2026-11-17).
 import { z } from "zod";
-import { LoanPurpose } from "@/generated/prisma/enums";
+import { LoanPurpose, ReturnCondition } from "@/generated/prisma/enums";
 import { MAX_LOAN_ITEMS, maxLoanEnd } from "@/lib/demo-loan";
+import { RACK_POSITION } from "@/lib/inventory";
 import { emailSchema, isoDateSchema, optionalField, textSchema } from "./common";
 
 const requiredId = (message: string) => z.string({ error: message }).min(1, { error: message });
@@ -54,6 +55,45 @@ export const deliverDemoLoanSchema = z.object({
   receivedByName: optionalField(textSchema("Nama penerima", { min: 2, max: 100 })),
 });
 export type DeliverDemoLoanInput = z.infer<typeof deliverDemoLoanSchema>;
+
+/**
+ * Pengembalian (Tahap 16.5, kembali sepenuhnya): tanggal kembali, siapa yang mengembalikan, catatan umum, dan hasil cek
+ * setiap unit (kondisi wajib, catatan, posisi rak tempat ditaruh — rak & posisi berpasangan). Semua unit wajib dicek
+ * (dicocokkan dengan isi peminjaman di service).
+ */
+export const returnDemoLoanSchema = z.object({
+  returnedAt: isoDateSchema,
+  returnedByName: optionalField(textSchema("Nama yang mengembalikan", { min: 2, max: 100 })),
+  note: optionalField(textSchema("Catatan", { max: 500 })),
+  items: z
+    .array(
+      z
+        .object({
+          itemId: z.string().min(1),
+          condition: z.enum(ReturnCondition, { error: "Pilih kondisi unit" }),
+          note: optionalField(textSchema("Catatan unit", { max: 300 })),
+          rackId: optionalField(z.string().min(1)),
+          rackPosition: optionalField(z.string().trim().toUpperCase().regex(RACK_POSITION, { error: "Posisi tidak valid (contoh: A1)" })),
+        })
+        .superRefine((item, ctx) => {
+          if (item.rackId && !item.rackPosition) ctx.addIssue({ code: "custom", path: ["rackPosition"], message: "Posisi di rak wajib dipilih" });
+          if (item.rackPosition && !item.rackId) ctx.addIssue({ code: "custom", path: ["rackId"], message: "Rak wajib dipilih" });
+          if (item.condition !== "GOOD" && !item.note) ctx.addIssue({ code: "custom", path: ["note"], message: "Tulis kerusakan / kekurangannya" });
+        }),
+    )
+    .min(1, { error: "Belum ada unit yang dicek" }),
+});
+export type ReturnDemoLoanInput = z.infer<typeof returnDemoLoanSchema>;
+
+/**
+ * Ajukan perpanjangan jatuh tempo (Tahap 16.4): tanggal selesai baru (hari terakhir pinjam) + alasan. Batas tanggal
+ * (setelah jatuh tempo sekarang, tidak sebelum hari ini, maks. 2 tahun sejak mulai) dicek service — butuh data peminjaman.
+ */
+export const demoLoanExtensionSchema = z.object({
+  newDueDate: isoDateSchema,
+  reason: textSchema("Alasan perpanjangan", { min: 5, max: 500 }),
+});
+export type DemoLoanExtensionInput = z.infer<typeof demoLoanExtensionSchema>;
 
 /** Setting (Admin): nomor terakhir Product Trial Form tahun ini — nomor berikutnya = nilai ini + 1. */
 export const trialFormCounterSchema = z.object({

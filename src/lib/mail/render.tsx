@@ -3,6 +3,7 @@ import { render } from "@react-email/components";
 import type { ReactElement } from "react";
 import { ApprovalEmail, type ApprovalEmailProps } from "./templates/approval-email";
 import { DemoLoanEmail, type DemoLoanEmailProps } from "./templates/demo-loan-email";
+import { HolidayEmail, type HolidayEmailProps } from "./templates/holiday-email";
 import { ReminderEmail, type ReminderEmailProps } from "./templates/reminder-email";
 import { SecurityEmail, type SecurityEmailProps } from "./templates/security-email";
 
@@ -16,14 +17,19 @@ export type EmailTemplates = {
   "security-notice": SecurityEmailProps;
   "security-alert": SecurityEmailProps;
   "loan-approved": DemoLoanEmailProps;
+  "loan-due-soon": DemoLoanEmailProps;
+  "loan-overdue": DemoLoanEmailProps;
+  "loan-extended": DemoLoanEmailProps;
+  "holiday-change": HolidayEmailProps;
 };
 
 export type EmailTemplateName = keyof EmailTemplates;
 
-const LOAN_TEMPLATES = new Set<EmailTemplateName>(["loan-approved"]);
+const LOAN_TEMPLATES = new Set<EmailTemplateName>(["loan-approved", "loan-due-soon", "loan-overdue", "loan-extended"]);
 
 function buildElement<T extends EmailTemplateName>(template: T, props: EmailTemplates[T]): ReactElement {
   if (template === "reminder-expiry") return <ReminderEmail {...(props as ReminderEmailProps)} />;
+  if (template === "holiday-change") return <HolidayEmail {...(props as HolidayEmailProps)} />;
   if (template === "security-notice") return <SecurityEmail {...(props as SecurityEmailProps)} />;
   if (template === "security-alert") return <SecurityEmail {...(props as SecurityEmailProps)} variant="admin" />;
   if (LOAN_TEMPLATES.has(template)) return <DemoLoanEmail {...(props as DemoLoanEmailProps)} />;

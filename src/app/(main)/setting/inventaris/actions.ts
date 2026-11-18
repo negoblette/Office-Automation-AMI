@@ -5,7 +5,7 @@ import { z } from "zod";
 import { type ActionResult, toActionError } from "@/lib/actions";
 import { requireAdmin } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
-import { setTrialFormCounter } from "@/lib/services/demo-loan";
+import { setFormCounter } from "@/lib/services/demo-loan";
 import { saveOperationalUsers } from "@/lib/services/inventory-access";
 import { createRack, deleteRack, updateRack } from "@/lib/services/storage-rack";
 import { trialFormCounterSchema } from "@/lib/validators/demo-loan";
@@ -43,7 +43,7 @@ export async function deleteRackAction(rackId: string): Promise<ActionResult> {
   return run((actorId) => deleteRack(prisma, actorId, id(rackId)));
 }
 
-/** Nomor terakhir Product Trial Form tahun ini (Fase 16.2), mis. melanjutkan nomor form manual. */
-export async function saveTrialFormCounterAction(values: unknown): Promise<ActionResult> {
-  return run((actorId) => setTrialFormCounter(prisma, actorId, trialFormCounterSchema.parse(values)));
+/** Nomor terakhir Product Trial Form / Hardware Admission Form tahun ini, mis. melanjutkan nomor form manual. */
+export async function saveFormCounterAction(kind: unknown, values: unknown): Promise<ActionResult> {
+  return run((actorId) => setFormCounter(prisma, actorId, z.enum(["PTF", "HAF"]).parse(kind), trialFormCounterSchema.parse(values)));
 }

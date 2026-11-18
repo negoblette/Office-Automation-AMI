@@ -139,6 +139,9 @@ enum ApprovalModule {
   /// Hanya untuk memilih Approval Flow reimburse overtime (2026-10-30, Ci Ika); ApprovalRequest-nya tetap modul REIMBURSE.
   OVERTIME_REIMBURSE
   DEMO_LOAN // peminjaman unit demo / Product Trial Form (Fase 16, 2026-11-17, Ko Yosep)
+  /// Perpanjangan jatuh tempo peminjaman (Tahap 16.4, 2026-11-18). Approval Flow-nya memakai flow DEMO_LOAN (tidak diatur
+  /// terpisah di Setting); entityId = DemoLoanExtension.id.
+  DEMO_LOAN_EXTENSION
 }
 
 /// Jenis perubahan data karyawan yang menunggu persetujuan (2026-10-12).
@@ -209,6 +212,8 @@ model User {
   notificationDismissals NotificationDismissal[]
   demoLoansRequested     DemoLoan[]             @relation("DemoLoanRequester")
   demoLoansPrepared      DemoLoan[]             @relation("DemoLoanOperational")
+  demoLoansReceived      DemoLoan[]             @relation("DemoLoanReceiver")
+  demoLoanExtensions     DemoLoanExtension[]
 }
 
 /// File yang di-upload lewat aplikasi (hardening Tahap 7): pengunggahnya — hanya dia yang boleh menautkan file ke data —
@@ -430,8 +435,9 @@ model StorageRack {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  assets    Asset[]
-  loanItems DemoLoanItem[]
+  assets            Asset[]
+  loanItems         DemoLoanItem[] @relation("DemoLoanItemRack")
+  returnedLoanItems DemoLoanItem[] @relation("DemoLoanItemReturnRack")
 }
 
 /// Status peminjaman unit ke perusahaan lain lewat Product Trial Form (Fase 16, 2026-11-17).
@@ -449,6 +455,13 @@ enum LoanPurpose {
   BACKUP_UNIT // pengganti sementara unit customer yang bermasalah
   POC // unit untuk pengujian (proof of concept) di customer
   OTHER // lainnya — detail wajib di DemoLoan.purposeDetail
+}
+
+/// Kondisi unit saat dicek Operational ketika kembali dari peminjam (Tahap 16.5, 2026-11-18).
+enum ReturnCondition {
+  GOOD // baik
+  DAMAGED // rusak
+  INCOMPLETE // tidak lengkap (kelengkapan kurang)
 }
 
 /// Kepemilikan unit Inventory (2026-11-17): milik AMI, atau titipan principal / distributor (nama di Asset.ownerName).
@@ -478,7 +491,8 @@ model DemoLoan {
   customerId    String?
   customer      Customer?        @relation(fields: [customerId], references: [id])
   borrowerName  String
-  /// PIC peminjam ("up:" di form) & emailnya — penerima email pengingat jatuh tempo (Tahap 16.4).
+  /// PIC peminjam ("up:" di form) & emailnya. Email PIC TIDAK dikirimi pengingat jatuh tempo (keputusan user
+  /// 2026-11-17: pengingat hanya ke pemohon & Operational).
   picName       String
   picEmail      String
   /// Jangka pinjam = tanggal mulai s/d tanggal selesai (keduanya diisi pengaju, inklusif). Lamanya (tahun / bulan / hari)
@@ -499,13 +513,66 @@ model DemoLoan {
   /// Barang diantar ke peminjam (Tahap 16.3): tanggal & nama penerima ("Received By").
   deliveredAt   DateTime?        @db.Date
   receivedByName String?
+  /// Barang kembali & sudah dicek Operational (Tahap 16.5): tanggal kembali, yang mengembalikan ("Returned By" di HAF),
+  /// Operational yang menerima & mengecek ("Received By"), nomor Hardware Admission Form, catatan umum.
+  returnedAt     DateTime?       @db.Date
+  returnedByName String?
+  receivedById   String?
+  receivedBy     User?           @relation("DemoLoanReceiver", fields: [receivedById], references: [id])
+  /// `NNN/AMI-HAF/<kosong>/<tahun>` — segmen tengah dikosongkan dulu (keputusan user 2026-11-18), urut per tahun.
+  hafNumber      String?         @unique
+  returnNote     String?
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
-  items DemoLoanItem[]
+  items      DemoLoanItem[]
+  extensions DemoLoanExtension[]
+  reminders  DemoLoanReminder[]
 
   @@index([status, dueDate])
   @@index([requesterId, status])
+}
+
+/// Status pengajuan perpanjangan jatuh tempo (Tahap 16.4).
+enum DemoLoanExtensionStatus {
+  PENDING // menunggu approval (Approval Flow modul DEMO_LOAN — Ko Yosep)
+  APPROVED // disetujui → DemoLoan.dueDate = newDueDate
+  REJECTED // ditolak approver (alasan di ApprovalRequestStep.note)
+  CANCELLED // dibatalkan pemohon, atau barang keburu kembali sebelum diputuskan
+}
+
+/// Perpanjangan jatuh tempo peminjaman yang sedang Dipinjam (Tahap 16.4, 2026-11-18). Diajukan pemohon / Operational,
+/// disetujui lewat approval engine (modul DEMO_LOAN_EXTENSION, memakai Approval Flow DEMO_LOAN). Paling banyak satu yang
+/// PENDING per peminjaman (dijaga service dengan mengunci baris DemoLoan). Riwayat perpanjangan tetap tersimpan.
+model DemoLoanExtension {
+  id              String                  @id @default(cuid())
+  loanId          String
+  loan            DemoLoan                @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  requesterId     String
+  requester       User                    @relation(fields: [requesterId], references: [id])
+  /// Jatuh tempo saat diajukan & yang diminta (keduanya hari terakhir pinjam, inklusif).
+  previousDueDate DateTime                @db.Date
+  newDueDate      DateTime                @db.Date
+  reason          String
+  status          DemoLoanExtensionStatus @default(PENDING)
+  createdAt       DateTime                @default(now())
+  decidedAt       DateTime?
+
+  @@index([loanId, status])
+}
+
+/// Jejak email pengingat jatuh tempo yang sudah dibuat (Tahap 16.4). `stage` = hari relatif terhadap jatuh tempo:
+/// -7 (7 hari lagi), -1 (besok / hari ini), 1 (terlambat), lalu 8, 15, … (masih terlambat, tiap 7 hari). Satu baris per
+/// peminjaman per jatuh tempo per tahap → tidak terkirim dua kali; jatuh tempo diperpanjang = tanggal baru = mulai lagi.
+model DemoLoanReminder {
+  id        String   @id @default(cuid())
+  loanId    String
+  loan      DemoLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  dueDate   DateTime @db.Date
+  stage     Int
+  createdAt DateTime @default(now())
+
+  @@unique([loanId, dueDate, stage])
 }
 
 /// Unit di dalam peminjaman. Nama, SN, dan posisi rak disalin saat diajukan / disetujui supaya form cetak & riwayat
@@ -519,8 +586,14 @@ model DemoLoanItem {
   deviceName   String
   serialNo     String
   rackId       String?
-  rack         StorageRack? @relation(fields: [rackId], references: [id])
+  rack         StorageRack? @relation("DemoLoanItemRack", fields: [rackId], references: [id])
   rackPosition String?
+  /// Hasil cek saat kembali (Tahap 16.5): kondisi, catatan, dan posisi rak tempat unit ditaruh kembali.
+  returnCondition    ReturnCondition?
+  returnNote         String?
+  returnRackId       String?
+  returnRack         StorageRack?     @relation("DemoLoanItemReturnRack", fields: [returnRackId], references: [id])
+  returnRackPosition String?
 
   @@unique([loanId, assetId])
   @@index([assetId])
@@ -723,11 +796,59 @@ model LeaveRequest {
 }
 
 model Holiday {
-  id         String    @id @default(cuid())
-  date       DateTime  @unique @db.Date
-  name       String
-  isNational Boolean   @default(true) // false = tambahan manual
-  deletedAt  DateTime? // soft delete: data tidak dihapus permanen (NFR v1.14)
+  id            String        @id @default(cuid())
+  date          DateTime      @unique @db.Date
+  name          String
+  isNational    Boolean       @default(true) // false = tambahan manual
+  deletedAt     DateTime? // soft delete: data tidak dihapus permanen (NFR v1.14)
+  /// Asal (2026-11-18): MANUAL = diisi / diimpor Admin (tidak pernah diubah sinkronisasi); SYNC = dari kalender Google
+  /// "Hari Libur di Indonesia" — boleh ditambah, diganti nama, atau dihapus sinkronisasi mengikuti sumbernya.
+  source        HolidaySource @default(MANUAL)
+  /// Dihapus oleh sinkronisasi (sumber tidak lagi mencantumkannya) → boleh dipulihkan sinkronisasi bila muncul lagi.
+  /// Hapus oleh Admin tetap false → tidak pernah dimunculkan lagi oleh sinkronisasi.
+  removedBySync Boolean       @default(false)
+}
+
+enum HolidaySource {
+  MANUAL
+  SYNC
+}
+
+/// Jenis perubahan libur dari sinkronisasi (2026-11-18).
+enum HolidayChangeKind {
+  ADD // tanggal baru di sumber
+  REMOVE // tanggal tidak ada lagi di sumber (dipindah / dibatalkan)
+  RENAME // nama berubah (mis. "(belum pasti)" hilang setelah SKB final)
+}
+
+/// Perubahan yang terdeteksi tapi belum diterapkan: diterapkan bila masih sama setelah ≥ 20 jam (cek harian berikutnya);
+/// hilang dari sumber sebelum itu → dibatalkan. Satu baris per jenis + tanggal.
+model HolidayPendingChange {
+  id           String            @id @default(cuid())
+  kind         HolidayChangeKind
+  date         DateTime          @db.Date
+  name         String
+  previousName String?
+  firstSeenAt  DateTime          @default(now())
+  lastSeenAt   DateTime          @default(now())
+
+  @@unique([kind, date])
+}
+
+/// Riwayat perubahan libur yang diterapkan sinkronisasi — dasar notifikasi ke penerima (HR & Direktur) beserta pengajuan
+/// cuti yang hari kerjanya ikut berubah (saldo TIDAK dikoreksi otomatis). Satu `runId` = satu kali sinkronisasi.
+model HolidayChange {
+  id               String            @id @default(cuid())
+  runId            String
+  kind             HolidayChangeKind
+  date             DateTime          @db.Date
+  name             String
+  previousName     String?
+  affectedLeaveIds String[]
+  appliedAt        DateTime          @default(now())
+
+  @@index([appliedAt])
+  @@index([runId])
 }
 
 // ---------------------------------------------------------------------

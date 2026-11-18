@@ -1,7 +1,7 @@
 "use client";
 
 import { Popover } from "@base-ui/react/popover";
-import { Bell, Boxes, CircleAlert, FileWarning, Inbox, X } from "lucide-react";
+import { Bell, Boxes, CalendarDays, CircleAlert, FileWarning, Inbox, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
@@ -12,7 +12,7 @@ import type { NotificationItem } from "@/lib/services/notifications";
 import { cn } from "@/lib/utils";
 import { dismissNotificationAction, restoreNotificationAction } from "./actions";
 
-const ICON = { expiry: FileWarning, approval: Inbox, rejected: CircleAlert, loan: Boxes } as const;
+const ICON = { expiry: FileWarning, approval: Inbox, rejected: CircleAlert, loan: Boxes, holiday: CalendarDays } as const;
 const TILE: Record<NotificationItem["tone"], string> = {
   danger: "bg-danger-soft text-danger",
   warning: "bg-warning-soft text-warning",

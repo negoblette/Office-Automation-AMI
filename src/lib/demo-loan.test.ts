@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   addMonthsIso,
+  daysUntilDue,
+  dueLabel,
+  dueNotificationStage,
+  dueReminderStage,
+  extensionDueError,
   formatEnglishDate,
+  formatHafNumber,
   formatLoanDuration,
   formatTrialPeriod,
   formatTrialFormNumber,
@@ -11,12 +17,15 @@ import {
   maxLoanEnd,
   loanPurposeDescription,
   loanPurposeText,
+  parseHafNumber,
   parseTrialFormNumber,
+  RETURN_CONDITION_ENGLISH,
   romanMonth,
 } from "@/lib/demo-loan";
 import { ownershipText } from "@/lib/inventory";
+import { isSingleAddress, safeSubject } from "@/lib/mail/headers";
 import { assetSchema } from "@/lib/validators/asset";
-import { demoLoanSchema } from "@/lib/validators/demo-loan";
+import { demoLoanSchema, returnDemoLoanSchema } from "@/lib/validators/demo-loan";
 import { NOTIFICATION_KEY } from "@/lib/validators/notification";
 
 describe("jangka pinjam = tanggal mulai s/d tanggal selesai (inklusif), dihitung tahun / bulan / hari", () => {
@@ -59,6 +68,29 @@ describe("nomor Product Trial Form", () => {
   it("urutan & tahun dibaca kembali dari nomor", () => {
     expect(parseTrialFormNumber("008/AMI-PTF/III/2025")).toEqual({ sequence: 8, year: 2025 });
     expect(parseTrialFormNumber("RMB/2026/01/0001")).toBeNull();
+  });
+});
+
+describe("Hardware Admission Form (Tahap 16.5)", () => {
+  it("nomor NNN/AMI-HAF//<tahun> — segmen tengah dikosongkan dulu (keputusan user 2026-11-18)", () => {
+    expect(formatHafNumber(1, 2026)).toBe("001/AMI-HAF//2026");
+    expect(formatHafNumber(1234, 2027)).toBe("1234/AMI-HAF//2027");
+    expect(parseHafNumber("001/AMI-HAF//2026")).toEqual({ sequence: 1, year: 2026 });
+    // Bila nanti segmen tengah diisi, nomor lama & baru tetap terbaca.
+    expect(parseHafNumber("012/AMI-HAF/SFP/2025")).toEqual({ sequence: 12, year: 2025 });
+    expect(parseHafNumber("001/AMI-PTF/XI/2026")).toBeNull();
+  });
+
+  it("form pengembalian: kondisi wajib, catatan wajib bila Rusak / Tidak lengkap, rak & posisi berpasangan", () => {
+    const item = { itemId: "i1", condition: "GOOD", note: "", rackId: "r1", rackPosition: " b3 " };
+    const parse = (overrides: Record<string, unknown>) => returnDemoLoanSchema.safeParse({ returnedAt: "2026-11-18", returnedByName: "", note: "", items: [{ ...item, ...overrides }] });
+    expect(parse({}).data).toMatchObject({ returnedByName: null, note: null, items: [{ condition: "GOOD", note: null, rackId: "r1", rackPosition: "B3" }] });
+    expect(parse({ condition: "" }).error?.issues[0]).toMatchObject({ path: ["items", 0, "condition"], message: "Pilih kondisi unit" });
+    expect(parse({ condition: "DAMAGED" }).error?.issues[0]).toMatchObject({ path: ["items", 0, "note"], message: "Tulis kerusakan / kekurangannya" });
+    expect(parse({ condition: "INCOMPLETE", note: "Kabel power tidak ada" }).success).toBe(true);
+    expect(parse({ rackPosition: "" }).error?.issues[0]).toMatchObject({ path: ["items", 0, "rackPosition"], message: "Posisi di rak wajib dipilih" });
+    expect(parse({ rackId: "", rackPosition: "" }).data?.items[0]).toMatchObject({ rackId: null, rackPosition: null }); // tidak disimpan di rak
+    expect(RETURN_CONDITION_ENGLISH).toEqual({ GOOD: "Good", DAMAGED: "Damaged", INCOMPLETE: "Incomplete" });
   });
 });
 
@@ -133,4 +165,64 @@ it("kunci antrian Operational diterima validator lonceng", () => {
   expect(NOTIFICATION_KEY.test("loanqueue")).toBe(true);
   expect(NOTIFICATION_KEY.test("loanqueue:extra")).toBe(false);
   expect(NOTIFICATION_KEY.test("loanrejected:cmabc123:1763370000000")).toBe(false); // "ditolak" kini lewat approval engine
+});
+
+describe("peringatan jatuh tempo & perpanjangan (Tahap 16.4)", () => {
+  // Pinjam 20 Nov – 19 Des 2026.
+  const stage = (today: string, start = "2026-11-20", due = "2026-12-19") => dueReminderStage(start, due, today);
+
+  it("tahap email: H-7, H-1 (juga hari H), terlambat H+1 lalu tiap 7 hari", () => {
+    expect(stage("2026-12-11")).toBeNull();
+    expect(stage("2026-12-12")).toBe(-7);
+    expect(stage("2026-12-17")).toBe(-7);
+    expect(stage("2026-12-18")).toBe(-1);
+    expect(stage("2026-12-19")).toBe(-1);
+    expect(stage("2026-12-20")).toBe(1);
+    expect(stage("2026-12-26")).toBe(1);
+    expect(stage("2026-12-27")).toBe(8);
+    expect(stage("2027-01-03")).toBe(15);
+  });
+
+  it("jangka pendek: H-7 dilewati bila jatuh sebelum tanggal mulai", () => {
+    expect(stage("2026-12-15", "2026-12-15", "2026-12-19")).toBeNull();
+    expect(stage("2026-12-18", "2026-12-15", "2026-12-19")).toBe(-1);
+    expect(stage("2026-12-19", "2026-12-19", "2026-12-19")).toBe(-1);
+    expect(stage("2026-12-12", "2026-12-12", "2026-12-19")).toBe(-7);
+  });
+
+  it("label & tahap lonceng", () => {
+    expect([dueLabel(5), dueLabel(1), dueLabel(0), dueLabel(-3)]).toEqual(["5 hari lagi", "besok", "hari ini", "terlambat 3 hari"]);
+    expect([dueNotificationStage(8), dueNotificationStage(7), dueNotificationStage(0)]).toEqual([null, "soon", "soon"]);
+    expect([dueNotificationStage(-1), dueNotificationStage(-7), dueNotificationStage(-8)]).toEqual(["overdue-0", "overdue-0", "overdue-1"]);
+    expect(daysUntilDue("2026-12-19", "2026-12-12")).toBe(7);
+    expect(NOTIFICATION_KEY.test("loandue:cmabc123:2026-12-19:soon")).toBe(true);
+    expect(NOTIFICATION_KEY.test("loandue:cmabc123:2026-12-19:overdue-12")).toBe(true);
+    expect(NOTIFICATION_KEY.test("loandue:cmabc123:2026-12-19:later")).toBe(false);
+    expect(NOTIFICATION_KEY.test("loandue:cm abc:2026-12-19:soon")).toBe(false);
+  });
+
+  it("batas tanggal perpanjangan", () => {
+    const base = { startIso: "2026-11-20", currentDueIso: "2026-12-19", todayIso: "2026-12-12" };
+    expect(extensionDueError({ ...base, newDueIso: "2027-01-19" })).toBeNull();
+    expect(extensionDueError({ ...base, newDueIso: "2026-12-19" })).toBe("Tanggal selesai baru harus setelah jatuh tempo sekarang");
+    expect(extensionDueError({ ...base, todayIso: "2026-12-25", newDueIso: "2026-12-22" })).toBe("Tanggal selesai baru tidak boleh sebelum hari ini");
+    expect(extensionDueError({ ...base, newDueIso: "2028-11-19" })).toBeNull();
+    expect(extensionDueError({ ...base, newDueIso: "2028-11-20" })).toBe("Jangka pinjam maksimal 2 tahun sejak tanggal mulai");
+  });
+});
+
+describe("kebersihan header email (Tahap 16.4)", () => {
+  it("subjek satu baris tanpa karakter kontrol, dipotong 200 karakter", () => {
+    expect(safeSubject("[Pengingat] PT A\r\nBcc: x@y.z\t\u0000")).toBe("[Pengingat] PT A Bcc: x@y.z");
+    expect(safeSubject("a b")).toBe("a b");
+    expect(safeSubject("x".repeat(300))).toHaveLength(200);
+  });
+
+  it("alamat harus satu alamat polos", () => {
+    expect(isSingleAddress("devi@artha-mitra.local")).toBe(true);
+    expect(isSingleAddress("ami.zoom@arthamitra.co.id")).toBe(true);
+    for (const bad of ["a@b.c, x@y.z", "a@b.c;x@y.z", "Devi <devi@a.b>", "a@b.c\r\nBcc: x@y.z", "a b@c.d", "tanpa-at", "a@b"]) {
+      expect(isSingleAddress(bad)).toBe(false);
+    }
+  });
 });

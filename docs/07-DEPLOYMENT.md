@@ -133,7 +133,8 @@ virtual (VM).
 - **Nama domain** aplikasi (`APP_DOMAIN`), misalnya `oa.artha-mitra.co.id`, yang di DNS kantor mengarah ke `BIND_IP`.
   Tanpa domain, aplikasi juga bisa dibuka lewat **alamat IP** server: isi `APP_DOMAIN` dengan IP tersebut (§5 pilihan C).
 - **Sertifikat HTTPS** untuk domain / IP tersebut (§5).
-- **Akun email SMTP** yang mendukung TLS (port 465 atau 587) untuk notifikasi.
+- **Akun email SMTP** yang mendukung TLS (port 465 atau 587) untuk notifikasi. Keputusan 2026-11-18: akun
+  **`ami.zoom@arthamitra.co.id`** dipakai untuk semua email aplikasi. Cara memasangnya di §4.4.
 - **Tempat salinan backup**: NAS dan/atau cloud (§7.3) — keputusan manajemen.
 
 ### 2.3 Informasi dari manajemen
@@ -253,7 +254,7 @@ nano .env.production
 | `AUTH_SECRET` | Hasil §4.1 | |
 | `AUTH_URL`, `APP_URL` | `https://<APP_DOMAIN>` | |
 | `AUTH_TRUST_HOST`, `CSP_MODE` | Biarkan `true` dan `enforce` | |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | Akun email | Wajib TLS; tanpa TLS email ditolak dan tercatat gagal |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | Akun email `ami.zoom@arthamitra.co.id` | Wajib TLS; tanpa TLS email ditolak dan tercatat gagal. Langkah lengkap di §4.4 |
 | `STORAGE_DRIVER`, `MAX_UPLOAD_MB` | Biarkan `local` dan `5` | |
 | `SEED_ADMIN_EMAIL`, `SEED_PASSWORD`, `SEED_MUST_CHANGE_PASSWORD` | Email akun Admin sistem, hasil §4.1, `true` | Dipakai sekali saat seed (§6.2) |
 
@@ -262,6 +263,94 @@ nano .env.production
 dibuat ulang (§10.3): password database dan `AUTH_SECRET` boleh baru, sedangkan kunci data diambil otomatis dari titipan
 di backup. Yang perlu dicatat terpisah, di pengelola password Tim IT, hanyalah akun SMTP / NAS / cloud. Pengaturan
 non-rahasia (domain, IP, subnet) dicatat di Lembar Data Instalasi (§15.4).
+
+### 4.4 Memasang akun email pengirim (`ami.zoom@arthamitra.co.id`)
+> **Singkatnya:** aplikasi mengirim semua email (approval, keamanan akun, pengingat sertifikat & jatuh tempo
+> peminjaman) lewat satu akun: `ami.zoom@arthamitra.co.id`. Tim IT memasang data login akun ini di `.env.production`
+> di server, lalu menyalakan ulang `worker`. Password tidak pernah dikirim lewat chat, email, atau git.
+
+**Langkah 1 — siapkan password khusus aplikasi** (tergantung penyedia email kantor):
+
+| Penyedia | Yang dilakukan admin email | `SMTP_HOST` | `SMTP_PORT` |
+|---|---|---|---|
+| Google Workspace | Aktifkan verifikasi 2 langkah di akun `ami.zoom`, lalu buat **App Password** (Akun Google → Keamanan → Sandi aplikasi). Pakai App Password ini, **bukan** password login | `smtp.gmail.com` | `587` |
+| Microsoft 365 | Admin mengaktifkan **Authenticated SMTP** untuk mailbox `ami.zoom` (Microsoft 365 admin center → Users → Mail → Manage email apps). Microsoft sedang menghentikan login SMTP dengan password biasa — pastikan cara ini masih diizinkan di tenant kantor | `smtp.office365.com` | `587` |
+| Hosting lain (cPanel, dll.) | Minta alamat server SMTP & port TLS ke penyedia hosting | mis. `mail.arthamitra.co.id` | `465` |
+
+> **Kenapa App Password?** App Password hanya untuk aplikasi ini dan bisa dicabut kapan saja tanpa mengganti password
+> utama akun `ami.zoom` (yang juga dipakai untuk Zoom). **Penting:** di Google, mengganti password utama akun ikut
+> mencabut semua App Password. Bila itu terjadi, email aplikasi berhenti terkirim sampai App Password baru dipasang.
+
+**Langkah 2 — isi `.env.production` di server** (hanya Tim IT, langsung di server):
+```bash
+cd /opt/office-automation
+nano .env.production
+#   SMTP_HOST="smtp.gmail.com"          # sesuai tabel di atas
+#   SMTP_PORT="587"
+#   SMTP_USER="ami.zoom@arthamitra.co.id"
+#   SMTP_PASS="<App Password>"
+#   MAIL_FROM="Office Automation AMI <ami.zoom@arthamitra.co.id>"
+chmod 600 .env.production               # hanya pemilik file yang bisa membaca
+```
+`SMTP_USER` dan alamat di `MAIL_FROM` harus **sama**: server email menolak email yang dikirim atas nama alamat lain.
+
+**Langkah 3 — nyalakan ulang worker** (hanya worker yang memegang password email; aplikasi web tidak perlu disentuh):
+```bash
+dc up -d worker
+dc logs --tail 20 worker      # harus muncul "[worker] siap. Queue: email.send, …, reminder.demo-loan (07:00 WIB) …"
+```
+
+**Langkah 4 — uji kirim.** Picu satu email, misalnya Admin mengaktifkan ulang MFA di akunnya, atau ajukan pengajuan uji
+yang mengirim email approval. Pastikan email masuk ke kotak penerima, lalu cek statusnya:
+```bash
+dc exec db psql -U oa -d office_automation -c \
+  "select \"to\", subject, status, error, \"createdAt\" from \"EmailLog\" order by \"createdAt\" desc limit 5;"
+```
+`SENT` = terkirim. `FAILED` + pesan error: lihat §12 (biasanya password salah, App Password dicabut, atau port/TLS
+salah). Email yang gagal dicoba ulang otomatis 3 kali; setelah itu tidak dikirim ulang, jadi pasang akun **sebelum**
+aplikasi mulai dipakai.
+
+**Yang perlu diketahui:**
+- Email pengingat jatuh tempo peminjaman memakai *Reply-To*: balasan pemohon terkirim ke Operational, balasan
+  Operational terkirim ke pemohon. Email lain bertuliskan "mohon tidak membalas" — balasan ke email itu masuk ke kotak
+  `ami.zoom`.
+- Perusahaan peminjam (PIC di Product Trial Form) **tidak** dikirimi email apa pun oleh aplikasi.
+- Supaya email tidak masuk spam, pastikan domain `arthamitra.co.id` sudah punya SPF/DKIM untuk penyedia email kantor
+  (biasanya sudah otomatis bila memakai Google Workspace / Microsoft 365).
+- Akun SMTP dicatat di pengelola password Tim IT (§4.3), bukan di dokumen ini.
+
+### 4.5 Libur nasional otomatis (kalender publik Google — tanpa token)
+> **Singkatnya:** Kalender Libur mengikuti kalender publik Google "Hari Libur di Indonesia" (mengikuti SKB) **setiap
+> hari jam 06.00 WIB**, untuk sisa tahun ini dan tahun depan. Tidak perlu daftar atau token — Tim IT cukup memastikan
+> `worker` berjalan dan server boleh keluar ke `https://calendar.google.com`.
+
+**Cara kerja (untuk Tim IT & Admin):**
+- Tahun yang belum pernah disinkronkan → libur nasional langsung masuk (impor awal).
+- Setelah itu setiap perubahan (libur dipindah / ditambah / dihapus / nama berubah, mis. "(belum pasti)" hilang setelah SKB
+  final) **dicek ulang keesokan harinya**: diterapkan bila sumber masih sama, dibatalkan bila berubah lagi.
+- Libur yang diisi / diimpor manual oleh Admin (termasuk libur Kantor) dan libur yang dihapus Admin **tidak pernah diubah**.
+  Hari ini & tanggal lampau tidak diubah. Cuti bersama tidak diambil (kebijakan HR).
+- Lebih dari 6 perubahan sekaligus → **ditahan** (kemungkinan sumber sedang salah); Admin diberi tahu.
+- Setiap perubahan yang diterapkan dikirim (email + lonceng) ke **penerima notifikasi** — diatur Admin di **Setting →
+  Jatah Cuti → Notifikasi perubahan libur** (keputusan: Ci Ika (HR) & Ko Rudy (Direktur); kosong = semua Admin) —
+  beserta pengajuan cuti yang hari kerjanya ikut berubah. **Saldo cuti tidak dikoreksi otomatis**; HR menyesuaikannya.
+
+**Langkah setelah deploy:**
+1. `dc logs --tail 20 worker` — baris "siap" harus menyebut `holiday.sync (06:00 WIB …)`.
+2. Admin membuka **Setting → Jatah Cuti** → **Atur Penerima** → pilih Ci Ika & Ko Rudy → Simpan.
+3. Admin membuka **Cuti → Kalender Libur** → **Sinkronkan sekarang**. Dalam beberapa detik kartu "Libur nasional
+   otomatis" menampilkan hasilnya; libur bertanda "Otomatis" muncul di daftar.
+
+| Pesan di kartu | Arti | Tindakan |
+|---|---|---|
+| "Kalender Google tidak bisa dihubungi" | Server tidak bisa ke internet / Google sedang gangguan | Cek koneksi keluar server ke `calendar.google.com:443`; dicoba lagi otomatis besok |
+| "Format penanda kalender Google berubah" / "Isi kalender Google tidak wajar" | Google mengubah format feed | Tidak ada yang berubah. Isi libur manual (Impor) sementara, lapor ke pengembang |
+| "Kalender Google bahasa Indonesia & Inggris sedang tidak sama" | Google sedang memperbarui salah satu feed | Normal, dicoba lagi besok |
+| "{tahun}: belum tersedia" | Google belum memuat tahun itu (SKB belum terbit) | Normal — masuk otomatis begitu tersedia |
+| "Menunggu konfirmasi" | Perubahan terdeteksi, dicek ulang besok | Tidak perlu tindakan |
+| "Ditahan: terlalu banyak perubahan sekaligus" | Rem aktif | Periksa daftarnya; bila benar, ubah libur manual |
+| "Libur nasional isian manual yang tidak ada di kalender Google" | Libur yang diisi Admin tidak ada di sumber | Periksa; hapus manual bila memang dipindah / dibatalkan |
+| "Gagal menjalankan sinkronisasi — pastikan worker berjalan" | Worker mati | `dc up -d worker` |
 
 ---
 
@@ -715,7 +804,10 @@ Ringkasan; detail ada di `docs/08-INVENTARIS-DATA.md` §4–5.
 | Browser: peringatan sertifikat | Sertifikat kedaluwarsa, atau CA internal belum dipasang di komputer karyawan | Perbarui sertifikat (§5) / pasang CA |
 | nginx: 403 Forbidden | IP pengguna tidak termasuk `ALLOWED_SUBNETS` | Tambahkan subnet-nya, lalu `dc up -d` |
 | nginx: 429 Too Many Requests | Batas laju request terlampaui | Tunggu sebentar; bila sering, laporkan ke tim pengembang |
-| Email tidak terkirim | `worker` mati, atau SMTP tanpa TLS / kredensial salah | `dc logs worker`; cek status email di tabel `EmailLog` |
+| Email tidak terkirim | `worker` mati, atau SMTP tanpa TLS / kredensial salah | `dc logs worker`; cek status email di tabel `EmailLog` (§4.4 langkah 4) |
+| `EmailLog` error "Invalid login" / "Username and Password not accepted" / "535" | Password salah, memakai password login biasa (bukan App Password), atau App Password dicabut karena password akun `ami.zoom` diganti | Buat App Password baru, ganti `SMTP_PASS`, `dc up -d worker` (§4.4) |
+| `EmailLog` error "SMTP AUTH … disabled" (Microsoft 365) | Authenticated SMTP belum diaktifkan untuk mailbox `ami.zoom` | Admin Microsoft 365 mengaktifkannya (§4.4 langkah 1) |
+| `EmailLog` error "Alamat penerima tidak valid" | Email user di aplikasi berisi lebih dari satu alamat / format salah | Perbaiki email user di Setting → User & Role |
 | Restore: "kunci data di .env.production tidak bisa membuka data" | Server memakai kunci lain dari backup | Hapus baris `DATA_ENCRYPTION_KEYS` & `DATA_INDEX_KEY` dari `.env.production`, lalu ulangi restore |
 | `ss -tlnp` menampilkan port lain yang terbuka ke jaringan | Ada layanan lain terpasang di server | Hentikan / hapus layanan itu (§3.3) |
 | Deploy pertama: `dc logs migrate` → "credentials for `oa_app` are not valid"; `dc logs db` → `$'\r': command not found` | Kode disalin dari komputer Windows tanpa `git clone`, sehingga file `.sh` ber-akhir baris CRLF | Pakai `git clone` (§3.4). Bila terlanjur: `sed -i 's/\r$//' deploy/postgres/*.sh deploy/nginx/* scripts/*.sh`, lalu `dc exec -T db bash /docker-entrypoint-initdb.d/10-roles.sh` dan `dc up -d` |

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ApprovalModule, Role } from "@/generated/prisma/enums";
+import { FLOWLESS_APPROVAL_MODULES } from "@/lib/approval-modules";
 import { optionalField, passwordSchema } from "./common";
 
 /** Setting → User & Role. */
@@ -18,7 +19,9 @@ const stepsSchema = z
  */
 export const approvalFlowSchema = z
   .object({
-    module: z.enum(ApprovalModule, { error: "Modul wajib dipilih" }),
+    module: z
+      .enum(ApprovalModule, { error: "Modul wajib dipilih" })
+      .refine((module) => !FLOWLESS_APPROVAL_MODULES.includes(module), { error: "Modul ini memakai Approval Flow modul lain" }),
     division: optionalField(z.string()),
     noApproval: z.boolean().default(false),
     autoApproveWhenSkipped: z.boolean().default(false),

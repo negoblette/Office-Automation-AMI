@@ -1,5 +1,5 @@
 // Peminjaman unit demo / Product Trial Form (Fase 16, 2026-11-17) — aturan murni tanpa database, dipakai server & client.
-import type { DemoLoanStatus, LoanPurpose } from "@/generated/prisma/enums";
+import type { DemoLoanExtensionStatus, DemoLoanStatus, LoanPurpose, ReturnCondition } from "@/generated/prisma/enums";
 import type { StatusVariant } from "@/components/shared/status-badge";
 
 /** Status yang menahan unit: unit di peminjaman ini tidak bisa diajukan di peminjaman lain. */
@@ -134,6 +134,70 @@ export function defaultLoanEnd(startIso: string): string {
   return addDaysIso(addMonthsIso(startIso, 1), -1);
 }
 
+// ---------------------------------------------------------------------
+// Peringatan jatuh tempo (Tahap 16.4, 2026-11-18). Jatuh tempo = hari terakhir pinjam; terlambat mulai besoknya.
+// ---------------------------------------------------------------------
+
+/** Peringatan "akan jatuh tempo" mulai H-7 (email & lonceng). */
+export const DUE_SOON_DAYS = 7;
+/** Selama masih terlambat, email diulang tiap 7 hari (H+1, H+8, H+15, …). */
+export const OVERDUE_REPEAT_DAYS = 7;
+
+/** Sisa hari ke jatuh tempo: 0 = hari ini, 1 = besok, negatif = sudah terlambat sekian hari. */
+export function daysUntilDue(dueIso: string, todayIso: string): number {
+  return daysBetween(todayIso, dueIso);
+}
+
+/**
+ * Tahap email pengingat yang berlaku hari ini untuk peminjaman yang sedang Dipinjam, sebagai hari relatif terhadap
+ * jatuh tempo: -7 (7 hari lagi), -1 (besok / hari ini), 1 (terlambat), 8, 15, … (masih terlambat). null = belum waktunya.
+ * Hanya tahap TERBARU yang dikembalikan, jadi worker yang mati beberapa hari tidak mengirim email yang menumpuk.
+ * Tahap -7 dilewati bila jangka pinjamnya pendek (H-7 jatuh sebelum tanggal mulai).
+ */
+export function dueReminderStage(startIso: string, dueIso: string, todayIso: string): number | null {
+  const left = daysUntilDue(dueIso, todayIso);
+  if (left < 0) return 1 + Math.floor((-left - 1) / OVERDUE_REPEAT_DAYS) * OVERDUE_REPEAT_DAYS;
+  if (left <= 1) return -1;
+  if (left <= DUE_SOON_DAYS && addDaysIso(dueIso, -DUE_SOON_DAYS) >= startIso) return -DUE_SOON_DAYS;
+  return null;
+}
+
+/** "hari ini", "besok", "5 hari lagi", "terlambat 3 hari". */
+export function dueLabel(daysLeft: number): string {
+  if (daysLeft < 0) return `terlambat ${-daysLeft} hari`;
+  if (daysLeft === 0) return "hari ini";
+  if (daysLeft === 1) return "besok";
+  return `${daysLeft} hari lagi`;
+}
+
+/** Tahap lonceng: muncul lagi saat naik tahap (akan jatuh tempo → terlambat → tiap 7 hari masih terlambat). */
+export function dueNotificationStage(daysLeft: number): string | null {
+  if (daysLeft < 0) return `overdue-${Math.floor((-daysLeft - 1) / OVERDUE_REPEAT_DAYS)}`;
+  return daysLeft <= DUE_SOON_DAYS ? "soon" : null;
+}
+
+/** Perpanjangan: jatuh tempo baru harus setelah jatuh tempo sekarang, tidak sebelum hari ini, dan maks. 2 tahun dari mulai. */
+export function extensionDueError(input: { startIso: string; currentDueIso: string; newDueIso: string; todayIso: string }): string | null {
+  if (input.newDueIso <= input.currentDueIso) return "Tanggal selesai baru harus setelah jatuh tempo sekarang";
+  if (input.newDueIso < input.todayIso) return "Tanggal selesai baru tidak boleh sebelum hari ini";
+  if (input.newDueIso > maxLoanEnd(input.startIso)) return "Jangka pinjam maksimal 2 tahun sejak tanggal mulai";
+  return null;
+}
+
+export const EXTENSION_STATUS_LABEL: Record<DemoLoanExtensionStatus, string> = {
+  PENDING: "Menunggu approval",
+  APPROVED: "Disetujui",
+  REJECTED: "Ditolak",
+  CANCELLED: "Dibatalkan",
+};
+
+export const EXTENSION_STATUS_VARIANT: Record<DemoLoanExtensionStatus, StatusVariant> = {
+  PENDING: "pending",
+  APPROVED: "success",
+  REJECTED: "danger",
+  CANCELLED: "neutral",
+};
+
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
 
 export function romanMonth(month: number): string {
@@ -152,6 +216,46 @@ export function parseTrialFormNumber(number: string): { sequence: number; year: 
   const match = /^(\d+)\/AMI-PTF\/[IVX]+\/(\d{4})$/.exec(number);
   return match ? { sequence: Number(match[1]), year: Number(match[2]) } : null;
 }
+
+/**
+ * Segmen tengah nomor Hardware Admission Form — dikosongkan dulu (keputusan user 2026-11-18). Bila nanti ditentukan
+ * (mis. bulan Romawi), ubah di sini; nomor yang sudah terbit tidak berubah.
+ */
+export const HAF_MIDDLE_SEGMENT = "";
+
+/** Nomor Hardware Admission Form: `001/AMI-HAF//2026` (urut per tahun; segmen tengah kosong). */
+export function formatHafNumber(sequence: number, year: number): string {
+  return `${String(sequence).padStart(3, "0")}/AMI-HAF/${HAF_MIDDLE_SEGMENT}/${year}`;
+}
+
+/** Urutan & tahun dari nomor HAF (segmen tengah apa pun); null bila formatnya lain. */
+export function parseHafNumber(number: string): { sequence: number; year: number } | null {
+  const match = /^(\d+)\/AMI-HAF\/[^/]*\/(\d{4})$/.exec(number);
+  return match ? { sequence: Number(match[1]), year: Number(match[2]) } : null;
+}
+
+// ---------------------------------------------------------------------
+// Pengembalian (Tahap 16.5): kondisi unit saat dicek Operational.
+// ---------------------------------------------------------------------
+
+export const RETURN_CONDITION_LABEL: Record<ReturnCondition, string> = {
+  GOOD: "Baik",
+  DAMAGED: "Rusak",
+  INCOMPLETE: "Tidak lengkap",
+};
+
+export const RETURN_CONDITION_VARIANT: Record<ReturnCondition, StatusVariant> = {
+  GOOD: "success",
+  DAMAGED: "danger",
+  INCOMPLETE: "warning",
+};
+
+/** Kondisi dalam bahasa Inggris untuk form HAF (form kertas berbahasa Inggris). */
+export const RETURN_CONDITION_ENGLISH: Record<ReturnCondition, string> = {
+  GOOD: "Good",
+  DAMAGED: "Damaged",
+  INCOMPLETE: "Incomplete",
+};
 
 // ---------------------------------------------------------------------
 // Form cetak (Product Trial Form, Fase 16.3) — label berbahasa Inggris seperti form kertas.

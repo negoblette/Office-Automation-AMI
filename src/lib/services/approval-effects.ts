@@ -2,6 +2,7 @@
 // di dalam transaksi yang sama. Setiap fase modul menambahkan efeknya di sini secara eksplisit
 // (bukan registrasi lewat side-effect import, supaya tidak ada efek yang terlewat).
 import type { ApprovalModule, Prisma } from "@/generated/prisma/client";
+import { applyApprovedExtension, revertApprovedExtension } from "./demo-loan-extension-effects";
 import { applyApprovedHealthClaim, revertApprovedHealthClaim } from "./health-payout";
 import { ServiceError } from "./errors";
 import { applyApprovedLeave, revertApprovedLeave } from "./leave-balance";
@@ -9,6 +10,8 @@ import { applyApprovedLeave, revertApprovedLeave } from "./leave-balance";
 export type FinalEffectOptions = {
   /** HEALTH: nominal disetujui approver final (null = sama dengan nominal diajukan). */
   approvedAmount?: number | null;
+  /** Approver final (atau pemohon bila disetujui otomatis) — pelaku audit perubahan entitas oleh efek. */
+  actorId?: string;
 };
 
 export type FinalEffect = (tx: Prisma.TransactionClient, entityId: string, approvedAt: Date, options: FinalEffectOptions) => Promise<void>;
@@ -42,6 +45,8 @@ export const FINAL_EFFECTS: Partial<Record<ApprovalModule, FinalEffect>> = {
   DEMO_LOAN: async (tx, entityId, approvedAt) => {
     await tx.demoLoan.update({ where: { id: entityId }, data: { status: "APPROVED", approvedAt } });
   },
+  // Tahap 16.4 (2026-11-18): perpanjangan disetujui → jatuh tempo peminjaman pindah ke tanggal baru.
+  DEMO_LOAN_EXTENSION: (tx, entityId, approvedAt, options) => applyApprovedExtension(tx, entityId, approvedAt, options.actorId ?? null),
 };
 
 export type RevertEffect = (tx: Prisma.TransactionClient, entityId: string) => Promise<void>;
@@ -77,6 +82,8 @@ export const REVERT_EFFECTS: Partial<Record<ApprovalModule, RevertEffect>> = {
     if (loan.status !== "APPROVED") throw new ServiceError("Barang sudah diantar — persetujuan peminjaman ini tidak bisa dibatalkan");
     await tx.demoLoan.update({ where: { id: entityId }, data: { status: "PENDING", approvedAt: null, itemSenderId: null } });
   },
+  // Perpanjangan dibatalkan persetujuannya → jatuh tempo kembali ke tanggal lama (selama barang belum kembali).
+  DEMO_LOAN_EXTENSION: revertApprovedExtension,
 };
 
 export type RejectEffect = (tx: Prisma.TransactionClient, entityId: string) => Promise<void>;
@@ -109,5 +116,9 @@ export const REJECT_EFFECTS: Partial<Record<ApprovalModule, RejectEffect>> = {
   },
   DEMO_LOAN: async (tx, entityId) => {
     await tx.demoLoan.update({ where: { id: entityId }, data: { status: "REJECTED" } });
+  },
+  // Perpanjangan ditolak: jatuh tempo tetap; pemohon bisa mengajukan perpanjangan baru.
+  DEMO_LOAN_EXTENSION: async (tx, entityId) => {
+    await tx.demoLoanExtension.updateMany({ where: { id: entityId, status: "PENDING" }, data: { status: "REJECTED", decidedAt: new Date() } });
   },
 };

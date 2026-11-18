@@ -4,7 +4,7 @@ import { formatDuration } from "@/lib/attendance";
 import { formatDate, formatRupiah, formatTime, toJakartaIsoDate } from "@/lib/format";
 import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
 import { formatLoanDuration, groupLoanItems, LOAN_PURPOSE_HINT, LOAN_PURPOSE_LABEL } from "@/lib/demo-loan";
-import { enqueueDemoLoanEmails } from "./demo-loan-emails";
+import { enqueueDemoLoanEmails, enqueueLoanExtendedEmails } from "./demo-loan-emails";
 import { LEAVE_TYPE_LABEL, leaveDeductLabel, projectLabel } from "@/lib/labels";
 import { overtimeMinutes } from "@/lib/validators/overtime";
 import type { ApprovalNotification } from "@/lib/services/approval";
@@ -52,6 +52,16 @@ async function detailLines(db: PrismaClient, module: ApprovalModule, entityId: s
         ...groupLoanItems(loan.items).map((group) => `${group.deviceName} ×${group.serials.length} — SN ${group.serials.join(", ")}`),
       ];
     }
+    case "DEMO_LOAN_EXTENSION": {
+      const extension = await db.demoLoanExtension.findUnique({ where: { id: entityId }, include: { loan: { select: { borrowerName: true, picName: true, startDate: true } } } });
+      if (!extension) return [];
+      return [
+        `Peminjam: ${extension.loan.borrowerName} (up: ${extension.loan.picName})`,
+        `Jatuh tempo: ${formatDate(extension.previousDueDate)} → ${formatDate(extension.newDueDate)}`,
+        `Periode menjadi: ${formatDate(extension.loan.startDate)} – ${formatDate(extension.newDueDate)} (${formatLoanDuration(toJakartaIsoDate(extension.loan.startDate), toJakartaIsoDate(extension.newDueDate))})`,
+        `Alasan: ${extension.reason}`,
+      ];
+    }
     default:
       return [];
   }
@@ -97,7 +107,9 @@ export async function buildApprovalEmails(db: PrismaClient, notification: Approv
       });
       const by = rejected?.actedBy?.employee?.fullName ?? rejected?.actedBy?.email ?? "approver";
       subject = `[Ditolak] ${meta.label} ${request.entityNumber}`;
-      statusLine = `Ditolak oleh ${by}${rejected?.note ? `: ${rejected.note}` : ""}. Silakan revisi lalu ajukan ulang.`;
+      statusLine = `Ditolak oleh ${by}${rejected?.note ? `: ${rejected.note}` : ""}. ${
+        request.module === "DEMO_LOAN_EXTENSION" ? "Jatuh tempo tidak berubah; ajukan perpanjangan baru bila unit masih dipakai." : "Silakan revisi lalu ajukan ulang."
+      }`;
       path = meta.path(request.entityId);
       break;
     }
@@ -135,6 +147,8 @@ export async function enqueueApprovalNotifications(db: PrismaClient, notificatio
     if (notification.template === "approval-final") {
       const request = await db.approvalRequest.findUnique({ where: { id: notification.requestId }, select: { module: true, entityId: true } });
       if (request?.module === "DEMO_LOAN") await enqueueDemoLoanEmails(db, request.entityId, "loan-approved");
+      // Perpanjangan disetujui (Tahap 16.4): Operational diberi tahu jatuh tempo baru.
+      if (request?.module === "DEMO_LOAN_EXTENSION") await enqueueLoanExtendedEmails(db, request.entityId);
     }
   }
 }

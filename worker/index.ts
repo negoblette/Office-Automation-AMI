@@ -1,12 +1,16 @@
 // Worker pg-boss (`npm run worker`) — Tech Spec §7. Proses terpisah dari aplikasi web.
 // Job: `email.send` (on-demand), `leave.rollover` (harian 00:30 WIB),
-// `reminder.certificate`, `reminder.document` & `reminder.asset` (harian 07:00 WIB, H-30), `attendance.deduct` (harian 01:00 WIB),
-// `storage.orphan-purge` (harian 03:00 WIB, hardening Tahap 7), `attendance.auto-clock-out` (tiap 5 menit, 2026-10-30).
+// `reminder.certificate`, `reminder.document` & `reminder.asset` (harian 07:00 WIB, H-30), `reminder.demo-loan` (harian
+// 07:00 WIB, jatuh tempo peminjaman unit — Tahap 16.4), `attendance.deduct` (harian 01:00 WIB),
+// `storage.orphan-purge` (harian 03:00 WIB, hardening Tahap 7), `attendance.auto-clock-out` (tiap 5 menit, 2026-10-30),
+// `holiday.sync` (harian 06:00 WIB + tombol Admin, libur nasional dari kalender publik Google — 2026-11-18).
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PgBoss } from "pg-boss";
 import { PrismaClient } from "@/generated/prisma/client";
-import { EMAIL_QUEUE, EMAIL_QUEUE_OPTIONS, type EmailJobData, enqueueEmails } from "@/lib/mail/queue";
+import { EMAIL_QUEUE, EMAIL_QUEUE_OPTIONS, type EmailJobData, enqueueEmails, type OutgoingEmail } from "@/lib/mail/queue";
+import { loanDueReminders } from "@/lib/services/demo-loan-reminder";
+import { safeSubject } from "@/lib/mail/headers";
 import { createSmtpTransport, processEmailJob } from "@/lib/mail/send-email";
 import { rolloverLeaveBalances } from "@/lib/services/leave-balance";
 import { FEATURES } from "@/lib/features";
@@ -16,12 +20,15 @@ import { purgeOrphanFiles } from "@/lib/services/upload";
 // Adapter langsung (bukan "@/lib/storage" yang ber-"server-only" & tidak bisa dimuat di Node biasa).
 import { LocalStorage } from "@/lib/storage/local";
 import { assetReminders, certificateReminders, documentReminders } from "@/lib/services/reminder";
+import { HOLIDAY_SYNC_QUEUE, syncHolidays } from "@/lib/services/holiday-sync";
+import { buildHolidayChangeEmails } from "@/lib/mail/holiday-emails";
 
 const LEAVE_ROLLOVER_QUEUE = "leave.rollover";
-const REMINDER_JOBS: Record<string, typeof certificateReminders> = {
+const REMINDER_JOBS: Record<string, (db: PrismaClient) => Promise<OutgoingEmail[]>> = {
   "reminder.certificate": certificateReminders,
   "reminder.document": documentReminders,
-  ...(FEATURES.inventory ? { "reminder.asset": assetReminders } : {}),
+  // Tahap 16.4: jatuh tempo peminjaman unit (H-7, H-1, terlambat tiap 7 hari) → pemohon & Operational.
+  ...(FEATURES.inventory ? { "reminder.asset": assetReminders, "reminder.demo-loan": (db: PrismaClient) => loanDueReminders(db) } : {}),
 };
 
 async function main() {
@@ -39,7 +46,8 @@ async function main() {
   await boss.work<EmailJobData>(EMAIL_QUEUE, async (jobs) => {
     for (const job of jobs) {
       await processEmailJob(db, transport, job.data);
-      console.log(`[worker] email terkirim → ${job.data.to}: ${job.data.subject}`);
+      // Subjek bisa memuat isian user → dibersihkan supaya tidak memalsukan baris log (log injection).
+      console.log(`[worker] email terkirim → ${job.data.to}: ${safeSubject(job.data.subject)}`);
     }
   });
 
@@ -81,7 +89,10 @@ async function main() {
   });
 
   // Modul Inventory ditunda → hapus jadwal reminder.asset yang mungkin tersimpan dari sebelumnya.
-  if (!FEATURES.inventory) await boss.unschedule("reminder.asset").catch(() => undefined);
+  if (!FEATURES.inventory) {
+    await boss.unschedule("reminder.asset").catch(() => undefined);
+    await boss.unschedule("reminder.demo-loan").catch(() => undefined);
+  }
 
   // Tech Spec §7: reminder H-30 setiap hari 07:00 WIB (email tetap lewat antrian email.send).
   for (const [queue, collect] of Object.entries(REMINDER_JOBS)) {
@@ -94,8 +105,33 @@ async function main() {
     });
   }
 
+  // Libur nasional dari kalender publik Google (setiap hari 06:00 WIB) + tombol "Sinkronkan sekarang" (Admin). Perubahan
+  // yang diterapkan → email ke penerima notifikasi (HR & Direktur) beserta pengajuan cuti terdampak.
+  await boss.createQueue(HOLIDAY_SYNC_QUEUE);
+  await boss.schedule(HOLIDAY_SYNC_QUEUE, "0 6 * * *", null, { tz: "Asia/Jakarta" });
+  await boss.work<{ requestedBy?: string } | null>(HOLIDAY_SYNC_QUEUE, async ([job]) => {
+    // Pelaku audit: Admin aktif yang menekan tombol; jadwal otomatis = sistem (null).
+    const requestedBy = typeof job?.data?.requestedBy === "string" ? job.data.requestedBy : null;
+    const admin = requestedBy
+      ? await db.user.findFirst({ where: { id: requestedBy, role: "ADMIN", isActive: true }, select: { id: true } })
+      : null;
+    const result = await syncHolidays(db, { actorId: admin?.id ?? null });
+    // Perubahan sudah tersimpan: gagal menyusun email tidak mengulang sinkronisasi (lonceng & kartu tetap menampilkannya).
+    if (result.runId) {
+      await buildHolidayChangeEmails(db, result.runId)
+        .then((emails) => enqueueEmails(db, emails))
+        .catch((error) => console.error(`[worker] ${HOLIDAY_SYNC_QUEUE}: gagal menyusun email`, error));
+    }
+    console.log(
+      `[worker] ${HOLIDAY_SYNC_QUEUE}: ${
+        result.error ??
+        `${result.applied.length} diterapkan, ${result.pending.length} menunggu konfirmasi${result.blocked ? ", DITAHAN (terlalu banyak perubahan)" : ""}`
+      }`,
+    );
+  });
+
   console.log(
-    `[worker] siap. Queue: ${EMAIL_QUEUE}, ${LEAVE_ROLLOVER_QUEUE} (00:30 WIB), ${Object.keys(REMINDER_JOBS).join(", ")} (07:00 WIB), ${ATTENDANCE_DEDUCT_QUEUE} (01:00 WIB), ${ORPHAN_PURGE_QUEUE} (03:00 WIB), ${AUTO_CLOCK_OUT_QUEUE} (tiap 5 menit)`,
+    `[worker] siap. Queue: ${EMAIL_QUEUE}, ${LEAVE_ROLLOVER_QUEUE} (00:30 WIB), ${Object.keys(REMINDER_JOBS).join(", ")} (07:00 WIB), ${ATTENDANCE_DEDUCT_QUEUE} (01:00 WIB), ${ORPHAN_PURGE_QUEUE} (03:00 WIB), ${AUTO_CLOCK_OUT_QUEUE} (tiap 5 menit), ${HOLIDAY_SYNC_QUEUE} (06:00 WIB + tombol Admin)`,
   );
 
   const shutdown = async () => {

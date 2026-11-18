@@ -9,9 +9,11 @@ import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { formatDate, toJakartaIsoDate } from "@/lib/format";
 import { LeaveCalendar } from "@/components/shared/leave-calendar";
+import { getHolidaySyncStatus, listHolidayRuns } from "@/lib/services/holiday-sync";
 import { getLeaveCalendar, listDirectorLeaves, listHolidays } from "@/lib/services/leave-queries";
 import { CutiTabs } from "../leave-ui";
 import { DeleteHolidayButton, HolidayForms } from "./holiday-manager";
+import { HolidaySyncCard } from "./holiday-sync-card";
 
 export const metadata: Metadata = { title: "Kalender Libur" };
 
@@ -24,9 +26,12 @@ export default async function KalenderLiburPage({ searchParams }: { searchParams
   const todayIso = toJakartaIsoDate();
   const yearMonth = params.bulan && /^\d{4}-(0[1-9]|1[0-2])$/.test(params.bulan) ? params.bulan : todayIso.slice(0, 7);
   const year = Number.isInteger(requested) && requested >= 2000 && requested <= 2100 ? requested : currentYear;
-  const [holidays, directorLeaves] = await Promise.all([
+  const [holidays, directorLeaves, syncStatus, syncRuns] = await Promise.all([
     listHolidays(prisma, `${year}-01-01`, `${year}-12-31`),
     listDirectorLeaves(prisma, `${year}-01-01`, `${year}-12-31`),
+    // Sinkronisasi libur nasional dari kalender Google (2026-11-18) — status & riwayat perubahan, hanya untuk Admin.
+    isAdmin ? getHolidaySyncStatus(prisma) : null,
+    isAdmin ? listHolidayRuns(prisma) : [],
   ]);
 
   return (
@@ -40,6 +45,7 @@ export default async function KalenderLiburPage({ searchParams }: { searchParams
 
       <LeaveCalendar weeks={await getLeaveCalendar(prisma, yearMonth)} yearMonth={yearMonth} todayIso={todayIso} hrefFor={(ym) => `/cuti/kalender?bulan=${ym}`} />
 
+      {isAdmin && <HolidaySyncCard status={syncStatus} runs={syncRuns} />}
       {isAdmin && <HolidayForms />}
 
       <section className="rounded-2xl bg-card p-5 shadow-card sm:p-6">
@@ -79,7 +85,12 @@ export default async function KalenderLiburPage({ searchParams }: { searchParams
           </nav>
         </div>
         {holidays.length === 0 ? (
-          <EmptyState icon={CalendarDays} title={`Belum ada hari libur di ${year}`} description={isAdmin ? "Tambahkan atau impor daftar libur di atas." : undefined} className="shadow-none" />
+          <EmptyState
+            icon={CalendarDays}
+            title={`Belum ada hari libur di ${year}`}
+            description={isAdmin ? "Sinkronkan dari API, atau tambahkan / impor daftar libur di atas." : undefined}
+            className="shadow-none"
+          />
         ) : (
           <ul className="divide-y divide-border">
             {holidays.map((holiday) => (
@@ -97,6 +108,11 @@ export default async function KalenderLiburPage({ searchParams }: { searchParams
                 <StatusBadge variant={holiday.isNational ? "info" : "neutral"} dot={false}>
                   {holiday.isNational ? "Nasional" : "Kantor"}
                 </StatusBadge>
+                {holiday.fromSync && (
+                  <span className="hidden text-xs text-muted-foreground sm:inline" title="Diambil otomatis dari kalender libur nasional Google">
+                    Otomatis
+                  </span>
+                )}
                 {isAdmin && <DeleteHolidayButton id={holiday.id} name={holiday.name} />}
               </li>
             ))}

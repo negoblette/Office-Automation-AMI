@@ -9,14 +9,17 @@ import { FormDialog } from "@/components/form/form-dialog";
 import type { SelectOption } from "@/components/form/select-field";
 import { type ConfirmOptions, useFeedback } from "@/components/shared/feedback";
 import { Button } from "@/components/ui/button";
-import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
+import type { ApprovalModule } from "@/generated/prisma/enums";
+import { APPROVAL_MODULE_META, FLOWLESS_APPROVAL_MODULES } from "@/lib/approval-modules";
 import type { ActionResult } from "@/lib/actions";
 import type { FlowView } from "@/lib/services/approval-flow";
 import { approvalFlowSchema, fallbackFlowSchema } from "@/lib/validators/setting";
 import { deleteFlowAction, saveFlowAction, setFlowActiveAction } from "./actions";
 import { useDivisions } from "@/components/shared/divisions-context";
 
-const MODULE_OPTIONS = Object.entries(APPROVAL_MODULE_META).map(([value, meta]) => ({ value, label: meta.label }));
+const MODULE_OPTIONS = Object.entries(APPROVAL_MODULE_META)
+  .filter(([value]) => !FLOWLESS_APPROVAL_MODULES.includes(value as ApprovalModule))
+  .map(([value, meta]) => ({ value, label: meta.label }));
 
 /** Editor level approval: tiap level berisi satu atau beberapa approver (salah satu cukup). */
 function StepsEditor({ approvers }: { approvers: SelectOption[] }) {

@@ -97,5 +97,29 @@ export async function createApprovalEntity(module: ApprovalModule, requesterUser
       });
       return loan.id;
     }
+    case "DEMO_LOAN_EXTENSION": {
+      // Perpanjangan (Tahap 16.4): peminjaman yang sedang dipinjam + perpanjangan 30 hari.
+      const dueDate = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + 30));
+      const loan = await testDb.demoLoan.create({
+        data: {
+          number: `UJI-${randomUUID()}`,
+          status: "ON_LOAN",
+          purpose: "POC",
+          requesterId: requesterUserId,
+          salesPersonId: user.employeeId!,
+          borrowerName: "PT Uji",
+          picName: "PIC Uji",
+          picEmail: "pic@uji.test",
+          startDate: new Date(),
+          dueDate,
+          submittedAt: new Date(),
+          deliveredAt: new Date(),
+        },
+      });
+      const extension = await testDb.demoLoanExtension.create({
+        data: { loanId: loan.id, requesterId: requesterUserId, previousDueDate: dueDate, newDueDate: new Date(dueDate.getTime() + 30 * 86_400_000), reason: "uji" },
+      });
+      return extension.id;
+    }
   }
 }

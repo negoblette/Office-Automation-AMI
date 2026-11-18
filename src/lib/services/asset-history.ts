@@ -2,8 +2,8 @@
 // setiap kali unit masuk pengajuan peminjaman beserta keputusan approval-nya. Sumbernya AuditLog — semua perubahan sudah
 // tercatat permanen di sana beserta pelakunya, jadi tidak ada tabel riwayat terpisah yang bisa tidak sinkron.
 import type { AuditLog, Prisma, PrismaClient } from "@/generated/prisma/client";
-import type { AssetCategory, AssetOwnership, DemoLoanStatus, LoanPurpose } from "@/generated/prisma/enums";
-import { loanPurposeText } from "@/lib/demo-loan";
+import type { AssetCategory, AssetOwnership, DemoLoanStatus, LoanPurpose, ReturnCondition } from "@/generated/prisma/enums";
+import { loanPurposeText, RETURN_CONDITION_LABEL } from "@/lib/demo-loan";
 import { formatDate } from "@/lib/format";
 import { ASSET_OWNERSHIP_LABEL, rackLocationLabel } from "@/lib/inventory";
 import { ASSET_CATEGORY_LABEL } from "@/lib/labels";
@@ -116,8 +116,11 @@ export async function assetHistory(db: PrismaClient, assetId: string): Promise<A
     const wasIn = hasAsset(before, assetId);
     const isIn = hasAsset(after, assetId);
     const status = str(after.status) as DemoLoanStatus | null;
+    // Jatuh tempo berubah saat dipinjam = perpanjangan disetujui / persetujuannya dibatalkan (Tahap 16.4).
+    const dueChanged = status === "ON_LOAN" && before.status === "ON_LOAN" && str(after.dueDate) && str(after.dueDate) !== str(before.dueDate);
     let title: string;
-    if (log.action === "CREATE") title = "Diajukan pinjam";
+    if (dueChanged) title = String(after.dueDate) > String(before.dueDate) ? "Jatuh tempo diperpanjang" : "Perpanjangan jatuh tempo dibatalkan";
+    else if (log.action === "CREATE") title = "Diajukan pinjam";
     else if (status === "CANCELLED") title = "Pengajuan pinjam dibatalkan";
     else if (status === "ON_LOAN" && before.status !== "ON_LOAN") title = "Diantar ke peminjam";
     else if (status === "RETURNED" && before.status !== "RETURNED") title = "Dikembalikan dari peminjam";
@@ -126,7 +129,17 @@ export async function assetHistory(db: PrismaClient, assetId: string): Promise<A
     else if (before.status === "REJECTED") title = "Diajukan ulang";
     else title = "Pengajuan pinjam diubah";
     const purposeText = purpose ? `${loanPurposeText(purpose as LoanPurpose, str(after.purposeDetail) ?? str(before.purposeDetail))} · ` : "";
-    events.push({ ...base(log), kind: "loan", title, changes: [], note: `${purposeText}${borrower} · ${number}`, href: `/inventory/peminjaman/${log.entityId}` });
+    // Dikembalikan (Tahap 16.5): kondisi unit ini saat dicek + nomor HAF.
+    const returned = status === "RETURNED" && before.status !== "RETURNED";
+    const check = returned && Array.isArray(after.items) ? after.items.map((item) => obj(item as Prisma.JsonValue)).find((item) => item.assetId === assetId) : undefined;
+    const condition = str(check?.returnCondition) as ReturnCondition | null;
+    const conditionText = condition ? `Kondisi ${RETURN_CONDITION_LABEL[condition]}${str(check?.returnNote) ? ` — ${check?.returnNote}` : ""}` : null;
+    const note = returned
+      ? [conditionText, str(after.hafNumber) && `HAF ${after.hafNumber}`, `${borrower} · ${number}`].filter(Boolean).join(" · ")
+      : dueChanged
+        ? `Jatuh tempo ${dateText(before.dueDate)} → ${dateText(after.dueDate)} · ${borrower} · ${number}`
+        : `${purposeText}${borrower} · ${number}`;
+    events.push({ ...base(log), kind: "loan", title, changes: [], note, href: `/inventory/peminjaman/${log.entityId}` });
   }
 
   /** Unit ini masih ada di peminjaman pada waktu `at`? (catatan peminjaman terakhir sebelum waktu itu.) */

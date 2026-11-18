@@ -603,7 +603,8 @@ pengajuan pinjam).
       keluar dari antrian Operational, tercatat "Diantar ke peminjam" di Riwayat Unit. Setelah diantar persetujuan tidak
       bisa dibatalkan & Item Sender tidak bisa diganti; form bisa dicetak ulang (Received By terisi)
 - [x] Migrasi `demo_loan_delivery` (`operationalId`, `deliveredAt`, `receivedByName`; tanpa drift)
-- [x] **Hardware Admission Form (HAF) belum dikerjakan** — user belum yakin kegunaannya (2026-11-17)
+- [x] Hardware Admission Form (HAF) ditunda saat itu (user belum yakin kegunaannya) — dikerjakan di 16.5 setelah jelas
+      (2026-11-18: form penerimaan barang yang kembali, setelah dicek)
 - **Cek 16.3:** [x] unit test teks form (tanggal & Trial Periode bahasa Inggris) · [x] DB test Sudah Diantar (aturan,
   status, riwayat unit, antrian, kunci setelah diantar) · [x] uji browser 14/14 (isi form, Qty per part number, nama
   tanda tangan, logo, PDF tepat 1 lembar, Sudah Diantar, cetak ulang, Andi lihat saja; axe 0) · [x] lint/typecheck
@@ -629,11 +630,96 @@ pengajuan pinjam).
 - **Cek:** [x] unit test hitungan (inklusif, lintas tahun, akhir bulan, batas 2 tahun) · [x] DB test · [x] uji browser
   12/12 (hitungan langsung, tolak tanggal salah, detail tersimpan, HP tanpa geser samping, axe 0) · [x] lint/typecheck
 
-### 16.4 Peringatan jatuh tempo
-- [ ] Job harian: email & lonceng peringatan ke **pemohon & Operational** (tidak ke perusahaan peminjam), Terlambat,
-      perpanjangan
-### 16.5 Pengembalian
-- [ ] Cek kondisi per unit, kembali ke posisi rak, riwayat peminjaman per unit
+### 16.4 Peringatan jatuh tempo & perpanjangan ✅ (2026-11-18)
+Keputusan user: email pengirim **`ami.zoom@arthamitra.co.id`** (dipasang Tim IT di `.env.production`, lihat
+07-DEPLOYMENT §4.4); mekanisme dijelaskan dulu lalu disetujui, dengan **secure coding**. Pertanyaan yang belum dijawab
+memakai rekomendasi: satu akun untuk semua email aplikasi; jadwal H-7 / H-1 / terlambat tiap 7 hari; Sales Person tidak
+ikut dikirimi; perpanjangan lewat approval Ko Yosep.
+- [x] Job worker harian `reminder.demo-loan` (07:00 WIB) untuk peminjaman **Dipinjam**: **H-7** (dilewati bila jangka
+      pinjam pendek), **H-1** (atau hari H), **terlambat** H+1 lalu **tiap 7 hari** selama barang belum kembali. Email ke
+      **pemohon** (bila aktif) & **Operational** (belum diatur → Admin); **perusahaan peminjam / PIC tidak dikirimi**.
+      Balasan pemohon diarahkan ke Operational dan sebaliknya (Reply-To)
+- [x] Anti-dobel & tahan worker mati: tabel `DemoLoanReminder` unik per peminjaman + jatuh tempo + tahap, diisi
+      `INSERT … ON CONFLICT DO NOTHING` (hanya baris baru yang dibuatkan email); worker mati beberapa hari → hanya tahap
+      terbaru yang dikirim; jatuh tempo diperpanjang → tahap mulai lagi
+- [x] Lonceng pemohon & Operational: "Peminjaman … jatuh tempo N hari lagi" (kuning, mulai H-7) / "terlambat N hari"
+      (merah); dihapus → muncul lagi saat terlambat & tiap 7 hari terlambat
+- [x] **Terlambat** dihitung (tidak disimpan): badge di daftar & detail, filter **Terlambat** di daftar, keterangan "Jatuh
+      tempo N hari lagi / Terlambat N hari" di kolom Periode, kalimat status di detail
+- [x] **Perpanjangan**: tombol **Ajukan Perpanjangan** di detail (pemohon / Operational / Admin, selama Dipinjam): tanggal
+      selesai baru (setelah jatuh tempo sekarang, tidak sebelum hari ini, maks. 2 tahun sejak mulai) + alasan → approval
+      engine modul **`DEMO_LOAN_EXTENSION`** yang memakai Approval Flow "Peminjaman Unit" (tidak bisa diatur terpisah di
+      Setting). Satu yang menunggu per peminjaman; pengaju bisa membatalkan; disetujui → jatuh tempo pindah, tercatat di
+      Riwayat Unit ("Jatuh tempo diperpanjang"), Operational dapat email "[Diperpanjang]"; persetujuan dibatalkan →
+      jatuh tempo kembali; ditolak → boleh ajukan lagi; barang kembali → perpanjangan yang menunggu ditutup otomatis
+- [x] Kartu **Perpanjangan** di detail (riwayat, status, alasan, approval stepper, Setujui / Tolak untuk approver);
+      link email / lonceng / Approval `/inventory/peminjaman/perpanjangan/[id]` diteruskan ke detail peminjaman
+- [x] Secure coding: semua aturan dicek ulang di server (Zod + service, baris `DemoLoan` dikunci `FOR UPDATE`); subjek
+      email dibersihkan dari karakter kontrol (anti header injection), penerima & Reply-To wajib satu alamat polos, isi
+      email di-escape React; password SMTP hanya di `.env.production` service worker (TLS wajib, sudah dari Tahap 6);
+      kunci lonceng `loandue:` masuk whitelist validator
+- [x] Migrasi `demo_loan_due_reminder` (enum `ApprovalModule` + `DEMO_LOAN_EXTENSION`, enum `DemoLoanExtensionStatus`,
+      tabel `DemoLoanExtension` & `DemoLoanReminder`; tanpa drift)
+- [x] Dokumen: 07-DEPLOYMENT §4.4 langkah memasang akun email + troubleshooting; `.env.production.example`
+- **Cek 16.4:** [x] unit test tahap pengingat, label, kunci lonceng, batas perpanjangan, header email · [x] 8 DB test
+  (jadwal & anti-dobel, catch-up, penerima, lonceng, aturan & alur perpanjangan, batal / barang kembali, header email) ·
+  [x] uji browser 26/28 + 2 dicek ulang (yang gagal = teks harapan skrip; Leonard Admin: lonceng, daftar & filter
+  Terlambat, ajukan / batalkan / setujui perpanjangan, HP tanpa geser, axe 0, link perpanjangan, riwayat unit) ·
+  [x] lint/typecheck · [x] test penuh 602 lulus, 3 gagal lama dari `main`
+- Belum: perpanjangan untuk peminjaman yang belum diantar (tidak perlu: jatuh tempo baru dipantau setelah Dipinjam)
+### Tambahan: Kalender Libur mengikuti libur nasional otomatis ✅ (2026-11-18)
+Permintaan user: libur nasional tidak lagi diketik manual, diambil gratis, tampil langsung, minimal 1 tahun ke depan;
+"kalau ada perubahan dicek lagi, kalau sudah tetap tanggal yang salah segera diperbaiki"; notifikasi ke Ci Ika (HR) &
+Ko Rudy (Direktur). Versi pertama memakai API apipedia (langkah 1–4 dikerjakan user) — diganti kalender publik Google
+karena apipedia baru punya data 2026 (Google: 2021–2027, gratis tanpa token).
+- [x] Pembaca kalender Google `lib/holidays/google-calendar.ts` (feed Inggris = jenis, feed Indonesia = nama; validasi
+      ketat; pengalihan hanya ke google.com) — diverifikasi dengan feed sungguhan: 17 libur nasional 19 Nov 2026 – 2027,
+      cuti bersama terdeteksi benar
+- [x] Service `services/holiday-sync.ts`: impor awal langsung; perubahan dicek ulang ≥ 20 jam lalu diterapkan / dibatalkan;
+      rem > 6 perubahan; libur manual & yang dihapus Admin tidak disentuh; libur yang dihapus sinkronisasi bisa pulih;
+      pengajuan cuti terdampak dicatat (saldo tidak dikoreksi otomatis); audit; advisory lock
+- [x] Job worker `holiday.sync` **harian 06:00 WIB** + tombol **Sinkronkan sekarang** (Admin, `enqueueJob`, maks. sekali
+      per menit) + email `holiday-change` & lonceng ke penerima (**Setting → Jatah Cuti → Atur Penerima**; kosong = Admin)
+- [x] Kartu Kalender Libur: status, menunggu konfirmasi, ditahan, libur manual yang tidak ada di sumber, perubahan 30 hari
+      + cuti terdampak; badge "Otomatis" di daftar libur
+- [x] Migrasi `holiday_sync` (`Holiday.source` & `removedBySync`, `HolidayPendingChange`, `HolidayChange`; libur lama =
+      MANUAL; tanpa drift). Token apipedia & file klien lama dihapus; 07-DEPLOYMENT §4.5
+- **Cek:** [x] 5 unit test pembaca kalender · [x] 5 DB test (impor awal, pindah tanggal + cuti terdampak + penerima,
+  batal & pulih, rem, sumber error) · [x] lint/typecheck
+- Belum: keputusan HR soal cuti bersama (saklar `INCLUDE_CUTI_BERSAMA`); tombol "terapkan walau ditahan" (sementara: ubah
+  manual)
+
+### 16.5 Pengembalian & Hardware Admission Form ✅ (dikerjakan sebelum 16.4, 2026-11-18)
+Keputusan user: alur di bawah disetujui; **kembali sepenuhnya** dulu (kembali sebagian belum pasti); segmen tengah nomor
+HAF **dikosongkan**; unit yang akhirnya dipakai/dibeli customer **belum** dibuat (dicatat untuk nanti).
+- [x] Detail peminjaman **Dipinjam** → tombol **Terima Pengembalian** (Admin & Operational) → halaman
+      `/inventory/peminjaman/[id]/kembali`: tanggal kembali (≥ tanggal diantar, ≤ hari ini), **Dikembalikan oleh**
+      (Returned By, opsional), lalu **cek setiap unit**: kondisi **Baik / Rusak / Tidak lengkap** (wajib dipilih; radio
+      asli), catatan (wajib bila Rusak / Tidak lengkap), **rak & posisi** tempat ditaruh (bawaan = posisi semula; boleh
+      dipindah atau "tidak disimpan di rak"), catatan umum. Semua unit wajib dicek — tidak ada pengembalian sebagian
+- [x] Simpan → status **Selesai**, **nomor HAF terbit** (`NNN/AMI-HAF//<tahun>`, counter `NumberSequence` HAF bulan 0,
+      urut per tahun), penerima = user yang mencatat (Prepared / Received By). Unit langsung **tersedia lagi**; posisi
+      yang berubah tercatat sebagai perubahan **Lokasi** unit (oleh Operational) di Riwayat Unit; Riwayat Unit mencatat
+      "Dikembalikan dari peminjam · Kondisi … · HAF …"
+- [x] Unit yang kembali **Rusak / Tidak lengkap tetap ditaruh di rak & tetap bisa dipinjam**, tapi ditandai: badge
+      "Kembali rusak / tidak lengkap" di Daftar Unit, peringatan di detail unit, keterangan di pemilih unit form pengajuan
+      (sampai pengembalian berikutnya Baik)
+- [x] Detail peminjaman Selesai: kalimat status (jumlah unit bercatatan), info Dikembalikan & No. HAF, tabel unit dengan
+      **Kondisi kembali** & **Ditaruh di**; tombol **Cetak HAF**
+- [x] Halaman cetak `/cetak/peminjaman/[id]/haf` meniru form kertas HAF: kop logo + "Hardware Admission Form" + nomor;
+      **From :** peminjam + up: PIC; kotak Date (tanggal kembali) / Sales Person / Prepared By (penerima); tabel Item / Qty /
+      Part Number + S/N **dengan kondisi** (Good / Damaged / Incomplete + catatan) / Remarks (rujukan nomor Product Trial
+      Form, kegunaan, catatan); tanda tangan **Returned By** & **Received By** (Name, Date); alamat. Satu lembar A4
+- [x] Setting → Inventaris & Rak: **Nomor form** kini untuk Product Trial Form **dan** Hardware Admission Form (lanjut
+      dari nomor manual; tidak boleh di bawah nomor yang sudah terpakai)
+- [x] Migrasi `demo_loan_return` (enum `ReturnCondition`; kolom pengembalian di `DemoLoan` & `DemoLoanItem`; tanpa drift)
+- [x] Perbaikan kecil bersama: jarak baris breadcrumb saat turun baris di HP (link tidak saling menimpa, target ≥ 24px)
+- **Cek 16.5:** [x] unit test nomor HAF & validasi form kembali · [x] 2 DB test (aturan: akses, tanggal, semua unit,
+  posisi rak per baris; Selesai + HAF; unit pindah & riwayat; tersedia lagi; tanpa rak; nomor HAF lanjut dari Setting) ·
+  [x] uji browser 32/32 (Leonard Admin: form kembali, pesan per unit, HP tanpa geser samping, detail Selesai, HAF 1
+  lembar A4, badge Daftar Unit, riwayat unit, pemilih unit; axe 0; buka `/kembali` setelah Selesai → pindah ke detail) ·
+  [x] lint/typecheck · [x] test penuh 588 lulus, 3 gagal lama dari `main`
+- Belum: kembali sebagian (beberapa HAF per peminjaman), unit dibeli / dipakai customer (keluar dari stok, PO / invoice)
 
 ### 16.6 Dashboard Inventaris
 - [ ] Unit di gudang (per rak/posisi), sedang dipinjam (ke mana, PIC, sampai kapan, sisa hari), terlambat, akan jatuh tempo;

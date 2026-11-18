@@ -2,6 +2,7 @@
 // aksi mencatat EmailLog (QUEUED) lalu mengirim job `email.send`; worker yang mengirim.
 import { PgBoss } from "pg-boss";
 import type { PrismaClient } from "@/generated/prisma/client";
+import { safeSubject } from "./headers";
 import type { EmailTemplateName, EmailTemplates } from "./render";
 
 export const EMAIL_QUEUE = "email.send";
@@ -14,6 +15,8 @@ export type OutgoingEmail<T extends EmailTemplateName = EmailTemplateName> = {
   subject: string;
   template: T;
   props: EmailTemplates[T];
+  /** Alamat tujuan balasan (header Reply-To), mis. Operational untuk pengingat peminjaman. Kosong = alamat pengirim. */
+  replyTo?: string[];
 };
 
 export type EmailJobData = OutgoingEmail & { emailLogId: string };
@@ -44,13 +47,27 @@ function getBoss(): Promise<PgBoss> {
 }
 
 /**
+ * Kirim job non-email ke worker dari aplikasi web (mis. `holiday.sync` dari tombol Kalender Libur). Antriannya dibuat
+ * worker saat start — worker belum pernah jalan → pg-boss melempar error (pemanggil menampilkan pesan ke user).
+ * `singletonKey` + `singletonSeconds` = maksimal satu job dengan kunci itu per rentang waktu (anti klik berulang).
+ */
+export async function enqueueJob(
+  name: string,
+  data: Record<string, unknown>,
+  options: { singletonKey?: string; singletonSeconds?: number } = {},
+): Promise<void> {
+  const boss = await getBoss();
+  await boss.send(name, data, options);
+}
+
+/**
  * Catat EmailLog lalu kirim job. Panggil SETELAH transaksi commit. Gagal enqueue tidak
  * menggagalkan aksi user — EmailLog ditandai FAILED supaya terlihat di log.
  */
 export async function enqueueEmails(db: PrismaClient, emails: OutgoingEmail[]): Promise<void> {
   for (const email of emails) {
     const log = await db.emailLog.create({
-      data: { to: email.to, subject: email.subject, template: email.template, status: "QUEUED" },
+      data: { to: email.to, subject: safeSubject(email.subject), template: email.template, status: "QUEUED" },
     });
     try {
       const boss = await getBoss();

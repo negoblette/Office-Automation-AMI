@@ -15,18 +15,20 @@
 // (kunci tetap "loanqueue", aturannya sama dengan antrian approval).
 import { Prisma, type PrismaClient, type Role } from "@/generated/prisma/client";
 import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
+import { addDaysIso, daysUntilDue, DUE_SOON_DAYS, dueLabel, dueNotificationStage } from "@/lib/demo-loan";
 import { inventoryEnabled } from "@/lib/features";
-import { toJakartaIsoDate } from "@/lib/format";
+import { fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { canApprove } from "@/lib/roles";
 import { pendingApprovalIds } from "./approval-queries";
 import { expiryAlerts } from "./dashboard-queries";
 import { loansAwaitingOperational } from "./demo-loan-queries";
-import { inventoryAccess } from "./inventory-access";
+import { getHolidaySyncStatus, holidayNotifyRecipients, listHolidayRuns } from "./holiday-sync";
+import { getOperationalUserIds, inventoryAccess } from "./inventory-access";
 
 export type NotificationItem = {
   /** Kunci + versi notifikasi; dipakai untuk menyembunyikan (lihat atas). */
   key: string;
-  kind: "expiry" | "approval" | "rejected" | "loan";
+  kind: "expiry" | "approval" | "rejected" | "loan" | "holiday";
   title: string;
   detail: string;
   href: string;
@@ -55,6 +57,72 @@ async function loanQueue(db: PrismaClient, user: NotificationUser): Promise<Noti
   };
 }
 
+/**
+ * Jatuh tempo peminjaman unit (Tahap 16.4): peminjaman yang sedang dipinjam & jatuh tempo ≤ 7 hari lagi atau sudah lewat.
+ * Pemohon: miliknya; Operational (belum diatur → Admin): semua — sama dengan penerima email pengingat. Kunci memuat
+ * jatuh tempo & tahap, jadi notifikasi yang dihapus muncul lagi saat terlambat / tiap 7 hari terlambat / diperpanjang.
+ */
+async function loanDueItems(db: PrismaClient, user: NotificationUser, todayIso: string): Promise<NotificationItem[]> {
+  if (!inventoryEnabled({ isSuperAdmin: Boolean(user.isSuperAdmin) })) return [];
+  const operationalIds = await getOperationalUserIds(db);
+  const seesAll = operationalIds.length ? operationalIds.includes(user.id) : user.role === "ADMIN";
+  const loans = await db.demoLoan.findMany({
+    where: { status: "ON_LOAN", dueDate: { lte: fromIsoDate(addDaysIso(todayIso, DUE_SOON_DAYS)) }, ...(seesAll ? {} : { requesterId: user.id }) },
+    orderBy: { dueDate: "asc" },
+    take: 20,
+    select: { id: true, number: true, borrowerName: true, dueDate: true, _count: { select: { items: true } } },
+  });
+  return loans.flatMap((loan) => {
+    const dueIso = toJakartaIsoDate(loan.dueDate);
+    const daysLeft = daysUntilDue(dueIso, todayIso);
+    const stage = dueNotificationStage(daysLeft);
+    if (!stage) return [];
+    return [
+      {
+        key: `loandue:${loan.id}:${dueIso}:${stage}`,
+        kind: "loan" as const,
+        title: daysLeft < 0 ? `Peminjaman ${loan.number} ${dueLabel(daysLeft)}` : `Peminjaman ${loan.number} jatuh tempo ${dueLabel(daysLeft)}`,
+        detail: `${loan.borrowerName} · ${loan._count.items} unit · ${daysLeft < 0 ? "barang belum kembali" : "siapkan pengembalian / perpanjangan"}`,
+        href: `/inventory/peminjaman/${loan.id}`,
+        tone: daysLeft < 0 ? ("danger" as const) : ("warning" as const),
+      },
+    ];
+  });
+}
+
+/**
+ * Kalender Libur (2026-11-18) untuk penerima notifikasi perubahan libur (Setting → Jatah Cuti; belum diatur → Admin):
+ * setiap sinkronisasi yang menerapkan perubahan (30 hari terakhir, satu notifikasi per sinkronisasi) + sinkronisasi
+ * yang ditahan rem (terlalu banyak perubahan sekaligus).
+ */
+async function holidayItems(db: PrismaClient, user: NotificationUser, now: Date): Promise<NotificationItem[]> {
+  const recipients = await holidayNotifyRecipients(db);
+  if (!recipients.some((recipient) => recipient.id === user.id)) return [];
+  const [runs, status] = await Promise.all([listHolidayRuns(db, { now }), getHolidaySyncStatus(db)]);
+  const items: NotificationItem[] = runs.map((run) => {
+    const leaves = new Set(run.changes.flatMap((change) => change.affected.map((leave) => leave.id))).size;
+    return {
+      key: `holidaychange:${run.runId}`,
+      kind: "holiday" as const,
+      title: `Kalender libur diperbarui (${run.changes.length} perubahan)`,
+      detail: leaves ? `${leaves} pengajuan cuti terdampak — cek saldo` : "Tidak ada pengajuan cuti terdampak",
+      href: "/cuti/kalender#perubahan-libur",
+      tone: leaves ? ("warning" as const) : ("info" as const),
+    };
+  });
+  if (status?.blocked) {
+    items.unshift({
+      key: `holidaysync:blocked:${status.at.slice(0, 10)}`,
+      kind: "holiday",
+      title: "Sinkronisasi libur ditahan",
+      detail: "Terlalu banyak perubahan sekaligus — periksa Kalender Libur",
+      href: "/cuti/kalender#perubahan-libur",
+      tone: "danger",
+    });
+  }
+  return items;
+}
+
 const DAY_MS = 86_400_000;
 const REJECTED_WINDOW_DAYS = 30;
 /** Catatan "sudah dihapus" berlaku 60 hari; setelah itu notifikasi yang masih relevan muncul lagi. */
@@ -71,7 +139,7 @@ const retentionStart = (now: Date) => new Date(now.getTime() - DISMISSAL_RETENTI
 async function collectNotifications(db: PrismaClient, user: NotificationUser, todayIso: string, now: Date): Promise<NotificationItem[]> {
   const isAdmin = user.role === "ADMIN";
   const since = new Date(now.getTime() - REJECTED_WINDOW_DAYS * DAY_MS);
-  const [expiring, pendingIds, rejected, loanQueueItem] = await Promise.all([
+  const [expiring, pendingIds, rejected, loanQueueItem, loanDue, holiday] = await Promise.all([
     isAdmin ? expiryAlerts(db, todayIso) : user.employeeId ? expiryAlerts(db, todayIso, user.employeeId) : [],
     canApprove(user.role) ? pendingApprovalIds(db, user.id) : [],
     db.approvalRequest.findMany({
@@ -81,17 +149,21 @@ async function collectNotifications(db: PrismaClient, user: NotificationUser, to
       select: { id: true, module: true, entityId: true, entityNumber: true, completedAt: true },
     }),
     loanQueue(db, user),
+    loanDueItems(db, user, todayIso),
+    holidayItems(db, user, now),
   ]);
 
-  // Sertifikat yang dihapus / peminjaman yang dibatalkan pemohon juga membuat approval-nya REJECTED ("dibatalkan") —
-  // bukan penolakan.
+  // Sertifikat yang dihapus / peminjaman yang dibatalkan pemohon / perpanjangan yang dibatalkan (atau barang keburu
+  // kembali) juga membuat approval-nya REJECTED ("dibatalkan") — bukan penolakan.
   const certIds = rejected.filter((r) => r.module === "CERTIFICATE").map((r) => r.entityId);
   const loanIds = rejected.filter((r) => r.module === "DEMO_LOAN").map((r) => r.entityId);
-  const [deletedCertRows, cancelledLoanRows] = await Promise.all([
+  const extensionIds = rejected.filter((r) => r.module === "DEMO_LOAN_EXTENSION").map((r) => r.entityId);
+  const [deletedCertRows, cancelledLoanRows, cancelledExtensionRows] = await Promise.all([
     certIds.length ? db.certificate.findMany({ where: { id: { in: certIds }, deletedAt: { not: null } }, select: { id: true } }) : [],
     loanIds.length ? db.demoLoan.findMany({ where: { id: { in: loanIds }, status: "CANCELLED" }, select: { id: true } }) : [],
+    extensionIds.length ? db.demoLoanExtension.findMany({ where: { id: { in: extensionIds }, status: "CANCELLED" }, select: { id: true } }) : [],
   ]);
-  const cancelled = new Set([...deletedCertRows, ...cancelledLoanRows].map((row) => row.id));
+  const cancelled = new Set([...deletedCertRows, ...cancelledLoanRows, ...cancelledExtensionRows].map((row) => row.id));
 
   const items: NotificationItem[] = [];
   if (pendingIds.length > 0) {
@@ -105,16 +177,17 @@ async function collectNotifications(db: PrismaClient, user: NotificationUser, to
       seen: pendingIds,
     });
   }
-  // Antrian Operational tepat setelah antrian approval.
+  // Antrian Operational tepat setelah antrian approval, lalu jatuh tempo peminjaman (paling mendesak dulu).
   if (loanQueueItem) items.push(loanQueueItem);
+  items.push(...loanDue, ...holiday);
   for (const r of rejected) {
-    if ((r.module === "CERTIFICATE" || r.module === "DEMO_LOAN") && cancelled.has(r.entityId)) continue;
+    if (cancelled.has(r.entityId)) continue;
     const meta = APPROVAL_MODULE_META[r.module];
     items.push({
       key: `rejected:${r.id}:${r.completedAt?.getTime() ?? 0}`,
       kind: "rejected",
       title: `${meta.label} ${r.entityNumber} ditolak`,
-      detail: "Revisi lalu ajukan ulang",
+      detail: r.module === "DEMO_LOAN_EXTENSION" ? "Jatuh tempo tidak berubah" : "Revisi lalu ajukan ulang",
       href: meta.path(r.entityId),
       tone: "danger",
     });

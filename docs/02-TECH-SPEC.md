@@ -237,12 +237,43 @@ bertahap (docs/05-TAHAPAN.md Fase 16); Tahap 1 = data, akses, rak; Tahap 2 = pen
     (level → `REJECTED` "Dibatalkan pemohon"; tidak muncul sebagai "ditolak" di lonceng).
   - Operational / Admin memilih **Item Sender** (karyawan aktif) setelah `APPROVED`; yang memilih tercatat di
     `operationalId` (nama di kolom "Operational" form cetak).
+  - **Pengembalian** (Tahap 16.5, `returnDemoLoan`; Operational / Admin, hanya `ON_LOAN`, **kembali sepenuhnya**): setiap
+    `DemoLoanItem` dicek tepat sekali — `returnCondition` (`ReturnCondition`: `GOOD` / `DAMAGED` / `INCOMPLETE`),
+    `returnNote` (wajib bila bukan `GOOD`), `returnRackId` + `returnRackPosition` (berpasangan, dicek
+    `assertRackPosition`; error rak/posisi dikirim ke kolom `items.<i>.<field>`). `returnedAt` ≥ `deliveredAt` & ≤ hari
+    ini, `returnedByName` opsional, `returnNote` umum, `receivedById` = pelaku. Baris `Asset` dikunci `FOR UPDATE`; bila
+    lokasi berubah, `Asset` diperbarui + audit `Asset` UPDATE (Riwayat Unit: perubahan Lokasi). Status `RETURNED`, audit
+    `DemoLoan` memuat `items` beserta kondisinya. Kondisi terakhir per unit (`demo-loan-queries.ts#lastReturnConditions`)
+    menandai unit di Daftar Unit, detail unit & pemilih unit; unit tetap bisa dipinjam.
+  - **Hardware Admission Form** (HAF): nomor `NNN/AMI-HAF/<segmen tengah>/<tahun>` terbit saat pengembalian dicatat;
+    segmen tengah sementara kosong (`HAF_MIDDLE_SEGMENT = ""`, keputusan user 2026-11-18), counter `NumberSequence`
+    prefix `HAF`, `month = 0`, bisa diatur Admin seperti PTF (`getFormCounter` / `setFormCounter`, `FormKind`). Cetak di
+    `/cetak/peminjaman/[id]/haf` (hanya `RETURNED`): From / up, Date / Sales Person / Prepared By, unit per part number +
+    S/N dengan kondisi (bahasa Inggris), Remarks (rujukan nomor PTF, kegunaan, catatan), Returned By / Received By.
   - **Cetak** (Tahap 16.3): `/cetak/peminjaman/[id]` (layout `(print)`), sejak `APPROVED`, semua user Inventaris. Satu
     lembar A4 lewat `<style>@page</style>` di halaman itu saja (bukan `@page` bernama — elemen kosong sebelum form
     membuat Chrome menyisipkan lembar kosong). Identitas kantor di `lib/company.ts`, logo `src/assets/brand/`.
   - **Sudah Diantar** (Operational / Admin, `APPROVED` + Item Sender sudah dipilih): `ON_LOAN`, `deliveredAt`
     (≤ hari ini, ≥ tanggal pengajuan), `receivedByName` opsional; audit memuat `items` (Riwayat Unit). Setelah itu efek
-    revert approval ditolak & Item Sender terkunci. Jatuh tempo tidak berubah (perpanjangan di 16.4).
+    revert approval ditolak & Item Sender terkunci. Jatuh tempo hanya berubah lewat perpanjangan (16.4).
+  - **Peringatan jatuh tempo** (Tahap 16.4, `services/demo-loan-reminder.ts`, job `reminder.demo-loan`): untuk `ON_LOAN`,
+    tahap = hari relatif jatuh tempo (`lib/demo-loan.ts#dueReminderStage`): -7 (dilewati bila H-7 < tanggal mulai), -1
+    (H-1 / hari H), 1, 8, 15, … (terlambat, tiap `OVERDUE_REPEAT_DAYS` = 7). Hanya tahap terbaru → worker mati tidak
+    menumpuk email. Klaim lewat `DemoLoanReminder` (unik `loanId + dueDate + stage`, `createManyAndReturn` +
+    `skipDuplicates`) — hanya baris baru yang dibuatkan email (`loan-due-soon` / `loan-overdue`,
+    `mail/demo-loan-emails.ts#buildLoanDueEmails`) ke pemohon aktif + Operational (fallback Admin), dengan Reply-To
+    silang (pemohon ↔ Operational). PIC peminjam tidak pernah dikirimi. `Terlambat` dihitung (`LoanRow.overdue`,
+    `daysLeft`), tidak disimpan.
+  - **Perpanjangan** (Tahap 16.4, `services/demo-loan-extension.ts`): `DemoLoanExtension` (previous/new due date,
+    alasan, status `PENDING/APPROVED/REJECTED/CANCELLED`). Diajukan pemohon / Operational / Admin saat `ON_LOAN`; baris
+    `DemoLoan` dikunci `FOR UPDATE`, maks. satu `PENDING`; tanggal baru > jatuh tempo, ≥ hari ini, ≤ `maxLoanEnd`
+    (`extensionDueError`). Approval engine modul `DEMO_LOAN_EXTENSION` dengan `flowModule = DEMO_LOAN`
+    (`approval-modules.ts#FLOW_MODULE_OF`; tidak bisa dipilih di Setting → Approval Flow, ditolak validator). Efek
+    (`demo-loan-extension-effects.ts`, terpisah supaya tidak ada impor melingkar): final → kunci `DemoLoan`, cek masih
+    `ON_LOAN` & jatuh tempo = `previousDueDate`, set `dueDate` + audit `DemoLoan` dengan `items` (Riwayat Unit "Jatuh tempo
+    diperpanjang"); revert → kembali bila belum berubah lagi; reject → `REJECTED`. Batal oleh pengaju / barang kembali
+    (`closePendingExtensions` di `returnDemoLoan`) → `CANCELLED`, approval ditutup seperti pembatalan peminjaman. Final →
+    email `loan-extended` ke Operational. Link `/inventory/peminjaman/perpanjangan/[id]` → detail peminjaman.
   - Unit di peminjaman `PENDING` / `APPROVED` / `ON_LOAN` tidak bisa diajukan lagi; baris `Asset` dikunci `FOR UPDATE`
     (urut id) saat mengajukan, merevisi, dan menghapus unit. Unit yang pernah diajukan tidak bisa dihapus.
   - `DemoLoanItem` menyalin nama, SN, rak & posisi saat diajukan (form cetak & riwayat tidak berubah walau data unit
@@ -255,7 +286,8 @@ bertahap (docs/05-TAHAPAN.md Fase 16); Tahap 1 = data, akses, rak; Tahap 2 = pen
     "1 bulan", 17 Nov – 31 Des = "1 bulan 15 hari", 17 Nov 2026 – 21 Jan 2028 = "1 tahun 2 bulan 5 hari". Tanggal mulai:
     hari ini s/d 1 tahun ke depan; tanggal selesai ≥ tanggal mulai, maks. 2 tahun (`maxLoanEnd`). Form cetak:
     "1 Year 2 Months 5 Days (21 January 2028)".
-  - Sales Person = karyawan aktif divisi `SALES`. Email PIC hanya kontak — sistem tidak mengirim email ke peminjam.
+  - Sales Person = karyawan aktif divisi `SALES`. Email PIC hanya kontak — sistem tidak mengirim email ke peminjam
+    (termasuk pengingat jatuh tempo).
   - Nomor form `NNN/AMI-PTF/<bulan Romawi>/<tahun>` terbit saat diajukan; counter `NumberSequence` prefix `PTF`,
     `month = 0` (urut per tahun). Admin mengatur nomor terakhir tahun berjalan (Setting → Inventaris & Rak), minimal
     nomor tertinggi yang sudah dipakai.
@@ -272,12 +304,44 @@ bertahap (docs/05-TAHAPAN.md Fase 16); Tahap 1 = data, akses, rak; Tahap 2 = pen
 | `leave.rollover` | harian 00:30 | buat `LeaveBalance` periode baru |
 | `reminder.certificate` | harian 07:00 | sertifikat kadaluarsa H-30 |
 | `reminder.asset` | harian 07:00 | support/warranty berakhir H-30 |
+| `reminder.demo-loan` | harian 07:00 | jatuh tempo peminjaman unit: H-7, H-1, terlambat tiap 7 hari → pemohon & Operational (§6.6, Tahap 16.4) |
+| `holiday.sync` | harian 06:00 + tombol Admin | libur nasional besok s/d akhir tahun depan dari kalender publik Google → tabel `Holiday` (lihat bawah) |
+
+**Sinkronisasi libur nasional** (2026-11-18; `lib/holidays/google-calendar.ts` + `services/holiday-sync.ts`;
+menggantikan API apipedia yang baru punya data tahun berjalan):
+- **Sumber:** dua feed `.ics` publik Google "Hari Libur di Indonesia" (tanpa token): `en.indonesian` → jenis (DESCRIPTION
+  "Public holiday" / "Observance"; cuti bersama = nama memuat "Joint Holiday"), `id.indonesian` → nama ("(belum pasti)" =
+  tentatif). Unduh: alamat tetap HTTPS, pengalihan manual hanya ke `*.google.com` (maks. 3), timeout 15 detik, wajib
+  `text/calendar`, dibaca bertahap maks. 1 juta karakter. Parser: unfold baris, hanya DTSTART/DTEND (VALUE=DATE)/SUMMARY/
+  DESCRIPTION, tanggal nyata, acara maks. 14 hari & 2.000 acara, nama ≤ 150 tanpa karakter kontrol; penanda tak dikenal
+  atau tanggal libur kedua feed berbeda → seluruh feed ditolak (`HolidaySourceError`, pesan aman untuk Admin).
+- **Model:** `Holiday.source` (MANUAL diisi Admin / SYNC), `Holiday.removedBySync`; `HolidayPendingChange` (unik
+  kind+date); `HolidayChange` (riwayat per `runId`, `affectedLeaveIds`). `addHolidays` (Admin) selalu menulis MANUAL.
+- **Aturan:** jangkauan besok s/d 31 Des tahun depan; tahun tanpa baris SYNC → ADD langsung (impor awal); selebihnya
+  ADD / REMOVE / RENAME libur SYNC dicatat pending dan diterapkan bila masih sama ≥ `CONFIRM_AFTER_HOURS` (20) jam,
+  dibatalkan bila hilang; > `MAX_CHANGES_PER_RUN` (6) siap sekaligus → `blocked`. MANUAL, dihapus Admin, hari ini & lampau
+  tidak disentuh; MANUAL nasional yang tidak ada di sumber hanya dilaporkan (`unmanaged`). REMOVE = soft delete +
+  `removedBySync` (boleh dipulihkan sinkronisasi). Satu transaksi + `pg_advisory_xact_lock`; audit CREATE/UPDATE/DELETE.
+- **Cuti terdampak:** per ADD/REMOVE pada hari kerja, `LeaveRequest` PENDING/APPROVED yang rentangnya memuat tanggal itu →
+  `HolidayChange.affectedLeaveIds`; saldo tidak dikoreksi. Email `holiday-change` (`mail/holiday-emails.ts`) & lonceng
+  (`holidaychange:<runId>`, `holidaysync:blocked:<tgl>`) ke penerima `AppSetting` `holiday.notifyUserIds` (Setting →
+  Jatah Cuti; kosong = Admin aktif).
+- **Tombol** "Sinkronkan sekarang" = `enqueueJob("holiday.sync", { requestedBy })` `singletonSeconds: 60`; worker
+  memastikan `requestedBy` Admin aktif sebelum dipakai sebagai pelaku audit. Status di `AppSetting` `holiday.sync.last`.
 | `attendance.auto-clock-out` | tiap 5 menit | absen tanpa clock out yang sudah lewat jam pulang (`attendance.workHours`) → clock out = jam pulang, `Attendance.autoClockOut = true` (clock in setelah jam pulang → 23:59). Karyawan yang lembur masih bisa clock out sendiri sekali di hari yang sama (2026-10-30) |
 
 Template email: `approval-requested`, `approval-progress`, `approval-final`, `reminder-expiry`. Semua berisi nomor dokumen, ringkasan, dan link ke halaman detail.
 Peminjaman unit (Fase 16.2): pengajuan, keputusan & pembatalan persetujuan memakai email approval engine (rincian
 kegunaan, peminjam, periode, unit + SN). Setelah disetujui final, `loan-approved` (`lib/mail/demo-loan-emails.ts`) ke
 Operational aktif (belum diatur → Admin aktif): "siapkan barang & cetak form". Tidak ada email ke perusahaan peminjam.
+Tahap 16.4: `loan-due-soon`, `loan-overdue` (pengingat), `loan-extended` (perpanjangan disetujui → Operational).
+
+**Akun pengirim & kebersihan header** (Tahap 16.4, 2026-11-18): semua email dikirim dari satu akun SMTP
+(`ami.zoom@arthamitra.co.id`, `SMTP_USER` = alamat `MAIL_FROM`), dipasang Tim IT di `.env.production` service worker
+saja (07-DEPLOYMENT §4.4). `OutgoingEmail.replyTo` opsional (header Reply-To). Worker (`processEmailJob`) menolak
+penerima yang bukan satu alamat polos, membuang Reply-To yang tidak valid, dan membersihkan subjek dari karakter kontrol
+(`mail/headers.ts#safeSubject` / `isSingleAddress`) — isian user (mis. nama peminjam) di subjek tidak bisa menyisipkan
+header. Isi email dirender React Email (ter-escape).
 
 **Lonceng notifikasi** (`services/notifications.ts`): isinya dihitung dari data terkini (dokumen/sertifikat akan berakhir,
 antrian approval, pengajuan ditolak 30 hari terakhir). Sejak 2026-11-16 notifikasi yang **dibuka** (diklik) atau

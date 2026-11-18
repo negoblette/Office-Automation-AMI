@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { buttonVariants } from "@/components/ui/button";
 import { requireInventory } from "@/lib/auth/inventory";
 import { prisma } from "@/lib/db";
-import { isActiveLoanStatus, loanPurposeText } from "@/lib/demo-loan";
+import { isActiveLoanStatus, loanPurposeText, RETURN_CONDITION_LABEL } from "@/lib/demo-loan";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { ownershipText, rackLocationLabel } from "@/lib/inventory";
 import { ASSET_CATEGORY_LABEL } from "@/lib/labels";
@@ -93,6 +93,20 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
           <p className="text-sm text-muted-foreground sm:col-span-3 lg:col-span-6">{[asset.warrantyNote, asset.notes].filter(Boolean).join(" · ")}</p>
         )}
       </section>
+
+      {/* Terakhir kembali dari peminjaman dengan catatan (Tahap 16.5) — sampai ada pengembalian berikutnya yang Baik. */}
+      {!busy && asset.lastReturn && asset.lastReturn.condition !== "GOOD" && (
+        <p role="status" className="flex items-start gap-2.5 rounded-2xl bg-red-soft px-5 py-4 text-sm text-red-deep">
+          <CircleAlert className="mt-0.5 size-[18px] shrink-0" aria-hidden />
+          <span className="min-w-0 wrap-anywhere">
+            <span className="font-semibold">
+              Terakhir kembali {RETURN_CONDITION_LABEL[asset.lastReturn.condition].toLowerCase()}
+              {asset.lastReturn.returnedAt && ` (${isoDate(asset.lastReturn.returnedAt)})`}.
+            </span>{" "}
+            {asset.lastReturn.note && `${asset.lastReturn.note}. `}Cek kondisinya sebelum dipinjamkan lagi.
+          </span>
+        </p>
+      )}
 
       {/* Peminjaman ke perusahaan lain (Product Trial Form, Fase 16), terbaru dulu. */}
       <h2 className="text-lg font-semibold">Peminjaman</h2>

@@ -113,7 +113,7 @@ export async function buildApproval(tx: Tx, input: BuildApprovalInput): Promise<
         steps: { create: skippedSteps.map((step, index) => ({ level: index + 1, approverIds: step.approverIds, status: "SKIPPED" as const })) },
       },
     });
-    await runFinalEffect(tx, input.module, input.entityId, now);
+    await runFinalEffect(tx, input.module, input.entityId, now, { actorId: input.requesterId });
     return {
       requestId: request.id,
       status: "APPROVED",
@@ -291,7 +291,7 @@ export async function approveRequest(
       where: { id: request.id },
       data: { status: "APPROVED", currentLevel: null, completedAt: now },
     });
-    await runFinalEffect(tx, request.module, request.entityId, now, { approvedAmount: input.approvedAmount ?? null });
+    await runFinalEffect(tx, request.module, request.entityId, now, { approvedAmount: input.approvedAmount ?? null, actorId: input.actorId });
     return {
       status: "APPROVED",
       notifications: [

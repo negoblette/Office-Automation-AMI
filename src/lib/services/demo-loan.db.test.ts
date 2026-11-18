@@ -8,11 +8,16 @@ import { listMyApprovalQueue } from "@/lib/services/approval-queries";
 import { createAsset, deleteAsset, updateAsset } from "@/lib/services/asset";
 import { assetHistory } from "@/lib/services/asset-history";
 import { listAssets } from "@/lib/services/asset-queries";
+import { addDaysIso } from "@/lib/demo-loan";
+import { toJakartaIsoDate } from "@/lib/format";
 import {
   cancelDemoLoan,
+  getFormCounter,
   getTrialFormCounter,
   markDemoLoanDelivered,
+  returnDemoLoan,
   reviseDemoLoan,
+  setFormCounter,
   setItemSender,
   setTrialFormCounter,
   submitDemoLoan,
@@ -22,7 +27,7 @@ import { saveOperationalUsers } from "@/lib/services/inventory-access";
 import { dismissNotification, getNotifications } from "@/lib/services/notifications";
 import { createRack } from "@/lib/services/storage-rack";
 import { assetSchema } from "@/lib/validators/asset";
-import { demoLoanSchema } from "@/lib/validators/demo-loan";
+import { demoLoanSchema, returnDemoLoanSchema } from "@/lib/validators/demo-loan";
 import { rackSchema } from "@/lib/validators/inventory";
 import { testDb } from "@/test/db";
 import { resetAndSeed } from "@/test/seed";
@@ -281,6 +286,95 @@ describe("cetak & pengantaran (Tahap 16.3)", () => {
     // Sudah diantar: persetujuan tidak bisa dibatalkan, Item Sender tidak bisa diganti.
     await expect(revokeApproval(testDb, { requestId: (await requestOf(loanId)).id, actorId: u.yosep, reason: "Cek ulang" })).rejects.toThrow("Barang sudah diantar");
     await expect(setItemSender(testDb, await actor("devi"), loanId, { itemSenderId: emp.andi })).rejects.toThrow("belum diantar");
+  });
+});
+
+describe("pengembalian & Hardware Admission Form (Tahap 16.5)", () => {
+  // Tanggal pengajuan = jam sungguhan (submittedAt), jadi tanggal antar & kembali mengikuti hari ini.
+  const realToday = toJakartaIsoDate();
+
+  /** Peminjaman 2 unit (posisi A1) yang sudah disetujui & diantar hari ini. */
+  const deliveredLoan = async () => {
+    await saveOperationalUsers(testDb, u.ika, { userIds: [u.devi] });
+    const result = await submit("sinta");
+    await approveByYosep(result.loanId);
+    await setItemSender(testDb, await actor("devi"), result.loanId, { itemSenderId: emp.yosep });
+    await markDemoLoanDelivered(testDb, await actor("devi"), result.loanId, { deliveredAt: realToday, receivedByName: "Muh Jawad Azzak" }, realToday);
+    const items = (await loanRow(result.loanId)).items;
+    const itemOf = (assetId: string) => items.find((item) => item.assetId === assetId)!.id;
+    return { ...result, first: itemOf(units.MUE00YP), second: itemOf(units.MUJ203Z) };
+  };
+
+  const values = (checks: Record<string, unknown>[], overrides: Record<string, unknown> = {}) =>
+    returnDemoLoanSchema.parse({ returnedAt: realToday, returnedByName: "Bapak Surahman", note: "Kardus lengkap", items: checks, ...overrides });
+
+  it("Operational mengecek tiap unit & menaruhnya di rak → Selesai, HAF terbit, unit tersedia lagi dengan catatan kondisi", async () => {
+    const { loanId, number, first, second } = await deliveredLoan();
+    const good = { itemId: first, condition: "GOOD", note: "", rackId, rackPosition: "A1" };
+    const damaged = { itemId: second, condition: "DAMAGED", note: "Port retak", rackId, rackPosition: "B3" };
+    const giveBack = async (key: string, input: ReturnType<typeof values>, today = realToday) => returnDemoLoan(testDb, await actor(key), loanId, input, today);
+
+    await expect(giveBack("andi", values([good, damaged]))).rejects.toThrow("Hanya Operational & Admin");
+    await expect(giveBack("devi", values([good, damaged], { returnedAt: addDaysIso(realToday, 1) }))).rejects.toThrow("masa depan");
+    await expect(giveBack("devi", values([good, damaged], { returnedAt: addDaysIso(realToday, -1) }))).rejects.toThrow("sebelum tanggal diantar");
+    await expect(giveBack("devi", values([good]))).rejects.toThrow("Semua unit di peminjaman ini wajib dicek");
+    await expect(giveBack("devi", values([good, good]))).rejects.toThrow("Semua unit di peminjaman ini wajib dicek");
+    // Posisi di luar rak → pesan menempel ke baris unit yang salah.
+    await expect(giveBack("devi", values([good, { ...damaged, rackPosition: "Z9" }]))).rejects.toMatchObject({ message: "Posisi tidak ada di Rak 1", field: "items.1.rackPosition" });
+    expect((await loanRow(loanId)).status).toBe("ON_LOAN"); // semua percobaan gagal tidak mengubah apa pun
+
+    await giveBack("devi", values([good, damaged]));
+    const detail = await getDemoLoanDetail(testDb, loanId, realToday);
+    expect(detail).toMatchObject({
+      status: "RETURNED",
+      returnedAt: realToday,
+      returnedByName: "Bapak Surahman",
+      returnReceiverName: "Devi",
+      returnNote: "Kardus lengkap",
+      hafNumber: `001/AMI-HAF//${realToday.slice(0, 4)}`,
+    });
+    expect(detail?.items.find((item) => item.id === second)).toMatchObject({ returnCondition: "DAMAGED", returnNote: "Port retak", returnLocation: "Rak 1 · B3", location: "Rak 1 · A1" });
+
+    // Unit pindah ke posisi baru (tercatat sebagai perubahan Lokasi oleh Devi), tidak tertahan lagi, kondisi terakhir terbawa.
+    const [moved] = await listAssets(testDb, units.MUJ203Z);
+    expect(moved).toMatchObject({ rackPosition: "B3", activeLoan: null, lastReturn: { condition: "DAMAGED", note: "Port retak", returnedAt: realToday } });
+    expect((await listAssets(testDb, units.MUE00YP))[0]).toMatchObject({ rackPosition: "A1", activeLoan: null, lastReturn: { condition: "GOOD" } });
+    const history = await assetHistory(testDb, units.MUJ203Z);
+    expect(history.find((event) => event.title === "Dikembalikan dari peminjam")).toMatchObject({
+      actor: "Devi",
+      note: `Kondisi Rusak — Port retak · HAF 001/AMI-HAF//${realToday.slice(0, 4)} · PT Bank Danamon Indonesia · ${number}`,
+    });
+    expect(history.find((event) => event.kind === "updated")).toMatchObject({ actor: "Devi", changes: [{ label: "Lokasi", before: "Rak 1 · A1", after: "Rak 1 · B3" }] });
+    expect((await assetHistory(testDb, units.MUE00YP)).some((event) => event.kind === "updated")).toBe(false); // posisi sama → tanpa perubahan
+
+    const options = await getLoanFormOptions(testDb);
+    expect(options.units.find((unit) => unit.id === units.MUJ203Z)).toMatchObject({ unavailable: null, lastReturn: { condition: "DAMAGED" } });
+    await expect(giveBack("devi", values([good, damaged]))).rejects.toThrow("Hanya peminjaman yang sedang dipinjam");
+    expect((await submit("sinta", { assetIds: [units.MUJ203Z] })).status).toBe("PENDING"); // bisa dipinjamkan lagi
+  });
+
+  it("unit boleh tidak ditaruh di rak; nomor HAF berurutan & bisa dilanjutkan dari nomor manual di Setting", async () => {
+    const year = Number(realToday.slice(0, 4));
+    const at = new Date(`${realToday}T03:00:00Z`);
+    expect(await getFormCounter(testDb, "HAF", at)).toEqual({ year, lastValue: 0, nextNumber: `001/AMI-HAF//${year}` });
+    await setFormCounter(testDb, u.ika, "HAF", { lastNumber: 14 }, at);
+
+    const { loanId, first, second } = await deliveredLoan();
+    await returnDemoLoan(
+      testDb,
+      await actor("ika"),
+      loanId,
+      values([
+        { itemId: first, condition: "INCOMPLETE", note: "Tanpa kabel", rackId: "", rackPosition: "" },
+        { itemId: second, condition: "GOOD", note: "", rackId, rackPosition: "A1" },
+      ]),
+      realToday,
+    );
+    expect((await loanRow(loanId)).hafNumber).toBe(`015/AMI-HAF//${year}`);
+    expect((await listAssets(testDb, units.MUE00YP))[0]).toMatchObject({ rackId: null, rackPosition: null, lastReturn: { condition: "INCOMPLETE" } });
+    await expect(setFormCounter(testDb, u.ika, "HAF", { lastNumber: 3 }, at)).rejects.toThrow("Nomor sampai 015 sudah terpakai");
+    expect((await getFormCounter(testDb, "HAF", at)).nextNumber).toBe(`016/AMI-HAF//${year}`);
+    expect((await getFormCounter(testDb, "PTF", at)).lastValue).toBe(1); // counter PTF terpisah
   });
 });
 

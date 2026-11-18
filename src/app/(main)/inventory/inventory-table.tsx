@@ -8,7 +8,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { DataTable, dataTableColumnHelper } from "@/components/table/data-table";
 import { buttonVariants } from "@/components/ui/button";
 import { CERTIFICATE_STATUS_BADGE } from "@/lib/certificate-status";
-import { DEMO_LOAN_STATUS_LABEL, DEMO_LOAN_STATUS_VARIANT } from "@/lib/demo-loan";
+import { DEMO_LOAN_STATUS_LABEL, DEMO_LOAN_STATUS_VARIANT, RETURN_CONDITION_LABEL, RETURN_CONDITION_VARIANT } from "@/lib/demo-loan";
 import { formatDate } from "@/lib/format";
 import type { AssetOwnership } from "@/generated/prisma/enums";
 import { ASSET_OWNERSHIP_LABEL, ownershipText, rackLocationLabel } from "@/lib/inventory";
@@ -26,6 +26,19 @@ function EndDate({ iso, status }: { iso: string | null; status: AssetRow["suppor
     <span className={`whitespace-nowrap ${tone}`} title={CERTIFICATE_STATUS_BADGE[status].label}>
       {date(iso)}
       {status !== "ACTIVE" && <span className="block text-xs">{status === "EXPIRED" ? "Berakhir" : "≤ 30 hari lagi"}</span>}
+    </span>
+  );
+}
+
+/** Kondisi saat terakhir kembali dari peminjaman, bila bukan Baik. Catatannya ikut dibaca screen reader & tooltip. */
+export function LastReturnBadge({ lastReturn }: { lastReturn: NonNullable<AssetRow["lastReturn"]> }) {
+  const label = `Kembali ${RETURN_CONDITION_LABEL[lastReturn.condition].toLowerCase()}`;
+  return (
+    <span title={lastReturn.note ?? undefined}>
+      <StatusBadge variant={RETURN_CONDITION_VARIANT[lastReturn.condition]}>
+        {label}
+        {lastReturn.note && <span className="sr-only">: {lastReturn.note}</span>}
+      </StatusBadge>
     </span>
   );
 }
@@ -97,6 +110,10 @@ export function InventoryTable({ rows, racks, canManage }: { rows: AssetRow[]; r
                   <Link href={`/inventory/peminjaman/${loan.id}`} className="rounded-[8px] outline-none focus-visible:outline-2 focus-visible:outline-ink" title={`Peminjaman ke ${loan.borrowerName}`}>
                     <StatusBadge variant={DEMO_LOAN_STATUS_VARIANT[loan.status]}>{DEMO_LOAN_STATUS_LABEL[loan.status]}</StatusBadge>
                   </Link>
+                )}
+                {/* Terakhir kembali dari peminjaman dengan catatan (Tahap 16.5) — cek dulu sebelum dipinjamkan lagi. */}
+                {!loan && row.original.lastReturn && row.original.lastReturn.condition !== "GOOD" && (
+                  <LastReturnBadge lastReturn={row.original.lastReturn} />
                 )}
               </div>
             );

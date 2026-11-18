@@ -7,14 +7,15 @@ import { FilterPills } from "@/components/shared/filter-pills";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { DataTable, dataTableColumnHelper } from "@/components/table/data-table";
 import { buttonVariants } from "@/components/ui/button";
-import { DEMO_LOAN_STATUS_LABEL, DEMO_LOAN_STATUS_VARIANT, loanPurposeText } from "@/lib/demo-loan";
+import { DEMO_LOAN_STATUS_LABEL, DEMO_LOAN_STATUS_VARIANT, DUE_SOON_DAYS, dueLabel, loanPurposeText } from "@/lib/demo-loan";
 import { formatDate } from "@/lib/format";
 import type { LoanRow } from "@/lib/services/demo-loan-queries";
+import { cn } from "@/lib/utils";
 
 const col = dataTableColumnHelper<LoanRow>();
 const date = (iso: string) => formatDate(`${iso}T00:00:00Z`, "short");
 
-type Filter = "ALL" | "MINE" | "PENDING" | "APPROVED" | "ON_LOAN" | "REJECTED" | "DONE";
+type Filter = "ALL" | "MINE" | "PENDING" | "APPROVED" | "ON_LOAN" | "OVERDUE" | "REJECTED" | "DONE";
 
 const matches = (row: LoanRow, filter: Filter, userId: string) => {
   switch (filter) {
@@ -22,6 +23,8 @@ const matches = (row: LoanRow, filter: Filter, userId: string) => {
       return true;
     case "MINE":
       return row.requesterId === userId;
+    case "OVERDUE":
+      return row.overdue;
     case "DONE":
       return row.status === "RETURNED" || row.status === "CANCELLED";
     default:
@@ -80,6 +83,11 @@ export function LoanTable({ rows, userId, canPrepare }: { rows: LoanRow[]; userI
                 {date(row.original.startDate)} – {date(row.original.dueDate)}
               </p>
               <p className="text-xs text-ink-3">{row.original.durationLabel}</p>
+              {row.original.daysLeft !== null && row.original.daysLeft <= DUE_SOON_DAYS && (
+                <p className={cn("text-xs font-semibold", row.original.daysLeft < 0 ? "text-red-ink" : "text-amber-deep")}>
+                  {row.original.daysLeft < 0 ? `Terlambat ${-row.original.daysLeft} hari` : `Jatuh tempo ${dueLabel(row.original.daysLeft)}`}
+                </p>
+              )}
             </div>
           ),
         }),
@@ -130,6 +138,7 @@ export function LoanTable({ rows, userId, canPrepare }: { rows: LoanRow[]; userI
           { value: "PENDING", label: "Menunggu approval", count: count("PENDING") },
           { value: "APPROVED", label: "Disiapkan", count: count("APPROVED") },
           { value: "ON_LOAN", label: "Dipinjam", count: count("ON_LOAN") },
+          ...(count("OVERDUE") ? [{ value: "OVERDUE" as const, label: "Terlambat", count: count("OVERDUE") }] : []),
           { value: "REJECTED", label: "Ditolak", count: count("REJECTED") },
           { value: "DONE", label: "Selesai / batal", count: count("DONE") },
         ]}

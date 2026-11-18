@@ -143,6 +143,15 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
       })
     : [];
   const loanOf = new Map(loans.map((loan) => [loan.id, loan]));
+  // Perpanjangan peminjaman (Tahap 16.4): jatuh tempo lama → baru, alasan, unit.
+  const extensionIds = requests.filter((r) => r.module === "DEMO_LOAN_EXTENSION").map((r) => r.entityId);
+  const extensions = extensionIds.length
+    ? await db.demoLoanExtension.findMany({
+        where: { id: { in: extensionIds } },
+        include: { loan: { include: { items: { orderBy: { id: "asc" }, select: { deviceName: true, serialNo: true } } } } },
+      })
+    : [];
+  const extensionOf = new Map(extensions.map((extension) => [extension.id, extension]));
 
   return requests.map((request) => ({
     id: request.id,
@@ -217,6 +226,22 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
           ]
             .filter(Boolean)
             .join("\n"),
+          file: null,
+        };
+      }
+      const extension = extensionOf.get(request.entityId);
+      if (request.module === "DEMO_LOAN_EXTENSION" && extension) {
+        const loan = extension.loan;
+        const change = `${formatDate(extension.previousDueDate, "short")} → ${formatDate(extension.newDueDate, "short")}`;
+        return {
+          headline: `${loan.borrowerName} · jatuh tempo ${change}`,
+          summary: [
+            `Perpanjangan peminjaman ke ${loan.borrowerName} (up: ${loan.picName})`,
+            `Jatuh tempo: ${change}`,
+            `Periode menjadi: ${formatDate(loan.startDate, "short")} – ${formatDate(extension.newDueDate, "short")} (${formatLoanDuration(toJakartaIsoDate(loan.startDate), toJakartaIsoDate(extension.newDueDate))})`,
+            `Alasan: ${extension.reason}`,
+            ...loan.items.map((item) => `${item.deviceName} · SN ${item.serialNo}`),
+          ].join("\n"),
           file: null,
         };
       }

@@ -8,12 +8,35 @@ import { PageHeader } from "@/components/shared/page-header";
 import { TableScroll } from "@/components/shared/table-scroll";
 import { requireInventory } from "@/lib/auth/inventory";
 import { prisma } from "@/lib/db";
-import { isEditableLoanStatus, LOAN_PURPOSE_LABEL, loanPurposeDescription, loanPurposeText } from "@/lib/demo-loan";
+import { StatusBadge } from "@/components/shared/status-badge";
+import {
+  DUE_SOON_DAYS,
+  dueLabel,
+  EXTENSION_STATUS_LABEL,
+  EXTENSION_STATUS_VARIANT,
+  isEditableLoanStatus,
+  LOAN_PURPOSE_LABEL,
+  loanPurposeDescription,
+  loanPurposeText,
+  maxLoanEnd,
+  RETURN_CONDITION_LABEL,
+  RETURN_CONDITION_VARIANT,
+} from "@/lib/demo-loan";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { getApprovalForEntity } from "@/lib/services/approval-queries";
-import { getDemoLoanDetail, getItemSenderOptions, type LoanDetail } from "@/lib/services/demo-loan-queries";
+import { getDemoLoanDetail, getItemSenderOptions, type LoanDetail, type LoanExtensionView } from "@/lib/services/demo-loan-queries";
 import { cn } from "@/lib/utils";
-import { CancelLoanButton, DeliverDialog, EditLoanLink, ItemSenderDialog, PrintFormLink } from "../loan-actions";
+import {
+  CancelExtensionButton,
+  CancelLoanButton,
+  DeliverDialog,
+  EditLoanLink,
+  ExtendLoanDialog,
+  ItemSenderDialog,
+  PrintFormLink,
+  PrintHafLink,
+  ReturnLoanLink,
+} from "../loan-actions";
 import { LoanStatus } from "../loan-table";
 
 export const metadata: Metadata = { title: "Detail Peminjaman Unit" };
@@ -37,10 +60,24 @@ export default async function DemoLoanDetailPage({ params }: { params: Promise<{
   const canPrepare = access.canManage && loan.status === "APPROVED";
   // Form bisa dicetak sejak disetujui (dan dicetak ulang setelah diantar).
   const canPrint = loan.status === "APPROVED" || loan.status === "ON_LOAN" || loan.status === "RETURNED";
-  const [approval, senders] = await Promise.all([
+  // Barang kembali (Tahap 16.5): Operational mencatat pengembalian; HAF terbit setelahnya dan bisa dicetak siapa pun.
+  const canReturn = access.canManage && loan.status === "ON_LOAN";
+  const canPrintHaf = loan.status === "RETURNED" && Boolean(loan.hafNumber);
+  const returned = loan.status === "RETURNED";
+  // Perpanjangan (Tahap 16.4): pemohon / Operational / Admin selama dipinjam, satu yang menunggu sekaligus, maks. 2 tahun.
+  const pendingExtension = loan.extensions.find((extension) => extension.status === "PENDING") ?? null;
+  const canExtend = loan.status === "ON_LOAN" && !pendingExtension && (isRequester || access.canManage) && maxLoanEnd(loan.startDate) > loan.dueDate;
+  const [approval, senders, extensionApprovals] = await Promise.all([
     user.role !== "STAFF" ? getApprovalForEntity(prisma, "DEMO_LOAN", loan.id, user) : null,
     canPrepare ? getItemSenderOptions(prisma) : [],
+    // Keputusan perpanjangan (Setujui / Tolak / Batalkan persetujuan) untuk approver & Admin.
+    user.role !== "STAFF"
+      ? Promise.all(loan.extensions.map((extension) => getApprovalForEntity(prisma, "DEMO_LOAN_EXTENSION", extension.id, user)))
+      : [],
   ]);
+  const extensionActions = new Map(
+    loan.extensions.map((extension, index) => [extension.id, extensionApprovals[index] ?? null] as const).filter(([, row]) => row && (row.canApprove || row.canRevoke)),
+  );
   const showApprovalActions = Boolean(approval && (approval.canApprove || approval.canRevoke));
 
   return (
@@ -64,11 +101,14 @@ export default async function DemoLoanDetailPage({ params }: { params: Promise<{
           </span>
         }
         actions={
-          (showApprovalActions || canPrepare || canPrint || canEdit || canCancel) && (
+          (showApprovalActions || canPrepare || canPrint || canEdit || canCancel || canExtend) && (
             <>
               {showApprovalActions && approval && <RowActions row={approval} />}
               {canPrepare && <ItemSenderDialog loanId={loan.id} senders={senders} current={loan.itemSenderId} />}
               {canPrint && <PrintFormLink loanId={loan.id} primary={canPrepare && Boolean(loan.itemSenderId)} />}
+              {canPrintHaf && <PrintHafLink loanId={loan.id} primary />}
+              {canReturn && <ReturnLoanLink loanId={loan.id} />}
+              {canExtend && <ExtendLoanDialog loanId={loan.id} startDate={loan.startDate} dueDate={loan.dueDate} />}
               {canPrepare && loan.itemSenderId && <DeliverDialog loanId={loan.id} submittedAt={loan.submittedAt} />}
               {canCancel && <CancelLoanButton loanId={loan.id} borrowerName={loan.borrowerName} />}
               {canEdit && <EditLoanLink loanId={loan.id} rejected={loan.status === "REJECTED"} />}
@@ -77,7 +117,14 @@ export default async function DemoLoanDetailPage({ params }: { params: Promise<{
         }
       />
 
-      <StatusNote loan={loan} isRequester={isRequester} canManage={access.canManage} canApprove={Boolean(approval?.canApprove)} />
+      <StatusNote
+        loan={loan}
+        isRequester={isRequester}
+        canManage={access.canManage}
+        canApprove={Boolean(approval?.canApprove)}
+        canExtend={canExtend}
+        pendingExtension={pendingExtension}
+      />
 
       <section className="grid gap-x-8 gap-y-4 rounded-2xl bg-card p-5 shadow-card sm:grid-cols-2 lg:grid-cols-3">
         <Info label="Kegunaan" value={LOAN_PURPOSE_LABEL[loan.purpose]} sub={loanPurposeDescription(loan.purpose, loan.purposeDetail)} />
@@ -103,7 +150,16 @@ export default async function DemoLoanDetailPage({ params }: { params: Promise<{
         {loan.deliveredAt && (
           <Info label="Diantar" value={date(loan.deliveredAt)} sub={loan.receivedByName ? `Diterima ${loan.receivedByName}` : "Nama penerima tidak dicatat"} />
         )}
+        {loan.returnedAt && (
+          <Info
+            label="Dikembalikan"
+            value={date(loan.returnedAt)}
+            sub={[loan.returnedByName && `Oleh ${loan.returnedByName}`, loan.returnReceiverName && `diterima ${loan.returnReceiverName}`].filter(Boolean).join(", ") || undefined}
+          />
+        )}
+        {loan.hafNumber && <Info label="No. HAF" value={<span className="font-mono">{loan.hafNumber}</span>} sub="Hardware Admission Form" />}
         {loan.remarks && <Info label="Keperluan (Remarks)" value={loan.remarks} className="sm:col-span-2" />}
+        {loan.returnNote && <Info label="Catatan pengembalian" value={loan.returnNote} className="sm:col-span-2" />}
       </section>
 
       {loan.approval.steps.length > 0 && (
@@ -113,15 +169,64 @@ export default async function DemoLoanDetailPage({ params }: { params: Promise<{
         </section>
       )}
 
+      {loan.extensions.length > 0 && (
+        <section id="perpanjangan" className="flex scroll-mt-24 flex-col gap-3" aria-labelledby="perpanjangan-title">
+          <h2 id="perpanjangan-title" className="text-lg font-semibold">
+            Perpanjangan ({loan.extensions.length})
+          </h2>
+          <ul className="flex flex-col gap-3">
+            {loan.extensions.map((extension) => {
+              const actions = extensionActions.get(extension.id);
+              return (
+                <li key={extension.id} className="flex flex-col gap-4 rounded-2xl bg-card p-5 shadow-card">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="flex flex-wrap items-center gap-2 font-semibold">
+                        {date(extension.previousDueDate)} → {date(extension.newDueDate)}
+                        <StatusBadge variant={EXTENSION_STATUS_VARIANT[extension.status]}>{EXTENSION_STATUS_LABEL[extension.status]}</StatusBadge>
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Periode menjadi {date(loan.startDate)} – {date(extension.newDueDate)} ({extension.newDurationLabel}) · diajukan {extension.requesterName},{" "}
+                        {formatDateTime(extension.createdAt)}
+                      </p>
+                      <p className="mt-2 text-sm wrap-anywhere whitespace-pre-line">{extension.reason}</p>
+                      {extension.approval.rejection && extension.status !== "CANCELLED" && (
+                        <p className="mt-2 text-sm text-red-deep">
+                          Ditolak {extension.approval.rejection.by}: {extension.approval.rejection.reason}
+                        </p>
+                      )}
+                      {extension.status === "CANCELLED" && extension.approval.rejection && (
+                        <p className="mt-2 text-sm text-muted-foreground">{extension.approval.rejection.reason}</p>
+                      )}
+                    </div>
+                    {(actions || (extension.status === "PENDING" && extension.requesterId === user.id)) && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {actions && <RowActions row={actions} />}
+                        {extension.status === "PENDING" && extension.requesterId === user.id && <CancelExtensionButton extensionId={extension.id} />}
+                      </div>
+                    )}
+                  </div>
+                  {extension.approval.steps.length > 0 && extension.status !== "CANCELLED" && (
+                    <ApprovalStepper steps={extension.approval.steps} requestStatus={extension.approval.status ?? "PENDING"} />
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">Unit ({loan.itemCount})</h2>
         <TableScroll as="div" label="Unit yang dipinjam" className="rounded-2xl bg-card shadow-card">
-          <table className="w-full min-w-[560px] text-sm">
+          <table className={cn("w-full text-sm", returned ? "min-w-[760px]" : "min-w-[560px]")}>
             <thead className="bg-muted/60 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
               <tr>
                 <th className="px-4 py-3">Part number / deskripsi</th>
                 <th className="px-4 py-3">Serial number</th>
-                <th className="px-4 py-3">Posisi rak</th>
+                <th className="px-4 py-3">{returned ? "Diambil dari" : "Posisi rak"}</th>
+                {returned && <th className="px-4 py-3">Kondisi kembali</th>}
+                {returned && <th className="px-4 py-3">Ditaruh di</th>}
               </tr>
             </thead>
             <tbody>
@@ -135,10 +240,27 @@ export default async function DemoLoanDetailPage({ params }: { params: Promise<{
                   <td className="px-4 py-3 font-mono text-xs">{item.serialNo}</td>
                   <td className="px-4 py-3">
                     <span className={cn(!item.location && "text-muted-foreground")}>{item.location ?? "Tidak di rak"}</span>
-                    {item.currentLocation !== item.location && (
+                    {!returned && item.currentLocation !== item.location && (
                       <span className="block text-xs text-warning">Sekarang: {item.currentLocation ?? "tidak di rak"}</span>
                     )}
                   </td>
+                  {returned && (
+                    <td className="px-4 py-3">
+                      {item.returnCondition ? (
+                        <>
+                          <StatusBadge variant={RETURN_CONDITION_VARIANT[item.returnCondition]}>{RETURN_CONDITION_LABEL[item.returnCondition]}</StatusBadge>
+                          {item.returnNote && <span className="mt-1 block text-xs wrap-anywhere text-muted-foreground">{item.returnNote}</span>}
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                  )}
+                  {returned && (
+                    <td className="px-4 py-3">
+                      <span className={cn(!item.returnLocation && "text-muted-foreground")}>{item.returnLocation ?? "Tidak di rak"}</span>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -172,10 +294,24 @@ function Info({
 }
 
 /** Kalimat status di atas rincian: apa yang sedang terjadi dan siapa yang perlu bertindak. */
-function StatusNote({ loan, isRequester, canManage, canApprove }: { loan: LoanDetail; isRequester: boolean; canManage: boolean; canApprove: boolean }) {
+function StatusNote({
+  loan,
+  isRequester,
+  canManage,
+  canApprove,
+  canExtend,
+  pendingExtension,
+}: {
+  loan: LoanDetail;
+  isRequester: boolean;
+  canManage: boolean;
+  canApprove: boolean;
+  canExtend: boolean;
+  pendingExtension: LoanExtensionView | null;
+}) {
   const waitingFor = loan.approval.steps.find((step) => step.status === "PENDING")?.approvers.join(" / ");
   const approvedBy = loan.approval.steps.filter((step) => step.status === "APPROVED" && step.actedBy).at(-1)?.actedBy;
-  let tone: "info" | "danger" | "success" | "neutral";
+  let tone: "info" | "warning" | "danger" | "success" | "neutral";
   let icon = InfoIcon;
   let body: React.ReactNode;
   switch (loan.status) {
@@ -227,20 +363,55 @@ function StatusNote({ loan, isRequester, canManage, canApprove }: { loan: LoanDe
         </>
       );
       break;
-    case "ON_LOAN":
-      tone = loan.overdue ? "danger" : "info";
-      icon = loan.overdue ? CircleAlert : Clock;
+    case "ON_LOAN": {
+      // Tahap 16.4: sisa hari / terlambat, perpanjangan yang menunggu, dan siapa yang diingatkan.
+      const daysLeft = loan.daysLeft ?? 0;
+      const soon = daysLeft <= DUE_SOON_DAYS;
+      tone = loan.overdue ? "danger" : soon ? "warning" : "info";
+      icon = loan.overdue || soon ? CircleAlert : Clock;
+      const extensionWaiting = pendingExtension?.approval.steps.find((step) => step.status === "PENDING")?.approvers.join(" / ");
       body = (
         <>
           <span className="font-semibold">
-            {loan.overdue ? "Lewat jatuh tempo" : "Sedang dipinjam"} — jatuh tempo {date(loan.dueDate)}.
+            {loan.overdue ? `Terlambat ${-daysLeft} hari` : `Sedang dipinjam — jatuh tempo ${dueLabel(daysLeft)}`} ({date(loan.dueDate)}).
           </span>{" "}
           Diantar {loan.deliveredAt ? date(loan.deliveredAt) : "—"}
           {loan.itemSenderName && ` oleh ${loan.itemSenderName}`}
           {loan.receivedByName && `, diterima ${loan.receivedByName}`}.
+          {pendingExtension && (
+            <span className="block pt-1">
+              Perpanjangan s/d {date(pendingExtension.newDueDate)} menunggu approval{extensionWaiting ? ` ${extensionWaiting}` : ""} — jatuh tempo belum berubah.
+            </span>
+          )}
+          {(soon || loan.overdue) && (
+            <span className="block pt-1">
+              Pemohon & Operational diingatkan lewat email dan lonceng
+              {canExtend ? ". Bila unit masih dipakai, ajukan perpanjangan." : "."}
+            </span>
+          )}
+          {canManage && <span className="block pt-1">Saat barang kembali, tekan Terima Pengembalian untuk mengecek setiap unit dan menaruhnya kembali di rak.</span>}
         </>
       );
       break;
+    }
+    case "RETURNED": {
+      const flagged = loan.items.filter((item) => item.returnCondition && item.returnCondition !== "GOOD").length;
+      tone = flagged ? "danger" : "success";
+      icon = flagged ? CircleAlert : CircleCheck;
+      body = (
+        <>
+          <span className="font-semibold">
+            Selesai — barang kembali {loan.returnedAt ? date(loan.returnedAt) : ""}
+            {loan.returnReceiverName && `, dicek ${loan.returnReceiverName}`}.
+          </span>{" "}
+          {flagged
+            ? `${flagged} unit kembali dengan catatan (rusak / tidak lengkap) — lihat kolom Kondisi kembali.`
+            : "Semua unit kembali dalam kondisi baik dan sudah ditaruh di rak."}
+          {loan.hafNumber && ` Hardware Admission Form ${loan.hafNumber} siap dicetak.`}
+        </>
+      );
+      break;
+    }
     case "CANCELLED":
       tone = "neutral";
       body = <span className="font-semibold">Dibatalkan pemohon. Approval-nya dihentikan dan unitnya sudah bisa diajukan lagi.</span>;
@@ -251,6 +422,7 @@ function StatusNote({ loan, isRequester, canManage, canApprove }: { loan: LoanDe
   const Icon = icon;
   const classes = {
     info: "bg-info-soft text-ink",
+    warning: "bg-amber-soft text-amber-deep",
     danger: "bg-red-soft text-red-deep",
     success: "bg-green-soft text-green-deep",
     neutral: "bg-panel text-ink-2",

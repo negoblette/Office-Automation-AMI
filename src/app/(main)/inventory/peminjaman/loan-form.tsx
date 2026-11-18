@@ -17,7 +17,7 @@ import { useFeedback } from "@/components/shared/feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { LoanPurpose } from "@/generated/prisma/enums";
-import { formatLoanDuration, LOAN_PURPOSE_HINT, LOAN_PURPOSE_LABEL, MAX_LOAN_ITEMS, maxLoanEnd } from "@/lib/demo-loan";
+import { formatLoanDuration, LOAN_PURPOSE_HINT, LOAN_PURPOSE_LABEL, MAX_LOAN_ITEMS, maxLoanEnd, RETURN_CONDITION_LABEL } from "@/lib/demo-loan";
 import { formatDate, toJakartaIsoDate } from "@/lib/format";
 import { ASSET_CATEGORY_LABEL } from "@/lib/labels";
 import type { LoanFormOptions, LoanUnitOption } from "@/lib/services/demo-loan-queries";
@@ -468,6 +468,13 @@ function UnitPicker({ units }: { units: LoanUnitOption[] }) {
                                 {unit.location ?? "Tidak di rak"}
                               </span>
                               {unit.unavailable && <span className="font-semibold text-amber-deep">{unit.unavailable}</span>}
+                              {/* Terakhir kembali rusak / tidak lengkap (Tahap 16.5): tetap boleh dipilih, tapi pemohon diberi tahu. */}
+                              {!unit.unavailable && unit.lastReturn && unit.lastReturn.condition !== "GOOD" && (
+                                <span className="font-semibold wrap-anywhere text-red-ink">
+                                  Terakhir kembali {RETURN_CONDITION_LABEL[unit.lastReturn.condition].toLowerCase()}
+                                  {unit.lastReturn.note && `: ${unit.lastReturn.note}`}
+                                </span>
+                              )}
                             </span>
                           </span>
                         </label>

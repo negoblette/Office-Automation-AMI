@@ -1,6 +1,7 @@
 // Proses satu job `email.send` di worker: render template → kirim SMTP → catat EmailLog.
 import nodemailer, { type Transporter } from "nodemailer";
 import type { PrismaClient } from "@/generated/prisma/client";
+import { isSingleAddress, safeSubject } from "./headers";
 import type { EmailJobData } from "./queue";
 import { renderEmail } from "./render";
 
@@ -35,11 +36,15 @@ export function createSmtpTransport(): Transporter {
  */
 export async function processEmailJob(db: PrismaClient, transport: MailTransport, data: EmailJobData): Promise<void> {
   try {
+    // Satu penerima polos per job; subjek tanpa karakter kontrol; Reply-To hanya alamat yang valid (headers.ts).
+    if (!isSingleAddress(data.to)) throw new Error("Alamat penerima tidak valid");
+    const replyTo = (data.replyTo ?? []).filter(isSingleAddress);
     const { html, text } = await renderEmail(data.template, data.props);
     await transport.sendMail({
       from: process.env.MAIL_FROM ?? "Office Automation <no-reply@artha-mitra.local>",
       to: data.to,
-      subject: data.subject,
+      subject: safeSubject(data.subject),
+      ...(replyTo.length ? { replyTo } : {}),
       html,
       text,
     });

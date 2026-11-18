@@ -7,14 +7,16 @@
 // Unit di peminjaman PENDING / APPROVED / ON_LOAN tidak bisa diajukan lagi: baris Asset dikunci (FOR UPDATE) supaya dua
 // pengajuan bersamaan tidak sama-sama lolos. Email dikirim action SETELAH transaksi commit.
 import { Prisma, type PrismaClient, type Role } from "@/generated/prisma/client";
-import { ACTIVE_LOAN_STATUSES, formatTrialFormNumber, isEditableLoanStatus, LOAN_SALES_DIVISION, parseTrialFormNumber } from "@/lib/demo-loan";
+import { ACTIVE_LOAN_STATUSES, formatHafNumber, formatTrialFormNumber, isEditableLoanStatus, LOAN_SALES_DIVISION, parseHafNumber, parseTrialFormNumber } from "@/lib/demo-loan";
 import { fromIsoDate, toJakartaIsoDate } from "@/lib/format";
-import type { DeliverDemoLoanInput, DemoLoanInput, ItemSenderInput, TrialFormCounterInput } from "@/lib/validators/demo-loan";
+import type { DeliverDemoLoanInput, DemoLoanInput, ItemSenderInput, ReturnDemoLoanInput, TrialFormCounterInput } from "@/lib/validators/demo-loan";
 import { type ApprovalNotification, buildApproval, restartApproval } from "./approval";
 import { logAudit } from "./audit";
+import { closePendingExtensions } from "./demo-loan-extension";
 import { ServiceError } from "./errors";
 import { inventoryAccess } from "./inventory-access";
-import { nextTrialFormNumber, TRIAL_FORM_PREFIX } from "./numbering";
+import { HAF_PREFIX, nextHafNumber, nextTrialFormNumber, TRIAL_FORM_PREFIX } from "./numbering";
+import { assertRackPosition } from "./storage-rack";
 
 type Tx = Prisma.TransactionClient;
 
@@ -241,51 +243,128 @@ export async function markDemoLoanDelivered(db: PrismaClient, actor: LoanActor, 
   });
 }
 
-// ---------------------------------------------------------------------
-// Nomor Product Trial Form (Setting → Inventaris & Rak, Admin)
-// ---------------------------------------------------------------------
+/**
+ * Pengembalian (Tahap 16.5, kembali sepenuhnya; Operational / Admin): semua unit dicek (kondisi + catatan) dan ditaruh
+ * kembali di rak (posisi bawaan = posisi semula, bisa diganti). Lokasi unit diperbarui (tercatat di Riwayat Unit bila
+ * berubah), nomor Hardware Admission Form terbit, status Selesai → unit bisa dipinjam lagi.
+ */
+export async function returnDemoLoan(db: PrismaClient, actor: LoanActor, loanId: string, input: ReturnDemoLoanInput, today = toJakartaIsoDate()) {
+  return db.$transaction(async (tx) => {
+    await assertCanManage(tx, actor);
+    const before = await lockLoan(tx, loanId);
+    if (before.status !== "ON_LOAN") throw new ServiceError("Hanya peminjaman yang sedang dipinjam yang bisa diterima kembali");
+    if (input.returnedAt > today) throw new ServiceError("Tanggal kembali tidak boleh di masa depan", "returnedAt");
+    if (before.deliveredAt && input.returnedAt < toJakartaIsoDate(before.deliveredAt)) {
+      throw new ServiceError("Tanggal kembali tidak boleh sebelum tanggal diantar", "returnedAt");
+    }
+    // Kembali sepenuhnya: setiap unit di peminjaman ini dicek tepat sekali.
+    const checks = new Map(input.items.map((item) => [item.itemId, item]));
+    if (checks.size !== input.items.length || before.items.length !== checks.size || before.items.some((item) => !checks.has(item.id))) {
+      throw new ServiceError("Semua unit di peminjaman ini wajib dicek", "items");
+    }
+    await tx.$queryRaw`SELECT id FROM "Asset" WHERE id IN (${Prisma.join(before.items.map((item) => item.assetId).sort())}) ORDER BY id FOR UPDATE`;
 
-const counterWhere = (year: number) => ({ prefix_year_month: { prefix: TRIAL_FORM_PREFIX, year, month: 0 } });
+    for (const item of before.items) {
+      const check = checks.get(item.id)!;
+      try {
+        await assertRackPosition(tx, check.rackId, check.rackPosition);
+      } catch (error) {
+        // Pesan rak/posisi ditempel ke baris unit yang salah (urutan baris = urutan isian form).
+        const index = input.items.findIndex((entry) => entry.itemId === item.id);
+        if (error instanceof ServiceError && error.field) throw new ServiceError(error.message, `items.${index}.${error.field}`);
+        throw error;
+      }
+      const rackPosition = check.rackId ? check.rackPosition : null;
+      await tx.demoLoanItem.update({
+        where: { id: item.id },
+        data: { returnCondition: check.condition, returnNote: check.note, returnRackId: check.rackId, returnRackPosition: rackPosition },
+      });
+      const asset = await tx.asset.findUniqueOrThrow({ where: { id: item.assetId } });
+      if (asset.rackId !== check.rackId || asset.rackPosition !== rackPosition) {
+        const moved = await tx.asset.update({ where: { id: asset.id }, data: { rackId: check.rackId, rackPosition } });
+        await logAudit(tx, { actorId: actor.id, action: "UPDATE", entity: "Asset", entityId: asset.id, before: asset, after: moved });
+      }
+    }
 
-/** Nomor terakhir yang terpakai tahun ini & pratinjau nomor berikutnya. */
-export async function getTrialFormCounter(db: PrismaClient, at: Date = new Date()) {
-  const [year, month] = toJakartaIsoDate(at).split("-").map(Number);
-  const row = await db.numberSequence.findUnique({ where: counterWhere(year) });
-  const lastValue = row?.lastValue ?? 0;
-  return { year, lastValue, nextNumber: formatTrialFormNumber(lastValue + 1, month, year) };
+    // Perpanjangan yang masih menunggu approval tidak berlaku lagi (Tahap 16.4).
+    await closePendingExtensions(tx, loanId, actor.id);
+    const after = await tx.demoLoan.update({
+      where: { id: loanId },
+      data: {
+        status: "RETURNED",
+        returnedAt: fromIsoDate(input.returnedAt),
+        returnedByName: input.returnedByName,
+        returnNote: input.note,
+        receivedById: actor.id,
+        hafNumber: await nextHafNumber(tx, fromIsoDate(today)),
+      },
+      include: { items: true },
+    });
+    await logAudit(tx, { actorId: actor.id, action: "UPDATE", entity: "DemoLoan", entityId: loanId, before, after });
+    return after;
+  });
 }
 
-/** Urutan tertinggi yang sudah dipakai form tahun `year`. */
-async function highestUsedSequence(tx: Tx, year: number): Promise<number> {
-  const loans = await tx.demoLoan.findMany({ where: { number: { endsWith: `/${year}` } }, select: { number: true } });
-  return Math.max(0, ...loans.map((loan) => parseTrialFormNumber(loan.number)?.sequence ?? 0));
+// ---------------------------------------------------------------------
+// Nomor Product Trial Form & Hardware Admission Form (Setting → Inventaris & Rak, Admin)
+// ---------------------------------------------------------------------
+
+/** PTF = Product Trial Form (terbit saat diajukan); HAF = Hardware Admission Form (terbit saat barang kembali). */
+export type FormKind = "PTF" | "HAF";
+
+const FORM_PREFIX: Record<FormKind, string> = { PTF: TRIAL_FORM_PREFIX, HAF: HAF_PREFIX };
+
+const counterWhere = (kind: FormKind, year: number) => ({ prefix_year_month: { prefix: FORM_PREFIX[kind], year, month: 0 } });
+
+/** Nomor terakhir yang terpakai tahun ini & pratinjau nomor berikutnya. */
+export async function getFormCounter(db: PrismaClient, kind: FormKind, at: Date = new Date()) {
+  const [year, month] = toJakartaIsoDate(at).split("-").map(Number);
+  const row = await db.numberSequence.findUnique({ where: counterWhere(kind, year) });
+  const lastValue = row?.lastValue ?? 0;
+  return { year, lastValue, nextNumber: kind === "PTF" ? formatTrialFormNumber(lastValue + 1, month, year) : formatHafNumber(lastValue + 1, year) };
+}
+
+export const getTrialFormCounter = (db: PrismaClient, at: Date = new Date()) => getFormCounter(db, "PTF", at);
+
+/** Urutan tertinggi yang sudah dipakai form `kind` tahun `year`. */
+async function highestUsedSequence(tx: Tx, kind: FormKind, year: number): Promise<number> {
+  if (kind === "PTF") {
+    const loans = await tx.demoLoan.findMany({ where: { number: { endsWith: `/${year}` } }, select: { number: true } });
+    return Math.max(0, ...loans.map((loan) => parseTrialFormNumber(loan.number)?.sequence ?? 0));
+  }
+  const loans = await tx.demoLoan.findMany({ where: { hafNumber: { endsWith: `/${year}` } }, select: { hafNumber: true } });
+  return Math.max(0, ...loans.map((loan) => (loan.hafNumber ? (parseHafNumber(loan.hafNumber)?.sequence ?? 0) : 0)));
 }
 
 /**
  * Atur nomor terakhir tahun ini (mis. melanjutkan nomor form manual: terakhir 008 → form berikutnya 009). Tidak boleh di
  * bawah nomor yang sudah terpakai di sistem, supaya tidak ada nomor ganda.
  */
-export async function setTrialFormCounter(db: PrismaClient, actorId: string, input: TrialFormCounterInput, at: Date = new Date()) {
+export async function setFormCounter(db: PrismaClient, actorId: string, kind: FormKind, input: TrialFormCounterInput, at: Date = new Date()) {
   const [year] = toJakartaIsoDate(at).split("-").map(Number);
+  const prefix = FORM_PREFIX[kind];
   await db.$transaction(async (tx) => {
-    // Baris counter dibuat bila belum ada lalu dikunci; pengajuan yang sedang berjalan menunggu sampai selesai.
+    // Baris counter dibuat bila belum ada lalu dikunci; pengajuan / pengembalian yang sedang berjalan menunggu.
     await tx.$executeRaw`
-      INSERT INTO "NumberSequence" ("prefix", "year", "month", "lastValue") VALUES (${TRIAL_FORM_PREFIX}, ${year}, 0, 0)
+      INSERT INTO "NumberSequence" ("prefix", "year", "month", "lastValue") VALUES (${prefix}, ${year}, 0, 0)
       ON CONFLICT ("prefix", "year", "month") DO NOTHING`;
     const [row] = await tx.$queryRaw<{ lastValue: number }[]>`
-      SELECT "lastValue" FROM "NumberSequence" WHERE "prefix" = ${TRIAL_FORM_PREFIX} AND "year" = ${year} AND "month" = 0 FOR UPDATE`;
-    const used = await highestUsedSequence(tx, year);
+      SELECT "lastValue" FROM "NumberSequence" WHERE "prefix" = ${prefix} AND "year" = ${year} AND "month" = 0 FOR UPDATE`;
+    const used = await highestUsedSequence(tx, kind, year);
     if (input.lastNumber < used) {
       throw new ServiceError(`Nomor sampai ${String(used).padStart(3, "0")} sudah terpakai tahun ini. Isi minimal ${used}.`, "lastNumber");
     }
-    await tx.numberSequence.update({ where: counterWhere(year), data: { lastValue: input.lastNumber } });
+    await tx.numberSequence.update({ where: counterWhere(kind, year), data: { lastValue: input.lastNumber } });
     await logAudit(tx, {
       actorId,
       action: "UPDATE",
       entity: "NumberSequence",
-      entityId: `${TRIAL_FORM_PREFIX}/${year}`,
+      entityId: `${prefix}/${year}`,
       before: { lastValue: row.lastValue },
       after: { lastValue: input.lastNumber },
     });
   });
 }
+
+export const setTrialFormCounter = (db: PrismaClient, actorId: string, input: TrialFormCounterInput, at: Date = new Date()) =>
+  setFormCounter(db, actorId, "PTF", input, at);

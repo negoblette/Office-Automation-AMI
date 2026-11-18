@@ -23,12 +23,15 @@ approval flow pengajuan tersebut.
 | └ Peminjaman (daftar, detail) | `/inventory/peminjaman`, `/inventory/peminjaman/[id]` | ✔ Lihat semua + ajukan + siapkan (Item Sender) | Engineer & Sales: lihat semua + ajukan. Approver di Approval Flow "Peminjaman Unit" (Ko Yosep): Setujui / Tolak di Approval Center atau di detail. Operational: siapkan yang sudah disetujui (Item Sender) |
 | └ Ajukan / Ubah / Revisi peminjaman | `/inventory/peminjaman/baru`, `/inventory/peminjaman/[id]/ubah` | ✔ | Pemohon (selama belum disetujui) |
 | └ Cetak Product Trial Form | `/cetak/peminjaman/[id]` | ✔ (sejak disetujui) | Semua user Inventaris; tombol Sudah Diantar hanya Operational |
+| └ Ajukan / batalkan Perpanjangan jatuh tempo (dialog & kartu Perpanjangan di detail) | `/inventory/peminjaman/[id]` (link email: `/inventory/peminjaman/perpanjangan/[id]`) | ✔ (status Dipinjam) | Pemohon & Operational mengajukan; approver Approval Flow "Peminjaman Unit" (Ko Yosep) Setujui / Tolak di detail atau Approval Center |
+| └ Terima Pengembalian (cek unit & taruh di rak) | `/inventory/peminjaman/[id]/kembali` | ✔ (status Dipinjam) | Operational |
+| └ Cetak Hardware Admission Form | `/cetak/peminjaman/[id]/haf` | ✔ (setelah kembali) | Semua user Inventaris |
 | **Reimburse** | `/reimburse` | Ajukan + lihat semua | Ajukan + milik sendiri |
 | └ Pengajuan Baru | `/reimburse/baru` | ✔ | ✔ |
 | └ Detail | `/reimburse/[id]` | ✔ | Milik sendiri |
 | **Cuti** | `/cuti` | Ajukan + lihat semua | Ajukan + milik sendiri |
 | └ Saldo | `/cuti/saldo` | Semua karyawan | Milik sendiri |
-| └ Kalender Libur | `/cuti/kalender` | Kelola | Lihat |
+| └ Kalender Libur (libur nasional otomatis dari kalender Google tiap hari + tombol Sinkronkan sekarang & riwayat perubahan, Admin) | `/cuti/kalender` | Kelola | Lihat |
 | **Kesehatan** | `/kesehatan` | Ajukan + lihat semua | Ajukan + milik sendiri |
 | └ Jadwal Pembayaran | `/kesehatan/pembayaran` | ✔ | — |
 | **Project** | `/project` | ✔ | Lihat |
@@ -38,10 +41,10 @@ approval flow pengajuan tersebut.
 | **Setting** | `/setting` | ✔ | — |
 | └ User & Role | `/setting/user` | ✔ | — |
 | └ Approval Flow | `/setting/approval` | ✔ | — |
-| └ Jatah Cuti & Carry Over | `/setting/cuti` | ✔ | — |
+| └ Jatah Cuti & Carry Over (+ penerima notifikasi perubahan libur) | `/setting/cuti` | ✔ | — |
 | └ Plafon Kesehatan | `/setting/kesehatan` | ✔ | — |
 | └ Jam Kerja & Absensi | `/setting/absensi` | ✔ | — |
 | └ Master Data (tipe reimburse, kategori klaim) | `/setting/master` | ✔ | — |
-| └ Inventaris & Rak (Operational, nomor Product Trial Form, daftar rak) | `/setting/inventaris` | ✔ | — |
+| └ Inventaris & Rak (Operational, nomor Product Trial Form & Hardware Admission Form, daftar rak) | `/setting/inventaris` | ✔ | — |
 | └ Kunci Pemulihan (kartu di halaman Setting) | `/setting/kunci-pemulihan` | Hanya pemegang kunci (`RECOVERY_KEY_HOLDERS`: Pak Rudy & Pak Leonard) | — |
 | Laporan | — | *(menyusul)* | — |

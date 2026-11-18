@@ -46,6 +46,12 @@ export const holidayImportSchema = z.object({
   isNational: z.boolean(),
 });
 
+/** Setting → Jatah Cuti: penerima notifikasi perubahan libur dari sinkronisasi (2026-11-18; HR & Direktur). */
+export const holidayNotifyUsersSchema = z.object({
+  userIds: z.array(z.string().min(1).max(64)).max(20, { error: "Maksimal 20 penerima" }),
+});
+export type HolidayNotifyUsersInput = z.infer<typeof holidayNotifyUsersSchema>;
+
 /** Parse teks impor; mengembalikan baris valid dan nomor baris yang tidak valid. */
 export function parseHolidayLines(text: string) {
   const holidays: { date: string; name: string }[] = [];

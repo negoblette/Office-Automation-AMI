@@ -1,23 +1,42 @@
 "use client";
 
-import { Loader2, PackageCheck, Pencil, Printer, Truck, Undo2 } from "lucide-react";
+import { CalendarPlus, ClipboardCheck, FileCheckCorner, Loader2, PackageCheck, Pencil, Printer, Truck, Undo2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { DateInputField, SelectInputField, TextInputField } from "@/components/form/fields";
+import { DateInputField, SelectInputField, TextareaField, TextInputField } from "@/components/form/fields";
 import { FormDialog } from "@/components/form/form-dialog";
 import type { SelectOption } from "@/components/form/select-field";
 import { useFeedback } from "@/components/shared/feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { toJakartaIsoDate } from "@/lib/format";
-import { deliverDemoLoanSchema, itemSenderSchema } from "@/lib/validators/demo-loan";
-import { cancelDemoLoanAction, markDeliveredAction, setItemSenderAction } from "./actions";
+import { addDaysIso, addMonthsIso, maxLoanEnd } from "@/lib/demo-loan";
+import { formatDate, toJakartaIsoDate } from "@/lib/format";
+import { deliverDemoLoanSchema, demoLoanExtensionSchema, itemSenderSchema } from "@/lib/validators/demo-loan";
+import { cancelDemoLoanAction, cancelLoanExtensionAction, markDeliveredAction, requestLoanExtensionAction, setItemSenderAction } from "./actions";
 
 /** Buka Product Trial Form siap cetak (tab yang sama; tombol Kembali di halaman cetak). */
 export function PrintFormLink({ loanId, primary }: { loanId: string; primary?: boolean }) {
   return (
     <Link href={`/cetak/peminjaman/${loanId}`} className={buttonVariants({ size: "lg", variant: primary ? "default" : "outline" })}>
       <Printer aria-hidden /> Cetak Form
+    </Link>
+  );
+}
+
+/** Operational / Admin: barang sudah kembali → halaman cek unit & taruh kembali di rak (Tahap 16.5). */
+export function ReturnLoanLink({ loanId }: { loanId: string }) {
+  return (
+    <Link href={`/inventory/peminjaman/${loanId}/kembali`} className={buttonVariants({ size: "lg" })}>
+      <ClipboardCheck aria-hidden /> Terima Pengembalian
+    </Link>
+  );
+}
+
+/** Hardware Admission Form siap cetak — terbit setelah pengembalian dicatat. */
+export function PrintHafLink({ loanId, primary }: { loanId: string; primary?: boolean }) {
+  return (
+    <Link href={`/cetak/peminjaman/${loanId}/haf`} className={buttonVariants({ size: "lg", variant: primary ? "default" : "outline" })}>
+      <FileCheckCorner aria-hidden /> Cetak HAF
     </Link>
   );
 }
@@ -65,6 +84,74 @@ export function ItemSenderDialog({ loanId, senders, current }: { loanId: string;
     >
       <SelectInputField name="itemSenderId" label="Item Sender (pengantar barang)" required options={senders} placeholder="Pilih karyawan…" />
     </FormDialog>
+  );
+}
+
+/**
+ * Ajukan perpanjangan jatuh tempo (Tahap 16.4): pemohon / Operational / Admin, selama barang masih dipinjam. Tanggal
+ * selesai baru: setelah jatuh tempo sekarang, tidak sebelum hari ini, maks. 2 tahun sejak mulai (dicek ulang di server).
+ */
+export function ExtendLoanDialog({ loanId, startDate, dueDate }: { loanId: string; startDate: string; dueDate: string }) {
+  const { notify } = useFeedback();
+  const today = toJakartaIsoDate();
+  const earliest = [addDaysIso(dueDate, 1), today].sort().at(-1)!;
+  const latest = maxLoanEnd(startDate);
+  // Usulan: 1 bulan setelah jatuh tempo (atau setelah hari ini bila sudah lama terlambat), dijepit batas 2 tahun.
+  const suggested = [addMonthsIso(addDaysIso(earliest, -1), 1), latest].sort()[0];
+  return (
+    <FormDialog
+      trigger={
+        <Button size="lg" variant="outline">
+          <CalendarPlus aria-hidden /> Ajukan Perpanjangan
+        </Button>
+      }
+      title="Ajukan perpanjangan"
+      description={`Jatuh tempo sekarang ${formatDate(`${dueDate}T00:00:00Z`, "short")}. Perpanjangan perlu disetujui approver Peminjaman Unit (Approval Flow); selama menunggu, jatuh tempo belum berubah.`}
+      schema={demoLoanExtensionSchema}
+      defaults={{ newDueDate: suggested, reason: "" }}
+      submitLabel="Ajukan"
+      successMessage={null}
+      onSuccess={(data: { approved: boolean }) =>
+        notify(data.approved ? "Perpanjangan disetujui — jatuh tempo sudah diperbarui" : "Perpanjangan diajukan, menunggu approval")
+      }
+      action={(values) => requestLoanExtensionAction(loanId, values)}
+    >
+      <DateInputField name="newDueDate" label="Tanggal selesai baru (jatuh tempo)" required min={earliest} max={latest} hint="Hari terakhir barang dipinjam. Maksimal 2 tahun sejak tanggal mulai." />
+      <TextareaField name="reason" label="Alasan perpanjangan" required rows={3} maxLength={500} placeholder="mis. POC diperpanjang customer sampai akhir bulan" />
+    </FormDialog>
+  );
+}
+
+/** Yang mengajukan: batalkan perpanjangan yang belum diputuskan. */
+export function CancelExtensionButton({ extensionId }: { extensionId: string }) {
+  const router = useRouter();
+  const { confirm, notify } = useFeedback();
+  const [pending, startTransition] = useTransition();
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      disabled={pending}
+      onClick={async () => {
+        const ok = await confirm({
+          title: "Batalkan perpanjangan ini?",
+          description: "Pengajuan perpanjangan dihentikan dan jatuh tempo tetap seperti sekarang. Anda bisa mengajukan perpanjangan baru.",
+          confirmLabel: "Batalkan perpanjangan",
+          cancelLabel: "Kembali",
+          tone: "danger",
+        });
+        if (!ok) return;
+        startTransition(async () => {
+          const result = await cancelLoanExtensionAction(extensionId);
+          if (result.ok) {
+            notify("Perpanjangan dibatalkan");
+            router.refresh();
+          } else notify(result.error, "danger");
+        });
+      }}
+    >
+      {pending ? <Loader2 className="animate-spin" aria-hidden /> : <Undo2 aria-hidden />} Batalkan perpanjangan
+    </Button>
   );
 }
 

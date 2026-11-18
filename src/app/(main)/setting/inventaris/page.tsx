@@ -6,10 +6,10 @@ import { requireAdmin } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { rackRangeLabel } from "@/lib/inventory";
 import { ROLE_LABEL } from "@/lib/labels";
-import { getTrialFormCounter } from "@/lib/services/demo-loan";
+import { getFormCounter } from "@/lib/services/demo-loan";
 import { getOperationalUserIds } from "@/lib/services/inventory-access";
 import { listRacks } from "@/lib/services/storage-rack";
-import { DeleteRackButton, OperationalDialog, RackDialog, TrialFormCounterDialog } from "./inventory-setting-dialogs";
+import { DeleteRackButton, FormCounterDialog, OperationalDialog, RackDialog } from "./inventory-setting-dialogs";
 
 export const metadata: Metadata = { title: "Inventaris & Rak" };
 
@@ -19,15 +19,20 @@ const userLabel = (user: { email: string; role: keyof typeof ROLE_LABEL; employe
 /** Setting → Inventaris & Rak (2026-11-17, Admin): siapa Operational, dan daftar rak penyimpanan unit. */
 export default async function InventorySettingPage() {
   await requireAdmin();
-  const [operationalIds, users, racks, counter] = await Promise.all([
+  const [operationalIds, users, racks, ptf, haf] = await Promise.all([
     getOperationalUserIds(prisma),
     prisma.user.findMany({
       orderBy: { email: "asc" },
       select: { id: true, email: true, role: true, isActive: true, employee: { select: { fullName: true, position: true } } },
     }),
     listRacks(prisma),
-    getTrialFormCounter(prisma),
+    getFormCounter(prisma, "PTF"),
+    getFormCounter(prisma, "HAF"),
   ]);
+  const counters = [
+    { kind: "PTF" as const, title: "Product Trial Form", format: "NNN/AMI-PTF/bulan Romawi/tahun", counter: ptf },
+    { kind: "HAF" as const, title: "Hardware Admission Form", format: "NNN/AMI-HAF/(kosong)/tahun", counter: haf },
+  ];
   const operational = operationalIds.map((id) => users.find((user) => user.id === id)).filter((user) => user !== undefined);
   const options = users
     .filter((user) => user.isActive)
@@ -75,28 +80,35 @@ export default async function InventorySettingPage() {
       </section>
 
       <section className="flex flex-col gap-4 rounded-2xl bg-card p-5 shadow-card sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="max-w-2xl space-y-1">
-            <h2 className="text-base font-semibold">Nomor Product Trial Form</h2>
-            <p className="text-sm text-muted-foreground">
-              Format <span className="font-mono">NNN/AMI-PTF/bulan Romawi/tahun</span>. Nomor terbit saat peminjaman diajukan, urut ulang dari 001 tiap
-              tahun.
-            </p>
-          </div>
-          <TrialFormCounterDialog year={counter.year} lastValue={counter.lastValue} />
+        <div className="max-w-2xl space-y-1">
+          <h2 className="text-base font-semibold">Nomor form</h2>
+          <p className="text-sm text-muted-foreground">
+            Urut ulang dari 001 tiap tahun. Product Trial Form terbit saat peminjaman diajukan; Hardware Admission Form terbit saat barang kembali
+            dan selesai dicek. Atur nomor terakhir bila melanjutkan nomor form manual.
+          </p>
         </div>
-        <dl className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <dt className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Nomor terakhir {counter.year}</dt>
-            <dd className="mt-1 font-mono text-base font-semibold tabular-nums">{counter.lastValue ? String(counter.lastValue).padStart(3, "0") : "Belum ada"}</dd>
-          </div>
-          <div>
-            <dt className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Form berikutnya (bila diajukan bulan ini)</dt>
-            <dd className="mt-1 font-mono text-base font-semibold">{counter.nextNumber}</dd>
-          </div>
-        </dl>
+        <ul className="flex flex-col divide-y divide-border">
+          {counters.map(({ kind, title, format, counter }) => (
+            <li key={kind} className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 py-3 first:pt-0 last:pb-0">
+              <div className="min-w-0 space-y-0.5">
+                <p className="font-semibold">{title}</p>
+                <p className="font-mono text-xs text-muted-foreground">{format}</p>
+              </div>
+              <dl className="flex flex-wrap gap-x-8 gap-y-1 text-sm">
+                <div>
+                  <dt className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Terakhir {counter.year}</dt>
+                  <dd className="font-mono font-semibold tabular-nums">{counter.lastValue ? String(counter.lastValue).padStart(3, "0") : "Belum ada"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Berikutnya</dt>
+                  <dd className="font-mono font-semibold">{counter.nextNumber}</dd>
+                </div>
+              </dl>
+              <FormCounterDialog kind={kind} year={counter.year} lastValue={counter.lastValue} />
+            </li>
+          ))}
+        </ul>
       </section>
-
       <section className="flex flex-col gap-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="space-y-1">
