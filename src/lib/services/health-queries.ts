@@ -211,6 +211,42 @@ export async function healthExportGroups(db: PrismaClient, viewer: { role: strin
   return [...groups.values()];
 }
 
+/** Bulan rekap: "YYYY-MM" (Januari–Desember). */
+export const HEALTH_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/**
+ * Rekap bulanan per karyawan (2026-11-19): semua klaim menunggu / disetujui yang TANGGAL KLAIM-nya di bulan itu, untuk satu
+ * karyawan atau semua karyawan. Bentuk hasil sama dengan `healthExportGroups` (dicetak halaman yang sama). Selain Admin
+ * selalu hanya miliknya sendiri, apa pun karyawan yang diminta.
+ */
+export async function healthMonthlyGroups(
+  db: PrismaClient,
+  viewer: { role: string; employeeId: string | null },
+  input: { month: string; employeeId: string | null },
+) {
+  if (!HEALTH_MONTH.test(input.month)) return [];
+  const [year, month] = input.month.split("-").map(Number);
+  const next = month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, "0")}`;
+  const claims = await db.healthClaim.findMany({
+    where: {
+      claimDate: { gte: fromIsoDate(`${input.month}-01`), lt: fromIsoDate(`${next}-01`) },
+      status: { in: [...EXPORTABLE_STATUSES] },
+      ...(input.employeeId ? { employeeId: input.employeeId } : {}),
+      // Dipasang terakhir: untuk selain Admin menimpa employeeId yang diminta dengan miliknya sendiri.
+      ...exportOwnerFilter(viewer),
+    },
+    orderBy: [{ employee: { fullName: "asc" } }, { claimDate: "asc" }, { number: "asc" }],
+    select: { id: true, employeeId: true },
+  });
+  const groups = new Map<string, { employeeId: string; year: number; claimIds: Set<string> }>();
+  for (const claim of claims) {
+    const group = groups.get(claim.employeeId) ?? { employeeId: claim.employeeId, year, claimIds: new Set<string>() };
+    group.claimIds.add(claim.id);
+    groups.set(claim.employeeId, group);
+  }
+  return [...groups.values()];
+}
+
 export async function listHealthCategories(db: PrismaClient) {
   const categories = await db.healthCategory.findMany({ where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
   return categories.map((c) => ({ value: c.id, label: c.name }));

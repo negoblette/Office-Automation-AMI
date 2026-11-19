@@ -5,13 +5,21 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { FilterPills } from "@/components/shared/filter-pills";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { DataTable, dataTableColumnHelper } from "@/components/table/data-table";
+import { DataTable, dataTableColumnHelper, type DataTableGroup } from "@/components/table/data-table";
 import { buttonVariants } from "@/components/ui/button";
 import { CERTIFICATE_STATUS_BADGE } from "@/lib/certificate-status";
 import { DEMO_LOAN_STATUS_LABEL, DEMO_LOAN_STATUS_VARIANT, RETURN_CONDITION_LABEL, RETURN_CONDITION_VARIANT } from "@/lib/demo-loan";
 import { formatDate } from "@/lib/format";
 import type { AssetOwnership } from "@/generated/prisma/enums";
-import { ASSET_OWNERSHIP_LABEL, ownershipText, rackLocationLabel } from "@/lib/inventory";
+import {
+  ASSET_OWNERSHIP_LABEL,
+  NO_RACK_GROUP,
+  ownershipText,
+  rackGroupComparator,
+  rackGroupKey,
+  rackLocationLabel,
+  sortUnitsByRack,
+} from "@/lib/inventory";
 import { ASSET_CATEGORY_LABEL } from "@/lib/labels";
 import type { AssetRow } from "@/lib/services/asset-queries";
 import { AssetFormDialog, DeleteAssetButton, type RackOption } from "./asset-dialogs";
@@ -54,14 +62,29 @@ type OwnershipFilter = "ALL" | AssetOwnership;
 export function InventoryTable({ rows, racks, canManage }: { rows: AssetRow[]; racks: RackOption[]; canManage: boolean }) {
   const [location, setLocation] = useState<LocationFilter>("ALL");
   const [ownership, setOwnership] = useState<OwnershipFilter>("ALL");
-  const data = useMemo(
-    () =>
-      rows.filter(
-        (r) =>
-          (location === "ALL" || (location === "IN_RACK" ? r.rackPosition : !r.rackPosition)) && (ownership === "ALL" || r.ownership === ownership),
-      ),
-    [rows, location, ownership],
-  );
+  // 2026-11-19: dikelompokkan per rak (sekat per rak, urut posisi fisik) — bawaan menyala, bisa dimatikan.
+  const [grouped, setGrouped] = useState(true);
+  const data = useMemo(() => {
+    const filtered = rows.filter(
+      (r) => (location === "ALL" || (location === "IN_RACK" ? r.rackPosition : !r.rackPosition)) && (ownership === "ALL" || r.ownership === ownership),
+    );
+    return grouped ? sortUnitsByRack(filtered) : filtered;
+  }, [rows, location, ownership, grouped]);
+
+  const groupBy = useMemo<DataTableGroup<AssetRow> | undefined>(() => {
+    if (!grouped) return undefined;
+    const names = new Map(rows.map((row) => [rackGroupKey(row), row.rackName ?? ""]));
+    const label = (key: string) => (key === NO_RACK_GROUP ? "Tidak di rak" : names.get(key) || "Rak");
+    return {
+      key: rackGroupKey,
+      compare: rackGroupComparator(label),
+      label,
+      summary: (_key, units) => {
+        const onLoan = units.filter((unit) => unit.activeLoan?.status === "ON_LOAN").length;
+        return `${units.length} unit${onLoan ? ` · ${onLoan} sedang dipinjam` : ""}`;
+      },
+    };
+  }, [rows, grouped]);
 
   const columns = useMemo(
     () =>
@@ -189,6 +212,17 @@ export function InventoryTable({ rows, racks, canManage }: { rows: AssetRow[]; r
         searchPlaceholder="Cari perangkat, serial, rak, principal…"
         rowNoun="unit"
         emptyMessage="Belum ada unit terdaftar."
+        groupBy={groupBy}
+        // 25 per halaman (2026-11-19): satu rak (± 10–20 unit) umumnya muat di satu halaman, halaman tetap ringan;
+        // bisa diganti 10 / 50.
+        pageSize={25}
+        pageSizeOptions={[10, 25, 50]}
+        toolbar={
+          <label className="flex min-h-11 cursor-pointer items-center gap-2.5 text-[13px] font-bold text-ink-2">
+            <input type="checkbox" checked={grouped} onChange={(event) => setGrouped(event.target.checked)} className="size-[18px] cursor-pointer accent-[var(--brand)]" />
+            Kelompokkan per rak
+          </label>
+        }
       />
     </div>
   );

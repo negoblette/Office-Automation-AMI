@@ -8,6 +8,7 @@ import { getHealthSummary, listHealthCategories, listHealthClaims } from "@/lib/
 import { HealthClaimDialog } from "./claim-form";
 import { HealthClaimTable } from "./claim-table";
 import { HealthSummaryCard, KesehatanTabs } from "./health-ui";
+import { MonthlyRecapForm } from "./monthly-recap-form";
 
 export const metadata: Metadata = { title: "Kesehatan" };
 
@@ -45,6 +46,12 @@ export default async function KesehatanPage() {
       <KesehatanTabs active="klaim" isAdmin={isAdmin} />
       {summary && <HealthSummaryCard summary={summary} />}
 
+      {/* Rekap bulanan (2026-11-19): pilih karyawan & bulan → PDF semua klaim bulan itu. */}
+      <MonthlyRecapForm
+        claims={exportItems.map((item) => ({ employeeId: item.employeeId, employeeName: item.employeeName, month: item.month }))}
+        allowAllEmployees={isAdmin}
+        defaultEmployeeId={user.employeeId}
+      />
       {/* Ekspor laporan (2026-11-09): pilih karyawan → pilih klaim → Ekspor PDF / Excel. */}
       <ExportSelector
         items={exportItems}

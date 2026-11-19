@@ -49,3 +49,44 @@ export const rackRangeLabel = (rack: { columns: number; rows: number }) => `A1�
 export function rackLocationLabel(rackName: string | null | undefined, position: string | null | undefined): string | null {
   return rackName && position ? `${rackName} · ${position}` : null;
 }
+
+// ---------------------------------------------------------------------
+// Daftar Unit dikelompokkan per rak (2026-11-19): sekat per rak, "Tidak di rak" paling bawah.
+// ---------------------------------------------------------------------
+
+/** Kunci kelompok unit yang tidak disimpan di rak. */
+export const NO_RACK_GROUP = "__tanpa-rak";
+
+type RackedUnit = { rackId: string | null; rackName: string | null; rackPosition: string | null; deviceName: string; serialNo: string };
+
+const natural = (a: string, b: string) => a.localeCompare(b, "id", { numeric: true, sensitivity: "base" });
+
+/** Kelompok unit = raknya (hanya bila punya posisi, sama dengan filter "Di rak"); selain itu "Tidak di rak". */
+export function rackGroupKey(unit: Pick<RackedUnit, "rackId" | "rackPosition">): string {
+  return unit.rackId && unit.rackPosition ? unit.rackId : NO_RACK_GROUP;
+}
+
+/** Pembanding kelompok: nama rak urut alami (Rak 2 sebelum Rak 10), "Tidak di rak" selalu terakhir. */
+export function rackGroupComparator(nameOf: (key: string) => string) {
+  return (a: string, b: string) => {
+    if (a === b) return 0;
+    if (a === NO_RACK_GROUP || b === NO_RACK_GROUP) return a === NO_RACK_GROUP ? 1 : -1;
+    return natural(nameOf(a), nameOf(b)) || a.localeCompare(b);
+  };
+}
+
+/**
+ * Urutan bawaan Daftar Unit per rak: kelompok rak, lalu posisi seperti susunan fisik (A1, A2, …, A10, B1), lalu nama
+ * perangkat & serial. Tidak mengubah array asal.
+ */
+export function sortUnitsByRack<T extends RackedUnit>(units: T[]): T[] {
+  const names = new Map(units.map((unit) => [rackGroupKey(unit), unit.rackName ?? ""]));
+  const compareGroup = rackGroupComparator((key) => names.get(key) ?? "");
+  return [...units].sort(
+    (a, b) =>
+      compareGroup(rackGroupKey(a), rackGroupKey(b)) ||
+      natural(a.rackPosition ?? "", b.rackPosition ?? "") ||
+      natural(a.deviceName, b.deviceName) ||
+      natural(a.serialNo, b.serialNo),
+  );
+}

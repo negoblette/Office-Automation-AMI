@@ -51,6 +51,22 @@ export function dataTableColumnHelper<TData extends RowData>() {
   return createColumnHelper<DataTableFeatures, TData>();
 }
 
+/**
+ * Pengelompokan baris dengan sekat (2026-11-19, Daftar Unit per rak). Baris diurutkan per kelompok SEBELUM dibagi per
+ * halaman (pencarian, urut kolom, & paginasi tetap benar); di dalam kelompok mengikuti urutan kolom yang dipilih, atau
+ * urutan `data` bila belum memilih. Sekat = `<th scope="rowgroup">` per `<tbody>` (tabel) / grup berlabel (kartu HP).
+ */
+export type DataTableGroup<TData> = {
+  /** Kunci kelompok per baris. */
+  key: (row: TData) => string;
+  /** Urutan antar kelompok. */
+  compare: (a: string, b: string) => number;
+  /** Nama kelompok (teks) — judul sekat & label grup untuk pembaca layar. */
+  label: (key: string) => string;
+  /** Keterangan di sekat, mis. "12 unit · 2 dipinjam"; `rows` = semua baris kelompok itu yang lolos pencarian. */
+  summary?: (key: string, rows: TData[]) => string;
+};
+
 type DataTableProps<TData extends RowData> = {
   /**
    * Definisi kolom. Karena berisi fungsi, kolom harus didefinisikan di Client Component
@@ -74,6 +90,10 @@ type DataTableProps<TData extends RowData> = {
    * geser ke samping. `table`: tetap tabel yang bisa digeser.
    */
   mobileLayout?: "cards" | "table";
+  /** Kelompokkan baris dengan sekat (lihat `DataTableGroup`). */
+  groupBy?: DataTableGroup<TData>;
+  /** Pilihan jumlah baris per halaman (2026-11-19), mis. [10, 25, 50]; kosong = tetap `pageSize`. */
+  pageSizeOptions?: number[];
 };
 
 export function DataTable<TData extends RowData>({
@@ -86,6 +106,8 @@ export function DataTable<TData extends RowData>({
   emptyMessage = "Belum ada data.",
   getRowId,
   mobileLayout = "cards",
+  groupBy,
+  pageSizeOptions,
 }: DataTableProps<TData>) {
   // State (sorting, pencarian, halaman) dikelola internal oleh tabel.
   const table = useTable({
@@ -102,8 +124,92 @@ export function DataTable<TData extends RowData>({
   const pageCount = table.getPageCount();
   const totalRows = table.getFilteredRowModel().rows.length;
   const cards = mobileLayout === "cards";
-  const rows = table.getRowModel().rows;
   const emptyText = globalFilter ? `Tidak ada hasil untuk "${globalFilter}".` : emptyMessage;
+
+  // Dikelompokkan: semua baris (sudah dicari & diurutkan) diurutkan stabil per kelompok, lalu dipotong per halaman —
+  // jumlah baris sama, jadi tombol halaman bawaan tetap benar. Halaman yang dimulai di tengah kelompok → "(lanjutan)".
+  let rows = table.getRowModel().rows;
+  type PageRow = (typeof rows)[number];
+  type Segment = { key: string; label: string; summary: string | null; continued: boolean; rows: PageRow[] };
+  let segments: Segment[] | null = null;
+  if (groupBy) {
+    const all = [...table.getSortedRowModel().rows].sort((a, b) => groupBy.compare(groupBy.key(a.original), groupBy.key(b.original)));
+    const size = table.state.pagination.pageSize;
+    const start = pageIndex * size;
+    rows = all.slice(start, start + size);
+    const members = new Map<string, TData[]>();
+    for (const row of all) {
+      const key = groupBy.key(row.original);
+      members.set(key, [...(members.get(key) ?? []), row.original]);
+    }
+    const list: Segment[] = [];
+    rows.forEach((row, index) => {
+      const key = groupBy.key(row.original);
+      const last = list.at(-1);
+      if (last?.key === key) last.rows.push(row);
+      else
+        list.push({
+          key,
+          label: groupBy.label(key),
+          summary: groupBy.summary?.(key, members.get(key) ?? []) ?? null,
+          continued: index === 0 && start > 0 && groupBy.key(all[start - 1].original) === key,
+          rows: [row],
+        });
+    });
+    segments = list;
+  }
+
+  const renderCard = (row: PageRow) => {
+    const [first, ...rest] = row.getAllCells();
+    const fields = rest.filter((cell) => cell.column.id !== "actions" && typeof cell.column.columnDef.header === "string");
+    const actions = rest.filter((cell) => !fields.includes(cell));
+    return (
+      <li key={row.id} className="flex min-w-0 flex-col gap-3 rounded-[18px] bg-card p-4 shadow-[inset_0_0_0_1px_var(--line)]">
+        {first && (
+          <div className="min-w-0 wrap-anywhere">
+            <table.FlexRender cell={first} />
+          </div>
+        )}
+        {fields.length > 0 && (
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+            {fields.map((cell) => (
+              <div key={cell.id} className="flex min-w-0 flex-col gap-1">
+                <dt className="text-[12px] font-bold tracking-[0.02em] text-ink-3 uppercase">{String(cell.column.columnDef.header)}</dt>
+                <dd className="min-w-0 wrap-anywhere text-ink">
+                  <table.FlexRender cell={cell} />
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        {actions.length > 0 && (
+          <div className="-mx-1 flex flex-wrap items-center justify-end gap-2 pt-3 shadow-[inset_0_1px_0_var(--line)]">
+            {actions.map((cell) => (
+              <table.FlexRender key={cell.id} cell={cell} />
+            ))}
+          </div>
+        )}
+      </li>
+    );
+  };
+
+  const renderRow = (row: PageRow) => (
+    <TableRow key={row.id}>
+      {row.getAllCells().map((cell) => (
+        <TableCell key={cell.id} className="whitespace-normal">
+          <table.FlexRender cell={cell} />
+        </TableCell>
+      ))}
+    </TableRow>
+  );
+
+  const groupTitle = (segment: Segment) => (
+    <>
+      <span className="text-[14px] font-bold text-ink">{segment.label}</span>
+      {segment.continued && <span className="font-medium text-ink-3"> (lanjutan)</span>}
+      {segment.summary && <span className="font-medium text-ink-3"> · {segment.summary}</span>}
+    </>
+  );
 
   // Urutkan versi HP: judul kolom tidak tampil di kartu, jadi pengurutan lewat pilihan.
   const sortableColumns = table.getAllLeafColumns().filter((column) => column.getCanSort() && typeof column.columnDef.header === "string");
@@ -159,42 +265,17 @@ export function DataTable<TData extends RowData>({
 
       {cards && (
         <div className="md:hidden">
-          {rows.length ? (
-            <ul className="flex flex-col gap-2.5">
-              {rows.map((row) => {
-                const [first, ...rest] = row.getAllCells();
-                const fields = rest.filter((cell) => cell.column.id !== "actions" && typeof cell.column.columnDef.header === "string");
-                const actions = rest.filter((cell) => !fields.includes(cell));
-                return (
-                  <li key={row.id} className="flex min-w-0 flex-col gap-3 rounded-[18px] bg-card p-4 shadow-[inset_0_0_0_1px_var(--line)]">
-                    {first && (
-                      <div className="min-w-0 wrap-anywhere">
-                        <table.FlexRender cell={first} />
-                      </div>
-                    )}
-                    {fields.length > 0 && (
-                      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                        {fields.map((cell) => (
-                          <div key={cell.id} className="flex min-w-0 flex-col gap-1">
-                            <dt className="text-[12px] font-bold tracking-[0.02em] text-ink-3 uppercase">{String(cell.column.columnDef.header)}</dt>
-                            <dd className="min-w-0 wrap-anywhere text-ink">
-                              <table.FlexRender cell={cell} />
-                            </dd>
-                          </div>
-                        ))}
-                      </dl>
-                    )}
-                    {actions.length > 0 && (
-                      <div className="-mx-1 flex flex-wrap items-center justify-end gap-2 pt-3 shadow-[inset_0_1px_0_var(--line)]">
-                        {actions.map((cell) => (
-                          <table.FlexRender key={cell.id} cell={cell} />
-                        ))}
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+          {rows.length && segments ? (
+            <div className="flex flex-col gap-4">
+              {segments.map((segment) => (
+                <div key={`${segment.key}-${segment.rows[0].id}`} role="group" aria-label={segment.label} className="flex flex-col gap-2.5">
+                  <p className="rounded-[14px] bg-panel px-4 py-2.5 text-[13px]">{groupTitle(segment)}</p>
+                  <ul className="flex flex-col gap-2.5">{segment.rows.map(renderCard)}</ul>
+                </div>
+              ))}
+            </div>
+          ) : rows.length ? (
+            <ul className="flex flex-col gap-2.5">{rows.map(renderCard)}</ul>
           ) : (
             <p className="rounded-[18px] bg-panel px-4 py-10 text-center text-sm text-ink-3">{emptyText}</p>
           )}
@@ -239,33 +320,63 @@ export function DataTable<TData extends RowData>({
             </TableRow>
           ))}
         </TableHeader>
-        <TableBody>
-          {rows.length ? (
-            rows.map((row) => (
-              <TableRow key={row.id}>
-                {row.getAllCells().map((cell) => (
-                  <TableCell key={cell.id} className="whitespace-normal">
-                    <table.FlexRender cell={cell} />
-                  </TableCell>
-                ))}
+        {rows.length && segments ? (
+          segments.map((segment) => (
+            <TableBody key={`${segment.key}-${segment.rows[0].id}`}>
+              <tr>
+                <th
+                  scope="rowgroup"
+                  colSpan={columns.length}
+                  className="h-11 rounded-[14px] px-3 pt-4 text-left align-bottom text-[13px] font-normal shadow-[inset_0_-1px_0_var(--line)]"
+                >
+                  {groupTitle(segment)}
+                </th>
+              </tr>
+              {segment.rows.map(renderRow)}
+            </TableBody>
+          ))
+        ) : (
+          <TableBody>
+            {rows.length ? (
+              rows.map(renderRow)
+            ) : (
+              <TableRow className="[&:hover>td]:bg-transparent">
+                <TableCell colSpan={columns.length} className="h-28 text-center whitespace-normal text-ink-3">
+                  {emptyText}
+                </TableCell>
               </TableRow>
-            ))
-          ) : (
-            <TableRow className="[&:hover>td]:bg-transparent">
-              <TableCell colSpan={columns.length} className="h-28 text-center whitespace-normal text-ink-3">
-                {emptyText}
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
+            )}
+          </TableBody>
+        )}
       </Table>
       </div>
 
       <div className="flex flex-col gap-3 px-1 pt-1.5 text-[13px] sm:flex-row sm:items-center sm:justify-between">
         {/* role=status: jumlah hasil pencarian dibacakan pembaca layar tanpa memindah fokus. */}
-        <p role="status" className="text-ink-3">
-          {describeRange(pageIndex, table.state.pagination.pageSize, totalRows, rowNoun)}
-        </p>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <p role="status" className="text-ink-3">
+            {describeRange(pageIndex, table.state.pagination.pageSize, totalRows, rowNoun)}
+          </p>
+          {pageSizeOptions && pageSizeOptions.length > 1 && totalRows > Math.min(...pageSizeOptions) && (
+            <label className="flex items-center gap-2 font-bold text-ink-2">
+              Per halaman
+              <select
+                value={table.state.pagination.pageSize}
+                onChange={(event) => {
+                  table.setPageSize(Number(event.target.value));
+                  table.setPageIndex(0);
+                }}
+                className="h-11 cursor-pointer rounded-[12px] border-0 bg-white px-2.5 text-sm font-medium text-ink shadow-[inset_0_0_0_1px_var(--edge)] outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--brand),0_0_0_4px_var(--brand-ring)]"
+              >
+                {pageSizeOptions.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
         {pageCount > 1 && (
           <nav aria-label="Paginasi" className="flex items-center gap-1">
             <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>

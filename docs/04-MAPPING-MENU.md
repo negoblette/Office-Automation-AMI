@@ -33,6 +33,7 @@ approval flow pengajuan tersebut.
 | └ Saldo | `/cuti/saldo` | Semua karyawan | Milik sendiri |
 | └ Kalender Libur (libur nasional otomatis dari kalender Google tiap hari + tombol Sinkronkan sekarang & riwayat perubahan, Admin) | `/cuti/kalender` | Kelola | Lihat |
 | **Kesehatan** | `/kesehatan` | Ajukan + lihat semua | Ajukan + milik sendiri |
+| └ Rekap bulanan (PDF) per karyawan / semua karyawan | `/cetak/kesehatan?bulan=YYYY-MM&karyawan=<id>` | ✔ satu / semua karyawan | Milik sendiri |
 | └ Jadwal Pembayaran | `/kesehatan/pembayaran` | ✔ | — |
 | **Project** | `/project` | ✔ | Lihat |
 | └ Customer & Project | `/project/customer` | Kelola | — |

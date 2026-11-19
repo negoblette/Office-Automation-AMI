@@ -667,6 +667,35 @@ ikut dikirimi; perpanjangan lewat approval Ko Yosep.
   Terlambat, ajukan / batalkan / setujui perpanjangan, HP tanpa geser, axe 0, link perpanjangan, riwayat unit) ·
   [x] lint/typecheck · [x] test penuh 602 lulus, 3 gagal lama dari `main`
 - Belum: perpanjangan untuk peminjaman yang belum diantar (tidak perlu: jatuh tempo baru dipantau setelah Dipinjam)
+### Tambahan: rekap kesehatan bulanan, pagination Riwayat Unit & Daftar Unit ✅ (2026-11-19)
+- [x] **Kesehatan → Rekap bulanan (PDF)**: pilih karyawan (Admin: satu / **Semua karyawan**; staf: dirinya) & bulan (hanya
+      bulan yang punya klaim menunggu / disetujui) → `/cetak/kesehatan?bulan=YYYY-MM&karyawan=<id>`: semua klaim menunggu /
+      disetujui berdasarkan **tanggal klaim**, per karyawan dengan plafon & sisa tahun itu; "Semua karyawan" diawali halaman
+      ringkasan (jumlah klaim, menunggu, diajukan, disetujui per karyawan + total). Query `healthMonthlyGroups`: selain
+      Admin selalu hanya miliknya sendiri (parameter karyawan diabaikan); bulan & id divalidasi. Mode `?ids=` tetap
+- [x] **Riwayat Unit** (detail unit): 10 per halaman lewat `?riwayat=<n>#riwayat` (server, bisa dibagikan, tanpa
+      JavaScript); nomor di luar jangkauan → halaman terdekat
+- [x] **Daftar Unit**: 25 per halaman (satu rak umumnya muat satu halaman) + pilihan **Per halaman** 10 / 25 / 50
+      (`DataTable` opsi `pageSizeOptions`, muncul bila data lebih dari pilihan terkecil)
+- **Cek:** [x] 2 DB test rekap (status, batas Desember → Januari, hak akses staf) · [x] uji browser 16/16 (data uji
+  3 klaim + 30 unit, dibersihkan): form & pilihan, PDF semua karyawan 3 halaman, satu karyawan, bulan tidak valid, 25 &
+  ganti 10 per halaman, riwayat di luar jangkauan, axe 0 · [x] test penuh 616 lulus, 3 gagal lama · [x] lint/typecheck
+- Catatan: navigasi halaman Riwayat Unit belum terlihat di data dev (unit terbanyak 6 riwayat); riwayat tidak bisa dibuat
+  tiruan tanpa meninggalkan audit permanen
+
+### Tambahan: Daftar Unit dikelompokkan per rak ✅ (2026-11-19)
+Permintaan user: Daftar Unit disortir per rak dengan sekat (Rak 1, lalu Rak 2, …).
+- [x] Saklar **Kelompokkan per rak** (bawaan menyala): sekat per rak berisi nama rak, jumlah unit, dan yang sedang
+      dipinjam; rak urut alami (Rak 2 sebelum Rak 10), isi rak urut posisi fisik (A1, A2, …, A10, B1) lalu nama & serial;
+      **Tidak di rak** paling bawah; unit yang dipinjam tetap di bawah rak asalnya (posisinya disiapkan untuk kembali)
+- [x] Pencarian & filter tetap berlaku (jumlah di sekat ikut hasil, rak tanpa hasil disembunyikan); klik judul kolom
+      mengurutkan isi tiap rak; halaman yang dimulai di tengah rak bersekat "(lanjutan)"
+- [x] `DataTable` mendapat opsi `groupBy` (dipakai tabel lain bila perlu): urut per kelompok sebelum paginasi; sekat =
+      `<th scope="rowgroup">` per `<tbody>`, di HP grup kartu berlabel. Aturan urut di `lib/inventory.ts`
+      (`sortUnitsByRack`, `rackGroupKey`, `rackGroupComparator`)
+- **Cek:** [x] unit test urutan · [x] uji browser (data uji 2 rak + 12 unit, dibersihkan): sekat & urutan, lanjutan di
+  halaman 2, pencarian, urut kolom, saklar, HP tanpa geser, axe 0 · [x] lint/typecheck
+
 ### Tambahan: Kalender Libur mengikuti libur nasional otomatis ✅ (2026-11-18)
 Permintaan user: libur nasional tidak lagi diketik manual, diambil gratis, tampil langsung, minimal 1 tahun ke depan;
 "kalau ada perubahan dicek lagi, kalau sudah tetap tanggal yang salah segera diperbaiki"; notifikasi ke Ci Ika (HR) &

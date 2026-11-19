@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { EmptyState } from "@/components/shared/empty-state";
+import { describeRange, getPageNumbers } from "@/components/table/pagination";
 import { PageHeader } from "@/components/shared/page-header";
 import { buttonVariants } from "@/components/ui/button";
 import { requireInventory } from "@/lib/auth/inventory";
@@ -32,10 +33,17 @@ const EVENT_ICON: Record<AssetHistoryEvent["kind"], { icon: LucideIcon; tile: st
   rejected: { icon: CircleAlert, tile: "bg-red-soft text-red-deep" },
 };
 
-/** Detail unit: data, peminjaman, dan riwayat lengkap (siapa mengubah apa, kapan; pengajuan pinjam & keputusannya). */
-export default async function AssetDetailPage({ params }: { params: Promise<{ id: string }> }) {
+/** Riwayat Unit per halaman (2026-11-19, permintaan user: maksimal 10). */
+const HISTORY_PAGE_SIZE = 10;
+
+/**
+ * Detail unit: data, peminjaman, dan riwayat lengkap (siapa mengubah apa, kapan; pengajuan pinjam & keputusannya).
+ * Riwayat dibagi per halaman lewat `?riwayat=<n>` (link bisa dibagikan, tanpa JavaScript).
+ */
+export default async function AssetDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ riwayat?: string }> }) {
   const { access } = await requireInventory("view");
   const { id } = await params;
+  const { riwayat } = await searchParams;
   const [asset] = await listAssets(prisma, id);
   if (!asset) notFound();
   const [loans, history, racks] = await Promise.all([
@@ -44,6 +52,12 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
     access.canManage ? listRacks(prisma) : [],
   ]);
   const busy = loans.some((loan) => isActiveLoanStatus(loan.status));
+  // Halaman riwayat: angka tidak valid / di luar jangkauan → halaman terdekat yang ada.
+  const historyPages = Math.max(1, Math.ceil(history.length / HISTORY_PAGE_SIZE));
+  const requestedPage = Number.parseInt(riwayat ?? "1", 10);
+  const historyPage = Number.isInteger(requestedPage) ? Math.min(Math.max(requestedPage, 1), historyPages) : 1;
+  const historyShown = history.slice((historyPage - 1) * HISTORY_PAGE_SIZE, historyPage * HISTORY_PAGE_SIZE);
+  const historyHref = (page: number) => `/inventory/${asset.id}${page > 1 ? `?riwayat=${page}` : ""}#riwayat`;
   const rackOptions = racks.map(({ id: rackId, name, columns, rows }) => ({ id: rackId, name, columns, rows }));
 
   return (
@@ -135,7 +149,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
         </ul>
       )}
 
-      <div className="space-y-1">
+      <div id="riwayat" className="scroll-mt-24 space-y-1">
         <h2 className="text-lg font-semibold">Riwayat Unit</h2>
         <p className="text-sm text-muted-foreground">Setiap perubahan data unit dan setiap pengajuan pinjam, terbaru di atas.</p>
       </div>
@@ -143,7 +157,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
         <EmptyState title="Belum ada riwayat" description="Perubahan data unit dan pengajuan pinjam akan tercatat di sini." />
       ) : (
         <ol className="flex flex-col rounded-2xl bg-card p-2 shadow-card">
-          {history.map((event) => {
+          {historyShown.map((event) => {
             const { icon: Icon, tile } = EVENT_ICON[event.kind];
             return (
               <li key={event.id} className="flex gap-3.5 rounded-[14px] px-3 py-3">
@@ -185,6 +199,57 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
           })}
         </ol>
       )}
+      {history.length > 0 && (
+        <div className="-mt-3 flex flex-col gap-3 px-1 text-[13px] sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-ink-3">{describeRange(historyPage - 1, HISTORY_PAGE_SIZE, history.length, "riwayat")}</p>
+          {historyPages > 1 && (
+            <nav aria-label="Halaman riwayat" className="flex items-center gap-1">
+              <PageLink href={historyHref(historyPage - 1)} disabled={historyPage === 1}>
+                Sebelumnya
+              </PageLink>
+              <span className="px-2 font-semibold text-ink-2 tabular-nums sm:hidden">
+                {historyPage} / {historyPages}
+              </span>
+              {getPageNumbers(historyPage, historyPages).map((page, index) =>
+                page === "…" ? (
+                  <span key={`gap-${index}`} className="hidden px-1 text-ink-3 sm:inline">
+                    …
+                  </span>
+                ) : (
+                  <Link
+                    key={page}
+                    href={historyHref(page)}
+                    aria-label={`Halaman ${page}`}
+                    aria-current={page === historyPage ? "page" : undefined}
+                    className={cn(buttonVariants({ size: "sm", variant: page === historyPage ? "default" : "ghost" }), "hidden min-w-9 sm:inline-flex", page === historyPage && "pointer-events-none")}
+                  >
+                    {page}
+                  </Link>
+                ),
+              )}
+              <PageLink href={historyHref(historyPage + 1)} disabled={historyPage === historyPages}>
+                Selanjutnya
+              </PageLink>
+            </nav>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+/** Tombol Sebelumnya / Selanjutnya: link biasa; di ujung jadi teks nonaktif (bukan link mati). */
+function PageLink({ href, disabled, children }: { href: string; disabled: boolean; children: React.ReactNode }) {
+  if (disabled) {
+    return (
+      <span aria-disabled="true" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "pointer-events-none opacity-50")}>
+        {children}
+      </span>
+    );
+  }
+  return (
+    <Link href={href} className={buttonVariants({ variant: "outline", size: "sm" })}>
+      {children}
+    </Link>
   );
 }
