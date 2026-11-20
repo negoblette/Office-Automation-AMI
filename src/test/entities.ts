@@ -123,5 +123,26 @@ export async function createApprovalEntity(module: ApprovalModule, requesterUser
       });
       return extension.id;
     }
+    case "DEMO_LOAN_RETURN": {
+      // Verifikasi Pengecekan Unit (2026-11-20): entityId = DemoLoan.id yang sedang RETURN_REVIEW.
+      const loan = await testDb.demoLoan.create({
+        data: {
+          number: `UJI-${randomUUID()}`,
+          status: "RETURN_REVIEW",
+          purpose: "POC",
+          requesterId: requesterUserId,
+          picId: user.employeeId!,
+          unitOwner: "AMI",
+          borrowerName: "PT Uji",
+          contactName: "Kontak Uji",
+          contactEmail: "kontak@uji.test",
+          startDate: new Date(),
+          dueDate: new Date(Date.now() + 30 * 86_400_000),
+          submittedAt: new Date(),
+          deliveredAt: new Date(),
+        },
+      });
+      return loan.id;
+    }
   }
 }
