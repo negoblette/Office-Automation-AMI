@@ -53,28 +53,35 @@ function DialogContent({
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(
-          // Versi tenang (.dialog): putih, radius 26, padding 24, lebar 460px.
-          "fixed top-1/2 left-1/2 z-50 grid max-h-[calc(100%-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-[26px] bg-white p-6 text-sm text-ink shadow-(--elev-dialog) duration-200 outline-none sm:max-w-[460px] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-open:slide-in-from-bottom-3 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          // Versi tenang (.dialog): putih, radius 26, padding 24, lebar 460px. Bingkai luar tidak menggulir (2026-11-20).
+          "fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100%-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[26px] bg-white text-sm text-ink shadow-(--elev-dialog) duration-200 outline-none sm:max-w-[460px] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-open:slide-in-from-bottom-3 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}
       >
-        {children}
-        {showCloseButton && (
-          <DialogPrimitive.Close
-            data-slot="dialog-close"
-            render={
-              <Button
-                variant="ghost"
-                className="absolute top-3 right-3"
-                size="icon"
-              />
-            }
-          >
-            <XIcon aria-hidden />
-            <span className="sr-only">Tutup</span>
-          </DialogPrimitive.Close>
-        )}
+        {/* Isi yang menggulir: scrollbar di DALAM kartu, berjarak dari sudut membulat (dulu bingkainya sendiri yang menggulir,
+            jadi scrollbar Windows menempel di tepi luar kartu). Jarak 12/6 px + padding = tetap 24 px dari tepi. */}
+        <div
+          data-slot="dialog-body"
+          className="relative my-3 mr-1.5 grid min-h-0 gap-4 overflow-y-auto overscroll-contain py-3 pr-[18px] pl-6 [scrollbar-width:thin]"
+        >
+          {children}
+          {showCloseButton && (
+            <DialogPrimitive.Close
+              data-slot="dialog-close"
+              render={
+                <Button
+                  variant="ghost"
+                  className="absolute top-0 right-1.5"
+                  size="icon"
+                />
+              }
+            >
+              <XIcon aria-hidden />
+              <span className="sr-only">Tutup</span>
+            </DialogPrimitive.Close>
+          )}
+        </div>
       </DialogPrimitive.Popup>
     </DialogPortal>
   )

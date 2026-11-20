@@ -39,8 +39,9 @@ const NO_RACK = "__none__";
 /**
  * Pengecekan Unit (Tahap 16.5, revisi 2026-11-19 — setelah barang diambil kurir & tiba di AMI, kembali sepenuhnya):
  * tanggal tiba, siapa yang menyerahkan di peminjam (opsional, sesuai HAF), lalu cek setiap unit — kondisi (wajib dipilih),
- * catatan (wajib bila Rusak / Tidak lengkap), posisi rak tempat ditaruh (bawaan: posisi semula). Simpan → Menunggu
- * verifikasi engineer (approval, 2026-11-20), lalu Selesai atau Perlu Tindak Lanjut. Dicek ulang di server.
+ * catatan (wajib bila Rusak / Tidak lengkap), posisi rak tempat ditaruh (bawaan: posisi semula). Simpan → ada unit
+ * bermasalah: Perlu Tindak Lanjut dulu; semua Baik: Menunggu verifikasi engineer (approval) → Selesai (revisi
+ * 2026-11-20). Dicek ulang di server.
  */
 export function ReturnForm({
   loanId,
@@ -115,8 +116,9 @@ export function ReturnForm({
 
         {flagged > 0 && (
           <p role="status" className="rounded-2xl bg-amber-soft px-5 py-4 text-sm text-amber-deep">
-            <span className="font-semibold">{flagged} unit rusak / tidak lengkap.</span> Setelah hasil cek diverifikasi engineer, peminjaman
-            berstatus Perlu Tindak Lanjut (belum Selesai), unit tersebut tertahan, dan PIC & Operational diberi tahu lewat email & lonceng.
+            <span className="font-semibold">{flagged} unit rusak / tidak lengkap.</span> Setelah disimpan, peminjaman berstatus Perlu Tindak
+            Lanjut (belum Selesai), unit tersebut tertahan, dan PIC & Operational diberi tahu lewat email & lonceng. Setelah tindak lanjut
+            selesai, hasilnya diverifikasi engineer.
           </p>
         )}
         {incomplete && <FormAlert message="Masih ada unit yang belum dicek atau isian yang kurang. Periksa kolom yang ditandai." />}

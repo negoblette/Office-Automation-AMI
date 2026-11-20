@@ -153,7 +153,8 @@ const RESULT_STYLE: Record<FollowUpResult, string> = {
 
 /**
  * Operational: selesaikan tindak lanjut (2026-11-20) — hasil tiap unit bermasalah (sudah lengkap / diperbaiki, atau
- * tetap rusak / tidak lengkap) + catatan wajib. Setelah disimpan peminjaman Selesai & unit bebas lagi (dicek di server).
+ * tetap rusak / tidak lengkap) + catatan wajib. Setelah disimpan, hasil pengecekan & tindak lanjut diverifikasi engineer
+ * (approval Ko Yosep, revisi 2026-11-20); disetujui → Selesai & unit bebas lagi (dicek di server).
  */
 export function ResolveFollowUpDialog({ loanId, units }: { loanId: string; units: FollowUpUnit[] }) {
   return (
@@ -165,11 +166,11 @@ export function ResolveFollowUpDialog({ loanId, units }: { loanId: string; units
         </Button>
       }
       title="Selesaikan tindak lanjut"
-      description="Isi hasil tiap unit yang kembali rusak / tidak lengkap. Setelah disimpan, peminjaman Selesai dan unit bisa dipinjam lagi; unit yang tetap rusak tetap ditandai di Daftar Unit."
+      description="Isi hasil tiap unit yang kembali rusak / tidak lengkap. Setelah disimpan, hasil pengecekan & tindak lanjut diverifikasi engineer; setelah disetujui peminjaman Selesai dan unit bisa dipinjam lagi. Unit yang tetap rusak tetap ditandai di Daftar Unit."
       schema={resolveFollowUpSchema}
       defaults={{ note: "", items: units.map((unit) => ({ itemId: unit.itemId, result: "" as never })) }}
-      submitLabel="Simpan & Selesaikan"
-      successMessage="Tindak lanjut selesai — peminjaman Selesai"
+      submitLabel="Simpan & Minta Verifikasi"
+      successMessage="Tindak lanjut tersimpan — menunggu verifikasi engineer"
       action={(values) => resolveFollowUpAction(loanId, values)}
     >
       <ol className="flex flex-col gap-3" aria-label="Unit yang ditindaklanjuti">

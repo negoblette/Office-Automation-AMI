@@ -1,6 +1,7 @@
-// Satu lembar Hardware Admission Form (A4), meniru form kertas AMI. HAF mendata semua barang yang MASUK ke AMI
-// (2026-11-20): unit pinjaman yang diambil kembali dari peminjam (/cetak/peminjaman/[id]/haf) dan barang yang dipinjam
-// AMI dari principal / distributor (/cetak/penerimaan/[id]). Halaman cetak merender 2 lembar: asli, lalu copy.
+// Satu lembar Hardware Admission Form (A4), meniru form kertas AMI. HAF mendata barang yang MASUK ke AMI (2026-11-20):
+// unit pinjaman yang diambil kembali dari peminjam (/cetak/peminjaman/[id]/haf) dan barang yang dipinjam AMI dari
+// principal / distributor (/cetak/penerimaan/[id]) — juga pengembaliannya ke principal / distributor
+// (/cetak/pengembalian/[id], "To :", keputusan user 2026-11-20). Halaman cetak merender 2 lembar: asli, lalu copy.
 import Image from "next/image";
 import { Fragment } from "react";
 import logo from "@/assets/brand/artha-mitra-logo.png";
@@ -12,7 +13,9 @@ const COLUMNS = "grid-cols-[13mm_14mm_minmax(0,1fr)_60mm]";
 
 export type HafSheetData = {
   number: string;
-  /** "From :" (pengirim barang) & "up :" (kontaknya). */
+  /** Label pihak lawan: "From" (barang masuk ke AMI, bawaan) atau "To" (pengembalian ke principal / distributor, 2026-11-20). */
+  partyLabel?: "From" | "To";
+  /** "From :" / "To :" (pihak lawan) & "up :" (kontaknya). */
   from: string;
   contact: string;
   /** Tanggal di kotak Date & kolom tanda tangan (sudah diformat bahasa Inggris). */
@@ -48,7 +51,7 @@ export function HafSheet({ data, copy = false }: { data: HafSheetData; copy?: bo
 
       <div className="mt-6 flex items-end justify-between gap-6">
         <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5 self-end">
-          <p className="font-serif font-bold">From :</p>
+          <p className="font-serif font-bold">{data.partyLabel ?? "From"} :</p>
           <p className="font-semibold wrap-anywhere">{data.from}</p>
           <p className="text-right font-serif">up :</p>
           <p className="wrap-anywhere">{data.contact}</p>
@@ -72,7 +75,7 @@ export function HafSheet({ data, copy = false }: { data: HafSheetData; copy?: bo
       </div>
 
       {/* Tabel unit + tanda tangan: satu kotak bergaris yang mengisi sisa halaman. */}
-      <section aria-label="Unit yang masuk" className="mt-5 flex flex-1 flex-col border border-black">
+      <section aria-label={data.partyLabel === "To" ? "Unit yang dikembalikan" : "Unit yang masuk"} className="mt-5 flex flex-1 flex-col border border-black">
         <div className={`grid ${COLUMNS} border-b border-black text-center font-serif font-bold`}>
           <div className="border-r border-black py-1.5">Item</div>
           <div className="border-r border-black py-1.5">Qty</div>

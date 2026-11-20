@@ -72,7 +72,7 @@ export default async function DemoLoanDetailPage({ params }: { params: Promise<{
   const canSchedulePickup = isOperational && loan.status === "ON_LOAN";
   const pickingUp = loan.status === "PICKUP";
   const canManagePickup = isOperational && pickingUp;
-  // Sudah dicek: menunggu verifikasi engineer, lalu Selesai atau Perlu Tindak Lanjut (2026-11-20).
+  // Sudah dicek (revisi 2026-11-20): unit bermasalah → Perlu Tindak Lanjut dulu, lalu verifikasi engineer → Selesai.
   const reviewing = loan.status === "RETURN_REVIEW";
   const followUp = loan.status === "FOLLOW_UP";
   const returned = loan.status === "RETURNED" || followUp || reviewing;
@@ -479,8 +479,8 @@ function StatusNote({
           {rejected.reason}
           <span className="block pt-1">
             {isOperational
-              ? "Cek ulang unit sesuai catatan, lalu buka Pengecekan Unit dan simpan lagi — verifikasi dimulai ulang."
-              : "Operational mengecek ulang unit, lalu hasilnya diverifikasi lagi."}
+              ? "Cek ulang unit sesuai catatan, lalu buka Pengecekan Unit dan simpan lagi. Unit yang masih rusak / tidak lengkap ditindaklanjuti dulu, baru diverifikasi lagi."
+              : "Operational mengecek ulang unit (dan menindaklanjuti unit bermasalah), lalu hasilnya diverifikasi lagi."}
           </span>
         </>
       ) : (
@@ -497,9 +497,10 @@ function StatusNote({
       break;
     }
     case "RETURN_REVIEW": {
-      // Verifikasi engineer (2026-11-20): hasil Pengecekan Unit menunggu approval (Ko Yosep).
+      // Verifikasi engineer (2026-11-20): hasil Pengecekan Unit (+ tindak lanjutnya, revisi 2026-11-20) menunggu approval.
       const verifier = loan.returnApproval.steps.find((step) => step.status === "PENDING")?.approvers.join(" / ");
       const problems = loan.items.filter((item) => isProblemCondition(item.returnCondition)).length;
+      const followedUp = loan.items.some((item) => isProblemCondition(item.returnCondition) && item.resolvedCondition);
       tone = "info";
       icon = Clock;
       body = (
@@ -508,10 +509,12 @@ function StatusNote({
             Menunggu verifikasi{verifier ? ` ${verifier}` : " engineer"} — barang tiba {loan.returnedAt ? date(loan.returnedAt) : "—"}
             {loan.returnReceiverName && `, dicek ${loan.returnReceiverName}`}.
           </span>{" "}
-          {problems ? `${problems} unit dicatat rusak / tidak lengkap. ` : "Semua unit dicatat Baik. "}
+          {problems
+            ? `${problems} unit dicatat rusak / tidak lengkap${followedUp ? ` dan sudah ditindaklanjuti${loan.followUpNote ? ` (${loan.followUpNote})` : ""}` : ""}. `
+            : "Semua unit dicatat Baik. "}
           {canVerify
-            ? "Cek ulang fisik setiap unit di tabel bawah; Setujui bila sesuai, atau Tolak dengan alasan supaya Operational mengecek ulang."
-            : "Unit tertahan sampai hasil pengecekan disetujui; setelah itu peminjaman Selesai atau Perlu Tindak Lanjut."}
+            ? "Cek ulang fisik setiap unit (dan hasil tindak lanjutnya) di tabel bawah; Setujui bila sesuai, atau Tolak dengan alasan supaya Operational mengecek ulang."
+            : "Unit tertahan sampai hasil pengecekan disetujui; setelah itu peminjaman Selesai."}
         </>
       );
       break;
@@ -537,10 +540,10 @@ function StatusNote({
           </span>
           <span className="block pt-1">
             {isOperational
-              ? "Tindak lanjuti bersama PIC; setelah beres, tekan Selesaikan Tindak Lanjut. Unit di atas tertahan sampai itu, unit lain sudah bisa dipinjam."
+              ? "Tindak lanjuti bersama PIC; setelah beres, tekan Selesaikan Tindak Lanjut — hasilnya lalu diverifikasi engineer. Semua unit peminjaman ini tertahan sampai verifikasi disetujui."
               : isPic
-                ? "Anda PIC peminjaman ini — bantu tindak lanjuti dengan peminjam. Operational menutup tindak lanjut setelah beres."
-                : "PIC & Operational sedang menindaklanjuti; unit di atas tertahan sampai selesai."}
+                ? "Anda PIC peminjaman ini — bantu tindak lanjuti dengan peminjam. Operational menutup tindak lanjut setelah beres, lalu engineer memverifikasi."
+                : "PIC & Operational sedang menindaklanjuti; setelah itu engineer memverifikasi. Semua unit peminjaman ini tertahan sampai verifikasi disetujui."}
           </span>
         </>
       );

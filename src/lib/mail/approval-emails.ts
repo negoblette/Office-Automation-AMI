@@ -3,7 +3,7 @@ import type { ApprovalModule, PrismaClient } from "@/generated/prisma/client";
 import { formatDuration } from "@/lib/attendance";
 import { formatDate, formatRupiah, formatTime, toJakartaIsoDate } from "@/lib/format";
 import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
-import { formatLoanDuration, groupLoanItems, LOAN_PURPOSE_HINT, LOAN_PURPOSE_LABEL, RETURN_CONDITION_LABEL } from "@/lib/demo-loan";
+import { formatLoanDuration, groupLoanItems, LOAN_PURPOSE_HINT, LOAN_PURPOSE_LABEL, returnCheckLine } from "@/lib/demo-loan";
 import { enqueueDemoLoanEmails, enqueueLoanExtendedEmails, enqueueLoanFollowUpEmails } from "./demo-loan-emails";
 import { LEAVE_TYPE_LABEL, leaveDeductLabel, projectLabel } from "@/lib/labels";
 import { overtimeMinutes } from "@/lib/validators/overtime";
@@ -76,13 +76,10 @@ async function detailLines(db: PrismaClient, module: ApprovalModule, entityId: s
       return [
         `Peminjam: ${loan.borrowerName}${loan.hafNumber ? ` · HAF ${loan.hafNumber}` : ""}`,
         ...(loan.returnedAt ? [`Tiba & dicek: ${formatDate(loan.returnedAt)}`] : []),
-        ...loan.items.map(
-          (item) =>
-            `${item.deviceName} · SN ${item.serialNo} — ${item.returnCondition ? RETURN_CONDITION_LABEL[item.returnCondition] : "-"}${item.returnNote ? `: ${item.returnNote}` : ""}${
-              item.returnRack && item.returnRackPosition ? ` · ditaruh ${item.returnRack.name} ${item.returnRackPosition}` : ""
-            }`,
-        ),
+        ...loan.items.map(returnCheckLine),
         ...(loan.returnNote ? [`Catatan pengembalian: ${loan.returnNote}`] : []),
+        // Tindak lanjut diselesaikan sebelum verifikasi (revisi 2026-11-20).
+        ...(loan.followUpNote ? [`Catatan tindak lanjut: ${loan.followUpNote}`] : []),
       ];
     }
     default:
@@ -176,8 +173,9 @@ export async function enqueueApprovalNotifications(db: PrismaClient, notificatio
       if (request?.module === "DEMO_LOAN") await enqueueDemoLoanEmails(db, request.entityId, "loan-approved");
       // Perpanjangan disetujui (Tahap 16.4): Operational diberi tahu jatuh tempo baru.
       if (request?.module === "DEMO_LOAN_EXTENSION") await enqueueLoanExtendedEmails(db, request.entityId);
-      // Pengecekan diverifikasi (2026-11-20): ada unit bermasalah → email tindak lanjut ke PIC & Operational
-      // (fungsinya sendiri tidak mengirim apa pun bila peminjaman Selesai).
+      // Pengecekan diverifikasi (2026-11-20): hanya verifikasi alur lama (sebelum revisi: tindak lanjut sebelum
+      // approval) yang masih bisa berakhir Perlu Tindak Lanjut → email tindak lanjut ke PIC & Operational. Fungsinya
+      // sendiri tidak mengirim apa pun bila peminjaman Selesai.
       if (request?.module === "DEMO_LOAN_RETURN") await enqueueLoanFollowUpEmails(db, request.entityId);
     }
   }

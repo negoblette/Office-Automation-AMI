@@ -3,7 +3,7 @@ import type { ApprovalModule, Prisma, PrismaClient, RequestStatus } from "@/gene
 import type { ApprovalStepView } from "@/components/shared/approval-stepper";
 import { CORRECTABLE_MODULES, type CorrectionView, listCorrections } from "./approval-correction";
 import { APPEAL_REASON_LABEL, formatDuration } from "@/lib/attendance";
-import { formatLoanDuration, LOAN_PURPOSE_LABEL, loanPurposeDescription, loanPurposeText, RETURN_CONDITION_LABEL } from "@/lib/demo-loan";
+import { formatLoanDuration, LOAN_PURPOSE_LABEL, loanPurposeDescription, loanPurposeText, returnCheckLine } from "@/lib/demo-loan";
 import { ownershipText } from "@/lib/inventory";
 import { formatDate, formatRupiah, formatTime, toJakartaIsoDate } from "@/lib/format";
 import { overtimeMinutes } from "@/lib/validators/overtime";
@@ -246,17 +246,14 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
         const problems = checked.items.filter((item) => item.returnCondition && item.returnCondition !== "GOOD").length;
         const checker = checked.receivedBy ? (checked.receivedBy.employee?.fullName ?? checked.receivedBy.email) : null;
         return {
-          headline: `Pengecekan · ${checked.borrowerName} · ${checked.items.length} unit${problems ? ` · ${problems} rusak / tidak lengkap` : " · semua Baik"}`,
+          headline: `Pengecekan · ${checked.borrowerName} · ${checked.items.length} unit${problems ? ` · ${problems} rusak / tidak lengkap, sudah ditindaklanjuti` : " · semua Baik"}`,
           summary: [
             `Pengecekan Unit peminjaman ke ${checked.borrowerName}${checked.hafNumber ? ` (HAF ${checked.hafNumber})` : ""}`,
             checked.returnedAt && `Tiba & dicek: ${formatDate(checked.returnedAt, "short")}${checker ? ` oleh ${checker}` : ""}`,
-            ...checked.items.map(
-              (item) =>
-                `${item.deviceName} · SN ${item.serialNo} — ${item.returnCondition ? RETURN_CONDITION_LABEL[item.returnCondition] : "-"}${item.returnNote ? `: ${item.returnNote}` : ""}${
-                  item.returnRack && item.returnRackPosition ? ` · ditaruh ${item.returnRack.name} ${item.returnRackPosition}` : ""
-                }`,
-            ),
+            ...checked.items.map(returnCheckLine),
             checked.returnNote && `Catatan: ${checked.returnNote}`,
+            // Tindak lanjut diselesaikan sebelum verifikasi (revisi 2026-11-20).
+            checked.followUpNote && `Catatan tindak lanjut: ${checked.followUpNote}`,
           ]
             .filter(Boolean)
             .join("\n"),

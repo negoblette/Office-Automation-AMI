@@ -49,3 +49,22 @@ export const goodsReceiptSchema = z.object({
     }),
 });
 export type GoodsReceiptInput = z.infer<typeof goodsReceiptSchema>;
+
+/**
+ * Kembalikan barang pinjaman ke principal / distributor (2026-11-20, Operational): pilih unit (boleh sebagian), tanggal,
+ * kontak (up:), karyawan AMI yang menyerahkan (Returned By), penerima di principal (opsional), catatan. Unit harus milik
+ * penerimaan itu & tidak sedang dipinjam — dicek di service.
+ */
+export const goodsReturnSchema = z.object({
+  assetIds: z
+    .array(z.string().min(1))
+    .min(1, { error: "Pilih minimal 1 unit yang dikembalikan" })
+    .max(MAX_LOAN_ITEMS, { error: `Maksimal ${MAX_LOAN_ITEMS} unit dalam satu pengembalian` })
+    .refine((ids) => new Set(ids).size === ids.length, { error: "Ada unit yang terpilih dua kali" }),
+  returnedDate: isoDateSchema,
+  contactName: textSchema("Nama kontak", { min: 2, max: 100 }),
+  returnedById: requiredId("Pilih karyawan yang menyerahkan"),
+  receivedByName: optionalField(textSchema("Nama penerima", { min: 2, max: 100 })),
+  note: optionalField(textSchema("Catatan", { max: 500 })),
+});
+export type GoodsReturnInput = z.infer<typeof goodsReturnSchema>;

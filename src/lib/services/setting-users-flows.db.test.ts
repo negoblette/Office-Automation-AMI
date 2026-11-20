@@ -51,12 +51,12 @@ describe("User & Role", () => {
   it("pengajuan berjalan yang hanya bisa disetujui user itu → ditolak", async () => {
     const entityId = await createApprovalEntity("REIMBURSE", u.andi);
     await testDb.$transaction((tx) => buildApproval(tx, { module: "REIMBURSE", entityId, entityNumber: "RMB/1", requesterId: u.andi }));
-    // Flow diubah: Yosep tidak lagi di flow, tapi snapshot pengajuan masih menunggu Yosep.
-    const flows = await testDb.approvalFlow.findMany({ where: { division: "ENGINEER" } });
-    for (const flow of flows) await saveFlow(testDb, u.rudy, flow.id, { steps: [{ approverIds: [u.rudy] }] });
-    const certFlow = await testDb.approvalFlow.findFirstOrThrow({ where: { module: "CERTIFICATE" } });
-    await saveFlow(testDb, u.rudy, certFlow.id, { steps: [{ approverIds: [u.rudy] }, { approverIds: [u.ika] }] });
-    await expect(setUserRole(testDb, u.rudy, u.yosep, "STAFF")).rejects.toThrow("1 pengajuan");
+    // Flow diubah: Yosep tidak lagi di flow mana pun (Engineer, Overtime, Peminjaman Unit, …), tapi snapshot pengajuan
+    // masih menunggu Yosep. Dicari dari data seed supaya flow baru untuk Yosep tidak membuat test ini usang lagi.
+    const yosepFlows = await testDb.approvalFlow.findMany({ where: { deletedAt: null, steps: { some: { approvers: { some: { userId: u.yosep } } } } } });
+    expect(yosepFlows.length).toBeGreaterThan(0);
+    for (const flow of yosepFlows) await saveFlow(testDb, u.rudy, flow.id, { steps: [{ approverIds: [u.rudy] }] });
+    await expect(setUserRole(testDb, u.rudy, u.yosep, "STAFF")).rejects.toThrow("Masih ada 1 pengajuan yang hanya bisa disetujui");
   });
 
   it("karyawan resign tidak bisa diaktifkan dari Setting User", async () => {

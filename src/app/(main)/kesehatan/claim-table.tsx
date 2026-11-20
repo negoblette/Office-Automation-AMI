@@ -1,10 +1,8 @@
 "use client";
 
-import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { requestStatusBadge } from "@/components/shared/approval-status";
-import { buttonVariants } from "@/components/ui/button";
 import { PersonCell } from "@/components/shared/person-cell";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { DataTable, type DataTableColumn, dataTableColumnHelper } from "@/components/table/data-table";
@@ -137,9 +135,6 @@ export function HealthClaimTable({ rows, showRequester, revise }: { rows: Health
                   }}
                 />
               )}
-              <Link href={`/kesehatan/${row.original.id}`} className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label="Buka detail">
-                <ChevronRight />
-              </Link>
             </div>
           ),
         }),

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PrintLetterhead } from "@/components/print/letterhead";
 import { PrintToolbar } from "@/components/print/print-button";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
@@ -65,11 +66,9 @@ export default async function CetakKesehatanPage({ searchParams }: { searchParam
       <PrintToolbar backHref="/kesehatan" autoPrint />
       {month && sections.length > 1 && (
         <section className="mb-10 break-after-page">
-          <header className="mb-5 border-b-2 border-black pb-3">
-            <p className="text-xs font-bold tracking-widest">PT ARTHA MITRA INTERDATA</p>
-            <h1 className="text-2xl font-bold">Rekap Klaim Kesehatan — {monthLabel(month)}</h1>
+          <PrintLetterhead title={`Rekap Klaim Kesehatan — ${monthLabel(month)}`}>
             <p className="mt-1 text-sm">Semua karyawan · klaim menunggu / disetujui berdasarkan tanggal klaim · rincian per karyawan di halaman berikutnya</p>
-          </header>
+          </PrintLetterhead>
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="border-b border-black text-left">
@@ -86,20 +85,21 @@ export default async function CetakKesehatanPage({ searchParams }: { searchParam
                   <td className="py-1.5 pr-2">{r.name}</td>
                   <td className="py-1.5 pr-2 text-right tabular-nums">{r.count}</td>
                   <td className="py-1.5 pr-2 text-right tabular-nums">{r.pending}</td>
-                  <td className="py-1.5 pr-2 text-right tabular-nums">{formatRupiah(r.requested)}</td>
-                  <td className="py-1.5 text-right tabular-nums">{formatRupiah(r.approved)}</td>
+                  <td className="py-1.5 pr-2 text-right whitespace-nowrap tabular-nums">{formatRupiah(r.requested)}</td>
+                  <td className="py-1.5 text-right whitespace-nowrap tabular-nums">{formatRupiah(r.approved)}</td>
                 </tr>
               ))}
             </tbody>
-            <tfoot className="text-sm">
+            {/* Bukan <tfoot>: tfoot diulang Chrome di bawah setiap lembar — total cukup sekali di akhir (2026-11-20). */}
+            <tbody className="text-sm break-inside-avoid">
               <tr>
                 <td className="pt-3 pr-2 font-bold">Total ({recap.length} karyawan)</td>
                 <td className="pt-3 pr-2 text-right font-bold tabular-nums">{recap.reduce((n, r) => n + r.count, 0)}</td>
                 <td className="pt-3 pr-2 text-right font-bold tabular-nums">{recap.reduce((n, r) => n + r.pending, 0)}</td>
-                <td className="pt-3 pr-2 text-right font-bold tabular-nums">{formatRupiah(recap.reduce((n, r) => n + r.requested, 0))}</td>
-                <td className="pt-3 text-right font-bold tabular-nums">{formatRupiah(recap.reduce((n, r) => n + r.approved, 0))}</td>
+                <td className="pt-3 pr-2 text-right font-bold whitespace-nowrap tabular-nums">{formatRupiah(recap.reduce((n, r) => n + r.requested, 0))}</td>
+                <td className="pt-3 text-right font-bold whitespace-nowrap tabular-nums">{formatRupiah(recap.reduce((n, r) => n + r.approved, 0))}</td>
               </tr>
-            </tfoot>
+            </tbody>
           </table>
         </section>
       )}
@@ -109,14 +109,12 @@ export default async function CetakKesehatanPage({ searchParams }: { searchParam
         const approvedSelected = rows.filter((r) => r.status === "APPROVED").reduce((n, r) => n + (r.approvedAmount ?? r.amount), 0);
         return (
           <section key={`${group.employeeId}-${group.year}`} className={index > 0 ? "mt-10 break-before-page" : undefined}>
-            <header className="mb-5 border-b-2 border-black pb-3">
-              <p className="text-xs font-bold tracking-widest">PT ARTHA MITRA INTERDATA</p>
-              <h1 className="text-2xl font-bold">Rekap Klaim Kesehatan — {month ? monthLabel(month) : group.year}</h1>
+            <PrintLetterhead title={`Rekap Klaim Kesehatan — ${month ? monthLabel(month) : group.year}`}>
               <p className="mt-1 text-sm">
                 {employee.fullName}
                 {employee.employeeNo && ` (${employee.employeeNo})`} · {employee.position} · {divisions[employee.division] ?? employee.division}
               </p>
-            </header>
+            </PrintLetterhead>
 
             {month && <p className="-mt-3 mb-3 text-xs">Plafon & sisa di bawah: posisi tahun {group.year} (semua klaim tahun itu).</p>}
             <section className="mb-5 grid grid-cols-4 gap-3 text-sm break-inside-avoid">
@@ -145,7 +143,7 @@ export default async function CetakKesehatanPage({ searchParams }: { searchParam
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.id} className="border-b border-black/20 align-top">
+                  <tr key={r.id} className="border-b border-black/20 align-top break-inside-avoid">
                     <td className="py-1.5 pr-2 whitespace-nowrap">{formatDate(`${r.claimDate}T00:00:00Z`, "short")}</td>
                     <td className="py-1.5 pr-2 whitespace-nowrap">{r.number}</td>
                     <td className="py-1.5 pr-2">{r.category}</td>
@@ -156,19 +154,20 @@ export default async function CetakKesehatanPage({ searchParams }: { searchParam
                         ? `${new Intl.DateTimeFormat("id-ID", { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${r.payout.month}-01T00:00:00Z`))}${r.payout.paid ? " · dibayar" : ""}`
                         : "—"}
                     </td>
-                    <td className="py-1.5 pr-2 text-right tabular-nums">{formatRupiah(r.amount)}</td>
-                    <td className="py-1.5 text-right tabular-nums">{r.approvedAmount === null ? "—" : formatRupiah(r.approvedAmount)}</td>
+                    <td className="py-1.5 pr-2 text-right whitespace-nowrap tabular-nums">{formatRupiah(r.amount)}</td>
+                    <td className="py-1.5 text-right whitespace-nowrap tabular-nums">{r.approvedAmount === null ? "—" : formatRupiah(r.approvedAmount)}</td>
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="text-sm">
+              {/* Bukan <tfoot>: tfoot diulang Chrome di bawah setiap lembar — total cukup sekali di akhir (2026-11-20). */}
+              <tbody className="text-sm break-inside-avoid">
                 <tr>
                   <td colSpan={7} className="pt-3 pr-2 text-right font-bold">
                     Total disetujui ({month ? `klaim ${monthLabel(month)}` : "klaim di atas"})
                   </td>
-                  <td className="pt-3 text-right font-bold tabular-nums">{formatRupiah(approvedSelected)}</td>
+                  <td className="pt-3 text-right font-bold whitespace-nowrap tabular-nums">{formatRupiah(approvedSelected)}</td>
                 </tr>
-              </tfoot>
+              </tbody>
             </table>
 
             <footer className="mt-12 grid grid-cols-3 gap-8 text-center text-xs break-inside-avoid">

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Fragment } from "react";
+import { PrintLetterhead } from "@/components/print/letterhead";
+import { PrintPageSetup } from "@/components/print/page-setup";
 import { PrintToolbar } from "@/components/print/print-button";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
@@ -37,6 +39,8 @@ export default async function CetakReimbursePage({ searchParams }: { searchParam
 
   return (
     <>
+      {/* 10 kolom tidak muat di A4 tegak (kolom terlalu sempit, 2026-11-20) → lembar mendatar. */}
+      <PrintPageSetup orientation="landscape" />
       <PrintToolbar backHref="/reimburse" autoPrint />
       {[...byEmployee.values()].map((list, index) => (
         <EmployeeSection key={list[0].employeeId} rows={list} pageBreak={index > 0} />
@@ -50,24 +54,26 @@ function EmployeeSection({ rows, pageBreak }: { rows: ReimburseExportRow[]; page
   const totals = reimbursementTotals(rows);
   const days = dailySubtotals(rows);
   const numbers = [...new Set(rows.map((r) => r.number))];
+  // Satu pengajuan: nomornya sudah di kop, kolom No. Pengajuan tidak perlu diulang di setiap baris.
+  const showNumber = numbers.length > 1;
+  const headers = ["Tanggal", ...(showNumber ? ["No. Pengajuan"] : []), "Perusahaan / Project", "Aktivitas", "Nama – Jabatan", "Lokasi", "Tipe", "Pembayaran", "Status", "Total"];
+  const labelSpan = headers.length - 1;
 
   return (
     <section className={pageBreak ? "mt-10 break-before-page" : undefined}>
-      <header className="mb-5 border-b-2 border-black pb-3">
-        <p className="text-xs font-bold tracking-widest">PT ARTHA MITRA INTERDATA</p>
-        <h1 className="text-2xl font-bold">Rekap Reimburse</h1>
+      <PrintLetterhead title="Rekap Reimburse">
         <p className="mt-1 text-sm">
           {first.employeeName}
           {first.employeeNo && ` (${first.employeeNo})`} · {first.employeePosition} · {first.division}
         </p>
         <p className="text-xs">Pengajuan: {numbers.join(", ")}</p>
-      </header>
+      </PrintLetterhead>
 
       <table className="w-full border-collapse text-xs">
         <thead>
           <tr className="border-b border-black text-left">
-            {["Tanggal", "No. Pengajuan", "Perusahaan / Project", "Aktivitas", "Nama – Jabatan", "Lokasi", "Tipe", "Pembayaran", "Status", "Total"].map((h) => (
-              <th key={h} className={`py-1.5 pr-2 font-semibold ${h === "Total" ? "text-right" : ""}`}>
+            {headers.map((h) => (
+              <th key={h} className={`py-1.5 pr-2 font-semibold ${h === "Total" ? "pr-0 text-right" : ""}`}>
                 {h}
               </th>
             ))}
@@ -79,45 +85,46 @@ function EmployeeSection({ rows, pageBreak }: { rows: ReimburseExportRow[]; page
               {rows
                 .filter((r) => r.date === day.date)
                 .map((r) => (
-                  <tr key={r.id} className="border-b border-black/20 align-top">
+                  <tr key={r.id} className="border-b border-black/20 align-top break-inside-avoid">
                     <td className="py-1.5 pr-2 whitespace-nowrap">{formatDate(`${r.date}T00:00:00Z`, "short")}</td>
-                    <td className="py-1.5 pr-2 whitespace-nowrap">{r.number}</td>
-                    <td className="py-1.5 pr-2">
+                    {showNumber && <td className="py-1.5 pr-2 whitespace-nowrap">{r.number}</td>}
+                    <td className="min-w-[45mm] py-1.5 pr-2">
                       {r.customerName ?? "—"}
                       {r.projectName && <div className="text-black/60">{r.projectName}</div>}
                     </td>
-                    <td className="py-1.5 pr-2">{r.activity}</td>
+                    <td className="min-w-[35mm] py-1.5 pr-2">{r.activity}</td>
                     <td className="py-1.5 pr-2 whitespace-pre-line">{r.participants}</td>
                     <td className="py-1.5 pr-2">{r.location}</td>
                     <td className="py-1.5 pr-2">{r.typeName}</td>
-                    <td className="py-1.5 pr-2">{PAYMENT_METHOD_LABEL[r.paymentMethod]}</td>
-                    <td className="py-1.5 pr-2">{STATUS_LABEL[r.status]}</td>
-                    <td className="py-1.5 text-right tabular-nums">{formatRupiah(r.amount)}</td>
+                    <td className="py-1.5 pr-2 whitespace-nowrap">{PAYMENT_METHOD_LABEL[r.paymentMethod]}</td>
+                    <td className="py-1.5 pr-2 whitespace-nowrap">{STATUS_LABEL[r.status]}</td>
+                    <td className="py-1.5 text-right whitespace-nowrap tabular-nums">{formatRupiah(r.amount)}</td>
                   </tr>
                 ))}
-              <tr className="border-b border-black/40 bg-black/5">
-                <td colSpan={9} className="py-1 pr-2 text-right font-medium">
+              <tr className="border-b border-black/40 bg-black/5 break-inside-avoid">
+                <td colSpan={labelSpan} className="py-1 pr-2 text-right font-medium">
                   Subtotal {formatDate(`${day.date}T00:00:00Z`, "short")}
                 </td>
-                <td className="py-1 text-right font-semibold tabular-nums">{formatRupiah(day.amount)}</td>
+                <td className="py-1 text-right font-semibold whitespace-nowrap tabular-nums">{formatRupiah(day.amount)}</td>
               </tr>
             </Fragment>
           ))}
         </tbody>
-        <tfoot className="text-sm">
+        {/* Bukan <tfoot>: tfoot diulang Chrome di bawah setiap lembar — total cukup sekali di akhir. */}
+        <tbody className="text-sm break-inside-avoid">
           <tr>
-            <td colSpan={9} className="pt-3 pr-2 text-right">Total Pribadi (dibayarkan ke karyawan)</td>
-            <td className="pt-3 text-right font-semibold tabular-nums">{formatRupiah(totals.personal)}</td>
+            <td colSpan={labelSpan} className="pt-3 pr-2 text-right">Total Pribadi (dibayarkan ke karyawan)</td>
+            <td className="pt-3 text-right font-semibold whitespace-nowrap tabular-nums">{formatRupiah(totals.personal)}</td>
           </tr>
           <tr>
-            <td colSpan={9} className="pr-2 text-right">Total Perusahaan</td>
-            <td className="text-right font-semibold tabular-nums">{formatRupiah(totals.corporate)}</td>
+            <td colSpan={labelSpan} className="pr-2 text-right">Total Perusahaan</td>
+            <td className="text-right font-semibold whitespace-nowrap tabular-nums">{formatRupiah(totals.corporate)}</td>
           </tr>
           <tr className="text-base">
-            <td colSpan={9} className="pt-1 pr-2 text-right font-bold">Total</td>
-            <td className="pt-1 text-right font-bold tabular-nums">{formatRupiah(totals.total)}</td>
+            <td colSpan={labelSpan} className="pt-1 pr-2 text-right font-bold">Total</td>
+            <td className="pt-1 text-right font-bold whitespace-nowrap tabular-nums">{formatRupiah(totals.total)}</td>
           </tr>
-        </tfoot>
+        </tbody>
       </table>
 
       <footer className="mt-12 grid grid-cols-3 gap-8 text-center text-xs break-inside-avoid">

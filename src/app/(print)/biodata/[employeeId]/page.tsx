@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
+import { PrintLetterhead } from "@/components/print/letterhead";
 import { PrintToolbar } from "@/components/print/print-button";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
@@ -56,13 +57,7 @@ export default async function BiodataPage({ params }: { params: Promise<{ employ
   return (
     <>
       <PrintToolbar backHref={user.employeeId === employeeId ? "/profil" : `/karyawan/${employeeId}`} />
-      <header className="mb-6 flex items-end justify-between border-b-2 border-black pb-3">
-        <div>
-          <p className="text-xs font-bold tracking-widest">PT ARTHA MITRA INTERDATA</p>
-          <h1 className="text-2xl font-bold">Biodata Karyawan</h1>
-        </div>
-        <p className="text-xs text-black/60">Dicetak {formatDate(new Date())}</p>
-      </header>
+      <PrintLetterhead title="Biodata Karyawan" aside={`Dicetak ${formatDate(new Date())}`} className="mb-6" />
 
       <Section title="Data Karyawan">
         <Rows

@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { inventoryEnabled } from "@/lib/features";
 import { enqueueApprovalNotifications } from "@/lib/mail/approval-emails";
+import { enqueueLoanFollowUpEmails } from "@/lib/mail/demo-loan-emails";
 import {
   cancelDemoLoan,
   cancelLoanPickup,
@@ -96,23 +97,28 @@ export async function cancelLoanPickupAction(loanId: string): Promise<ActionResu
 }
 
 /**
- * Operational: Pengecekan Unit setelah barang tiba di AMI → Menunggu verifikasi engineer (2026-11-20, approval Ko
- * Yosep). Email approval setelah commit; bila flow langsung menyetujui, email "disetujui" + email tindak lanjut ke PIC &
- * Operational (bila ada unit bermasalah) ikut terkirim lewat enqueueApprovalNotifications.
+ * Operational: Pengecekan Unit setelah barang tiba di AMI (revisi 2026-11-20). Ada unit Rusak / Tidak lengkap → Perlu
+ * Tindak Lanjut: email tindak lanjut ke PIC & Operational. Semua Baik → Menunggu verifikasi engineer: email approval
+ * (bila flow langsung menyetujui, email "disetujui" ikut terkirim lewat enqueueApprovalNotifications). Setelah commit.
  */
 export async function returnDemoLoanAction(loanId: string, values: unknown): Promise<ActionResult<{ loanId: string; status: string }>> {
   return run(async (user) => {
     const result = await returnDemoLoan(prisma, user, id(loanId), returnDemoLoanSchema.parse(values));
+    if (result.status === "FOLLOW_UP") await enqueueLoanFollowUpEmails(prisma, result.loanId);
     await enqueueApprovalNotifications(prisma, result.notifications);
     return { loanId: result.loanId, status: result.status };
   });
 }
 
-/** Operational: tindak lanjut unit rusak / tidak lengkap selesai → status Selesai, unit bebas lagi (2026-11-20). */
-export async function resolveFollowUpAction(loanId: string, values: unknown): Promise<ActionResult> {
+/**
+ * Operational: tindak lanjut unit rusak / tidak lengkap selesai → Menunggu verifikasi engineer (approval Ko Yosep,
+ * revisi 2026-11-20); disetujui → Selesai & unit bebas. Email approval setelah commit.
+ */
+export async function resolveFollowUpAction(loanId: string, values: unknown): Promise<ActionResult<{ status: string }>> {
   return run(async (user) => {
-    await resolveLoanFollowUp(prisma, user, id(loanId), resolveFollowUpSchema.parse(values));
-    return undefined;
+    const result = await resolveLoanFollowUp(prisma, user, id(loanId), resolveFollowUpSchema.parse(values));
+    await enqueueApprovalNotifications(prisma, result.notifications);
+    return { status: result.status };
   });
 }
 

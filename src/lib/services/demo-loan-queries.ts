@@ -12,7 +12,7 @@ import type {
 import type { ApprovalStepView } from "@/components/shared/approval-stepper";
 import { approverRoleLabel } from "@/components/shared/approval-status";
 import type { SelectOption } from "@/components/form/select-field";
-import { DEMO_LOAN_STATUS_LABEL, daysUntilDue, finalCondition, formatLoanDuration, groupLoanItems, unitOwnerSegment } from "@/lib/demo-loan";
+import { DEMO_LOAN_STATUS_LABEL, daysUntilDue, finalCondition, formatLoanDuration, groupLoanItems } from "@/lib/demo-loan";
 import { toJakartaIsoDate } from "@/lib/format";
 import { INVENTORY_DIVISIONS, ownershipText, rackLocationLabel } from "@/lib/inventory";
 import { heldLoanItemWhere } from "./demo-loan-hold";
@@ -320,11 +320,12 @@ export type LoanUnitOption = {
   serialNo: string;
   category: AssetCategory;
   location: string | null;
-  /** Kepemilikan: milik AMI atau titipan principal / distributor (label "Principal · Cisco"). */
+  /**
+   * Asal unit: milik AMI atau titipan principal / distributor (label "Principal · Cisco") — hanya keterangan; sejak
+   * 2026-11-20 titipan dipinjamkan atas nama AMI dan boleh dicampur dalam satu form.
+   */
   ownership: AssetOwnership;
   ownerLabel: string;
-  /** Segmen pemilik di nomor form: "AMI" / "Cisco" (2026-11-19 — satu form satu pemilik). */
-  owner: string;
   /** Kondisi saat terakhir kembali dari peminjaman; null = belum pernah / tidak dicatat. */
   lastReturn: LastReturn | null;
   /** Alasan tidak bisa dipilih, mis. "Dipinjam · PT Bank Danamon"; null = tersedia. */
@@ -373,7 +374,6 @@ export async function getLoanFormOptions(db: PrismaClient, exceptLoanId?: string
         location: rackLocationLabel(asset.rack?.name, asset.rackPosition),
         ownership: asset.ownership,
         ownerLabel: ownershipText(asset.ownership, asset.ownerName),
-        owner: unitOwnerSegment(asset.ownership, asset.ownerName),
         lastReturn: lastReturns.get(asset.id) ?? null,
         unavailable: busy ? `${DEMO_LOAN_STATUS_LABEL[busy.status]} · ${busy.borrowerName}` : null,
       };

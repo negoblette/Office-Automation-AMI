@@ -67,7 +67,7 @@ describe("alarm keamanan ke Admin (hardening Tahap 6)", () => {
 
   it("perubahan role → alarm + audit dengan IP & perangkat; nonaktifkan akun juga mencatat IP", async () => {
     const alert = await setUserRole(testDb, u.ika, u.andi, "APPROVER", meta);
-    expect(alert).toMatchObject({ kind: "ROLE_CHANGED", title: "Role Andi Pratama diubah: Staf → Approver" });
+    expect(alert).toMatchObject({ kind: "ROLE_CHANGED", title: "Role Andi Pratama diubah: Staff → Approver" });
     expect(alert!.details).toContain("IP: 10.1.2.3");
     expect(await testDb.auditLog.findFirst({ where: { action: "UPDATE", entity: "User", entityId: u.andi } })).toMatchObject({ ip: "10.1.2.3", userAgent: "vitest-browser" });
     expect(await setUserRole(testDb, u.ika, u.andi, "APPROVER", meta)).toBeNull(); // tidak berubah

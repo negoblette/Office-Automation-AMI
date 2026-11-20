@@ -12,7 +12,8 @@ export function LinkTabs({ tabs, active, label, className }: { tabs: LinkTab[]; 
     <nav
       aria-label={label}
       className={cn(
-        "flex w-fit max-w-full gap-0.5 overflow-x-auto rounded-[16px] bg-panel p-1 shadow-[inset_0_0_0_1px_rgb(var(--shade)/0.05)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        // `relative`: elemen absolute di dalam pita tab tetap terkurung di area geser (lihat TableScroll, 2026-11-20).
+        "relative flex w-fit max-w-full gap-0.5 overflow-x-auto rounded-[16px] bg-panel p-1 shadow-[inset_0_0_0_1px_rgb(var(--shade)/0.05)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
         className,
       )}
     >

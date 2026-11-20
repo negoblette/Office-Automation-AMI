@@ -270,23 +270,28 @@ bertahap (docs/05-TAHAPAN.md Fase 16); Tahap 1 = data, akses, rak; Tahap 2 = pen
     `assertRackPosition`; error rak/posisi dikirim ke kolom `items.<i>.<field>`). `returnedAt` (tanggal tiba) ≥
     `pickupDate` & ≤ hari ini, `returnedByName` opsional (yang menyerahkan, sesuai HAF), `returnNote` umum,
     `receivedById` = pelaku. Baris `Asset` dikunci `FOR UPDATE`; bila lokasi berubah, `Asset` diperbarui + audit `Asset`
-    UPDATE (Riwayat Unit: perubahan Lokasi). Semua `GOOD` → `RETURNED`; ada `DAMAGED` / `INCOMPLETE` → **`FOLLOW_UP`**
-    (lihat Tindak lanjut) — sejak 2026-11-20 setelah diverifikasi engineer (lihat Verifikasi Pengecekan Unit). Audit `DemoLoan` memuat `items` beserta kondisinya. Kondisi terakhir per unit
+    UPDATE (Riwayat Unit: perubahan Lokasi). **Urutan revisi 2026-11-20 (keputusan user):** ada `DAMAGED` /
+    `INCOMPLETE` → **`FOLLOW_UP` dulu** (tanpa approval; lihat Tindak lanjut), semua `GOOD` → langsung `RETURN_REVIEW`
+    (lihat Verifikasi Pengecekan Unit). Pengecekan (ulang) mengosongkan `resolvedCondition` semua unit & data tindak
+    lanjut sebelumnya. Audit `DemoLoan` memuat `items` beserta kondisinya. Kondisi terakhir per unit
     (`demo-loan-queries.ts#lastReturnConditions`, memakai `finalCondition` = hasil tindak lanjut bila ada) menandai unit di
     Daftar Unit, detail unit & pemilih unit.
-  - **Verifikasi Pengecekan Unit** (2026-11-20, keputusan user): setelah Operational menyimpan Pengecekan Unit, status
-    **`RETURN_REVIEW`** (Menunggu verifikasi; semua unit tertahan) dan approval engine modul **`DEMO_LOAN_RETURN`**
-    ("Verifikasi Pengembalian Unit", Approval Flow sendiri — bawaan & migrasi `…_demo_loan_return_flow` menyalin flow
-    DEMO_LOAN = Ko Yosep) dimulai (`restartApproval`, jadi cek ulang = approval baru dari level 1). Engineer mencocokkan
-    fisik unit dengan hasil cek (ringkasan per unit di Approval Center, email, detail). Efek (`demo-loan-return-effects.ts`):
-    disetujui final → `RETURNED`, atau `FOLLOW_UP` bila ada unit bermasalah (email tindak lanjut dikirim setelah
-    disetujui lewat `enqueueApprovalNotifications`); ditolak (alasan wajib) → kembali `PICKUP`, Operational membuka
-    Pengecekan Unit lagi (alasan tampil, isian sebelumnya jadi isian awal). Tanpa REVERT_EFFECTS (tidak bisa dibatalkan
+  - **Verifikasi Pengecekan Unit** (2026-11-20, keputusan user; urutan direvisi hari yang sama): dimulai saat Pengecekan
+    Unit disimpan dengan semua unit `GOOD`, atau saat tindak lanjut diselesaikan — status **`RETURN_REVIEW`** (Menunggu
+    verifikasi; semua unit tertahan) dan approval engine modul **`DEMO_LOAN_RETURN`** ("Verifikasi Pengembalian Unit",
+    Approval Flow sendiri — bawaan & migrasi `…_demo_loan_return_flow` menyalin flow DEMO_LOAN = Ko Yosep;
+    `demo-loan.ts#startReturnVerification` → `restartApproval`, jadi cek ulang = approval baru dari level 1). Engineer
+    mencocokkan fisik unit dengan hasil cek **dan hasil tindak lanjutnya** (ringkasan per unit `lib/demo-loan.ts#returnCheckLine`
+    + catatan tindak lanjut di Approval Center, email, detail). Efek (`demo-loan-return-effects.ts`): disetujui final →
+    `RETURNED` (verifikasi yang dimulai dengan alur lama dan masih punya unit bermasalah tanpa hasil → `FOLLOW_UP` seperti
+    dulu); ditolak (alasan wajib) → kembali `PICKUP`, Operational membuka Pengecekan Unit lagi (alasan tampil, isian
+    sebelumnya jadi isian awal; masih bermasalah → tindak lanjut lagi). Tanpa REVERT_EFFECTS (tidak bisa dibatalkan
     setelah final). `RejectEffect` kini menerima `options.actorId` untuk audit. Riwayat Unit: "Pengecekan diverifikasi" /
     "Verifikasi pengecekan ditolak".
   - **Tindak lanjut** (2026-11-20, keputusan user): status `FOLLOW_UP` = sudah dicek tapi ada unit Rusak / Tidak lengkap,
-    belum Selesai. Unit `GOOD` langsung bebas; unit bermasalah yang belum diselesaikan **tertahan**
-    (`services/demo-loan-hold.ts#heldLoanItemWhere`, dipakai pengajuan, pilihan form, Daftar Unit & detail unit).
+    belum diverifikasi & belum Selesai. **Semua unit peminjaman tertahan** sampai verifikasi disetujui (revisi 2026-11-20:
+    verifikasi kini SETELAH tindak lanjut dan penolakan berarti semua unit dicek ulang, jadi unit `GOOD` tidak lagi
+    langsung bebas; `services/demo-loan-hold.ts#heldLoanItemWhere`, dipakai pengajuan, pilihan form, Daftar Unit & detail unit).
     Pemberitahuan ke **PIC** (akun aktif milik karyawan `picId`) & **Operational** aktif — bukan pemohon: email
     `loan-follow-up` (`mail/demo-loan-emails.ts#buildLoanFollowUpEmails`: unit + kondisi + catatan per unit, catatan
     pengembalian, Reply-To silang PIC ↔ Operational) dikirim action setelah commit, lalu diulang tiap 7 hari oleh job
@@ -294,7 +299,8 @@ bertahap (docs/05-TAHAPAN.md Fase 16); Tahap 1 = data, akses, rak; Tahap 2 = pen
     `followUpRemindedAt`); lonceng `loanfollowup:<loanId>:<minggu>` (danger) sampai selesai, muncul lagi tiap minggu
     bila dihapus. Hanya **Operational** yang menutup (`resolveLoanFollowUp`): hasil tiap unit bermasalah `RESOLVED`
     (→ `resolvedCondition = GOOD`) / `UNRESOLVED` (→ sama dengan `returnCondition`, unit tetap ditandai) + catatan wajib
-    5–500 → `RETURNED`, `followUpNote` / `followUpResolvedAt` / `followUpResolvedById`; audit `items` (Riwayat Unit
+    5–500 → **`RETURN_REVIEW` + approval `DEMO_LOAN_RETURN`** (revisi 2026-11-20; email approval dikirim action setelah
+    commit), `followUpNote` / `followUpResolvedAt` / `followUpResolvedById`; audit `items` (Riwayat Unit
     "Tindak lanjut selesai", hanya untuk unit bermasalah). Migrasi `…_demo_loan_follow_up_data` memindahkan peminjaman
     `RETURNED` lama yang punya unit bermasalah ke `FOLLOW_UP` (email pertamanya dikirim job harian).
   - **Hardware Admission Form** (HAF): nomor `NNN/AMI-HAF/<pemilik unit>/<tahun>` terbit saat **pengambilan

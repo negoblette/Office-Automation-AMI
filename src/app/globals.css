@@ -365,7 +365,7 @@
   }
 }
 
-/* Product Trial Form (Fase 16.3). Ukuran A4 diatur `<style>` di halaman cetaknya sendiri (bukan @page bernama: elemen
+/* Product Trial Form (Fase 16.3). Ukuran A4 & margin diatur `PrintPageSetup` di layout cetak (bukan @page bernama: elemen
    kosong sebelum form membuat Chrome menyisipkan lembar kosong saat nama halaman berganti). */
 .print-trial-form {
   /* Warna biru logo & garis tetap tercetak walau "Background graphics" mati. */

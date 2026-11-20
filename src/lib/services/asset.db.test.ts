@@ -18,17 +18,20 @@ afterAll(async () => {
 });
 
 const asset = (overrides: Record<string, unknown> = {}) =>
-  assetSchema.parse({ deviceName: "Cisco Router 2901", serialNo: " cs-2901-x7718a ", category: "DEMO_UNIT", supportEnd: "2027-03-01", supportStart: "2025-03-01", ...overrides });
+  assetSchema.parse({ deviceName: "Cisco Router 2901", serialNo: " cs-2901-x7718a ", category: "DEMO_UNIT", ...overrides });
 const assign = (employeeKey: string, assignedAt = "2026-09-01") => assignAssetSchema.parse({ employeeId: emp[employeeKey], assignedAt, note: "POC klien" });
 const giveBack = (returnedAt = "2026-09-20") => returnAssetSchema.parse({ returnedAt, note: "" });
 
 describe("aset (INV-01)", () => {
-  it("serial dirapikan UPPERCASE & harus unik; akhir support ≥ awal", async () => {
+  it("serial dirapikan UPPERCASE & harus unik; Ubah Unit tidak menyentuh support/warranty lama", async () => {
     const created = await createAsset(testDb, u.yosep, asset());
     expect(created.serialNo).toBe("CS-2901-X7718A");
     await expect(createAsset(testDb, u.yosep, asset({ serialNo: "CS-2901-x7718a" }))).rejects.toThrow("Serial number sudah terdaftar");
-    expect(assetSchema.safeParse({ ...asset(), supportEnd: "2024-01-01" }).error?.issues[0].message).toBe("Akhir support tidak boleh sebelum awalnya");
-    await expect(updateAsset(testDb, u.yosep, created.id, asset({ deviceName: "Cisco Router 2911" }))).resolves.toMatchObject({ deviceName: "Cisco Router 2911" });
+    // Support & warranty dihapus dari form (2026-11-20): isian itu dibuang schema, nilai lama di database tetap.
+    expect(asset({ supportEnd: "2027-03-01", warrantyEnd: "2027-03-01" })).not.toHaveProperty("supportEnd");
+    const supportEnd = new Date("2027-03-01T00:00:00Z");
+    await testDb.asset.update({ where: { id: created.id }, data: { supportEnd } });
+    await expect(updateAsset(testDb, u.yosep, created.id, asset({ deviceName: "Cisco Router 2911" }))).resolves.toMatchObject({ deviceName: "Cisco Router 2911", supportEnd });
   });
 });
 

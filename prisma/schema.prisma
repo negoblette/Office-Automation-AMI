@@ -219,6 +219,7 @@ model User {
   demoLoansHafPrepared   DemoLoan[]             @relation("DemoLoanHafPreparer")
   demoLoansFollowedUp    DemoLoan[]             @relation("DemoLoanFollowUpResolver")
   goodsReceiptsPrepared  GoodsReceipt[]         @relation("GoodsReceiptPreparer")
+  goodsReturnsPrepared   GoodsReturn[]          @relation("GoodsReturnPreparer")
   demoLoanExtensions     DemoLoanExtension[]
 }
 
@@ -318,6 +319,7 @@ model Employee {
   demoLoansAsCourier DemoLoan[]        @relation("DemoLoanCourier")
   goodsReceiptsAsPic GoodsReceipt[]    @relation("GoodsReceiptPic")
   goodsReceived      GoodsReceipt[]    @relation("GoodsReceiptReceiver")
+  goodsReturned      GoodsReturn[]     @relation("GoodsReturnReturnedBy")
 
   @@index([status, division])
 }
@@ -422,6 +424,10 @@ model Asset {
   /// titipan lama yang didaftarkan sebelum ada penerimaan barang. Kepemilikan unit hanya bisa diisi lewat penerimaan.
   receiptId     String?
   receipt       GoodsReceipt? @relation(fields: [receiptId], references: [id])
+  /// Dikembalikan ke principal / distributor (2026-11-20): unit keluar dari inventaris AMI — `deletedAt` ikut diisi supaya
+  /// hilang dari semua daftar. Diterima lagi lewat penerimaan baru → keduanya dikosongkan (unit yang sama dipakai lagi).
+  returnedToOwnerAt DateTime?
+  returnItems   GoodsReturnItem[]
   /// Lokasi penyimpanan (2026-11-17): rak + posisi "A1" (huruf kolom + nomor baris). Satu posisi boleh banyak unit.
   rackId        String?
   rack          StorageRack?  @relation(fields: [rackId], references: [id])
@@ -466,9 +472,54 @@ model GoodsReceipt {
   preparedBy   User           @relation("GoodsReceiptPreparer", fields: [preparedById], references: [id])
   createdAt    DateTime       @default(now())
 
-  assets Asset[]
+  assets  Asset[]
+  returns GoodsReturn[]
 
   @@index([receivedDate])
+}
+
+/// Pengembalian barang pinjaman ke principal / distributor (2026-11-20, keputusan user): per unit, boleh sebagian; satu
+/// pengembalian = satu Hardware Admission Form (nomor dari counter HAF yang sama, `NNN/AMI-HAF/<pemilik>/<tahun>`).
+/// Dicatat HANYA oleh Operational. Unit yang dikembalikan keluar dari Daftar Unit (`Asset.returnedToOwnerAt` + `deletedAt`).
+model GoodsReturn {
+  id             String            @id @default(cuid())
+  hafNumber      String            @unique
+  receiptId      String
+  receipt        GoodsReceipt      @relation(fields: [receiptId], references: [id])
+  /// Tanggal barang diserahkan kembali ("Date" di HAF).
+  returnedDate   DateTime          @db.Date
+  /// Kontak di principal / distributor ("up:"; bawaan = kontak penerimaan).
+  contactName    String
+  /// Karyawan AMI yang mengantar / menyerahkan ("Returned By").
+  returnedById   String
+  returnedBy     Employee          @relation("GoodsReturnReturnedBy", fields: [returnedById], references: [id])
+  /// Penerima di principal / distributor ("Received By"; opsional — bisa ditulis tangan di HAF).
+  receivedByName String?
+  /// Catatan (Remarks di HAF).
+  note           String?
+  /// Operational yang mencatat ("Prepared By").
+  preparedById   String
+  preparedBy     User              @relation("GoodsReturnPreparer", fields: [preparedById], references: [id])
+  createdAt      DateTime          @default(now())
+
+  items GoodsReturnItem[]
+
+  @@index([receiptId])
+}
+
+/// Unit di satu pengembalian — salinan nama & serial saat dikembalikan, supaya riwayat tetap utuh walau unit yang sama
+/// kelak diterima lagi lewat penerimaan lain.
+model GoodsReturnItem {
+  id          String      @id @default(cuid())
+  returnId    String
+  goodsReturn GoodsReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  assetId     String
+  asset       Asset       @relation(fields: [assetId], references: [id])
+  deviceName  String
+  serialNo    String
+
+  @@unique([returnId, assetId])
+  @@index([assetId])
 }
 
 /// Rak penyimpanan unit Inventory (2026-11-17), diatur Admin di Setting → Inventaris & Rak. Posisi di rak = huruf kolom

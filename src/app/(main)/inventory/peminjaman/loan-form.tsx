@@ -17,7 +17,7 @@ import { useFeedback } from "@/components/shared/feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { LoanPurpose } from "@/generated/prisma/enums";
-import { formatLoanDuration, LOAN_PURPOSE_HINT, LOAN_PURPOSE_LABEL, MAX_LOAN_ITEMS, maxLoanEnd, mixedOwnerMessage, RETURN_CONDITION_LABEL } from "@/lib/demo-loan";
+import { formatLoanDuration, LOAN_PURPOSE_HINT, LOAN_PURPOSE_LABEL, MAX_LOAN_ITEMS, maxLoanEnd, RETURN_CONDITION_LABEL } from "@/lib/demo-loan";
 import { formatDate, toJakartaIsoDate } from "@/lib/format";
 import { ASSET_CATEGORY_LABEL } from "@/lib/labels";
 import type { LoanFormOptions, LoanUnitOption } from "@/lib/services/demo-loan-queries";
@@ -365,28 +365,12 @@ function UnitPicker({ units }: { units: LoanUnitOption[] }) {
         const toggle = (id: string, checked: boolean) =>
           field.onChange(checked ? [...selected, id] : selected.filter((value) => value !== id));
         const full = selected.length >= MAX_LOAN_ITEMS;
-        // Pemilik unit tertulis di nomor form (2026-11-19): satu form = satu pemilik (dicek ulang di server).
-        const owners = [
-          ...new Map(
-            selected
-              .map((id) => byId.get(id))
-              .filter((unit): unit is LoanUnitOption => Boolean(unit))
-              .map((unit) => [unit.owner.toLowerCase(), unit.owner] as const),
-          ).values(),
-        ];
+        // Unit titipan principal / distributor dipinjamkan atas nama AMI (2026-11-20): boleh dicampur dengan unit AMI.
         return (
           <div className="flex flex-col gap-4 sm:col-span-2">
             {selected.length > 0 && (
               <div className="flex flex-col gap-2">
-                <p className="text-[13px] font-bold text-ink-2">
-                  Dipilih: {selected.length} unit
-                  {owners.length === 1 && <span className="font-semibold text-ink-3"> · pemilik {owners[0]} (nomor form …/AMI-PTF/{owners[0]}/…)</span>}
-                </p>
-                {owners.length > 1 && (
-                  <p role="alert" className="rounded-[12px] bg-red-soft px-3 py-2 text-[12.5px] font-semibold text-red-deep">
-                    {mixedOwnerMessage(owners)}
-                  </p>
-                )}
+                <p className="text-[13px] font-bold text-ink-2">Dipilih: {selected.length} unit</p>
                 <ul className="flex flex-wrap gap-2" aria-label="Unit yang dipilih">
                   {selected.map((id) => {
                     const unit = byId.get(id);

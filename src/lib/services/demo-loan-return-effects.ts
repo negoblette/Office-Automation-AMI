@@ -1,4 +1,4 @@
-// Efek approval verifikasi Pengecekan Unit (2026-11-20, modul DEMO_LOAN_RETURN, default Ko Yosep). Dipanggil approval
+// Efek approval verifikasi Pengecekan Unit + tindak lanjutnya (2026-11-20, modul DEMO_LOAN_RETURN, default Ko Yosep). Dipanggil approval
 // engine di dalam transaksi keputusan (approval-effects.ts). Modul terpisah dari demo-loan.ts supaya tidak ada impor
 // melingkar (service peminjaman memakai approval engine, engine memakai efek ini). Audit memuat unit supaya tercatat di
 // Riwayat Unit ("Pengecekan diverifikasi" / "Verifikasi pengecekan ditolak").
@@ -17,13 +17,14 @@ async function lockReviewedLoan(tx: Tx, loanId: string) {
 }
 
 /**
- * Disetujui final: hasil pengecekan sesuai. Semua unit Baik → Selesai; ada Rusak / Tidak lengkap → Perlu Tindak Lanjut
- * (email tindak lanjut ke PIC & Operational dikirim setelah commit — approval-emails.ts; pengingat berikutnya 7 hari
- * dari sekarang).
+ * Disetujui final: hasil pengecekan (& tindak lanjut) sesuai → Selesai. Sejak revisi 2026-11-20 tindak lanjut selesai
+ * SEBELUM verifikasi, jadi unit bermasalah sudah punya hasil. Pengecualian: verifikasi yang dimulai dengan alur lama
+ * (sebelum revisi) masih bisa berisi unit Rusak / Tidak lengkap yang belum ditindaklanjuti → Perlu Tindak Lanjut seperti
+ * dulu (email tindak lanjut ke PIC & Operational setelah commit — approval-emails.ts; pengingat berikutnya 7 hari lagi).
  */
 export async function applyVerifiedReturn(tx: Tx, loanId: string, approvedAt: Date, actorId: string | null) {
   const before = await lockReviewedLoan(tx, loanId);
-  const followUp = before.items.some((item) => isProblemCondition(item.returnCondition));
+  const followUp = before.items.some((item) => isProblemCondition(item.returnCondition) && !item.resolvedCondition);
   const after = await tx.demoLoan.update({
     where: { id: loanId },
     data: { status: followUp ? "FOLLOW_UP" : "RETURNED", followUpRemindedAt: followUp ? approvedAt : null },
@@ -33,8 +34,9 @@ export async function applyVerifiedReturn(tx: Tx, loanId: string, approvedAt: Da
 }
 
 /**
- * Ditolak (alasan wajib, di ApprovalRequestStep): hasil pengecekan tidak sesuai → kembali ke status Pengambilan supaya
- * Operational mengisi Pengecekan Unit ulang; setelah disimpan, approval dimulai lagi dari level 1.
+ * Ditolak (alasan wajib, di ApprovalRequestStep): hasil pengecekan / tindak lanjut tidak sesuai → kembali ke status
+ * Pengambilan supaya Operational mengisi Pengecekan Unit ulang (keputusan user 2026-11-20; isian lama terisi otomatis).
+ * Setelah disimpan: ada unit bermasalah → tindak lanjut lagi, lalu approval dimulai lagi dari level 1.
  */
 export async function rejectVerifiedReturn(tx: Tx, loanId: string, actorId: string | null) {
   const before = await lockReviewedLoan(tx, loanId);

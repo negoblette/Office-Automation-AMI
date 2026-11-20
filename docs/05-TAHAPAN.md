@@ -842,6 +842,19 @@ ulang; pemberitahuan tindak lanjut dikirim setelah disetujui.
   (case `DEMO_LOAN_RETURN`), `demo-loan.db.test.ts` (alur cek → verifikasi), test warranty (`asset.db.test.ts`,
   `reminder.db.test.ts`, `dashboard-queries.db.test.ts`) — sampai itu `npm run typecheck` / `next build` gagal di file test
 
+### 16.5f Tindak lanjut sebelum verifikasi engineer ✅ (2026-11-20)
+Keputusan user: pengembalian yang ada catatan rusak / tidak lengkap diselesaikan tindak lanjutnya DULU, baru minta
+approval Ko Yosep. Ditolak → kembali cek ulang unit (pilihan user).
+- [x] Pengecekan Unit: ada unit bermasalah → `FOLLOW_UP` tanpa approval (email tindak lanjut ke PIC & Operational);
+      semua Baik → `RETURN_REVIEW` + approval. Cek ulang mengosongkan hasil tindak lanjut lama
+- [x] Selesaikan Tindak Lanjut → `RETURN_REVIEW` + approval `DEMO_LOAN_RETURN`; disetujui → `RETURNED`; ditolak → `PICKUP`
+- [x] Ringkasan approval (Approval Center & email) memuat hasil tindak lanjut per unit + catatannya
+- [x] Semua unit tertahan selama `FOLLOW_UP` (sebelumnya unit Baik langsung bebas) karena belum diverifikasi
+- [x] `src/test/entities.ts` case `DEMO_LOAN_RETURN`; DB test baru `demo-loan-return.db.test.ts` (2 skenario)
+- **Cek:** typecheck, lint, unit test, DB test alur baru lulus. 4 DB test lama tetap gagal (juga di `HEAD` tanpa
+  perubahan ini): `asset` (validasi support), `overtime` (nomor bergantung tanggal hari ini), `security-monitor`,
+  `setting-users-flows` (pesan approver tunggal) — perlu disesuaikan terpisah.
+
 ### 16.6 Dashboard Inventaris
 - [ ] Unit di gudang (per rak/posisi), sedang dipinjam (ke mana, PIC, sampai kapan, sisa hari), terlambat, akan jatuh tempo;
       kartu ringkas di Dashboard utama untuk user terkait

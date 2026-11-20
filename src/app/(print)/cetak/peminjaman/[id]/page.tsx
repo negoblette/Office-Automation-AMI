@@ -42,8 +42,6 @@ export default async function TrialFormPrintPage({ params }: { params: Promise<{
 
   return (
     <>
-      {/* Hanya selama halaman ini terbuka: lembar A4 tegak (halaman cetak lain tetap memakai pengaturan browser). */}
-      <style>{"@page { size: A4 portrait; margin: 10mm 12mm; } @media print { html, body { background: #fff !important; } }"}</style>
       <PrintToolbar backHref={backHref} />
       {!loan.itemSenderName && (
         <p role="status" className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 print:hidden">

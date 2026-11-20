@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Fragment } from "react";
 import { notFound, redirect } from "next/navigation";
 import { RowActions } from "@/app/(main)/approval/approval-tables";
 import { CorrectionList } from "@/app/(main)/approval/correction-ui";
@@ -110,17 +111,26 @@ export default async function DetailKlaimKesehatanPage({ params }: { params: Pro
             </tr>
           </thead>
           <tbody>
-            {[...c.items]
-              .sort((a, b) => a.date.localeCompare(b.date))
-              .map((item) => (
-                <tr key={item.id} className="border-t border-border align-top">
-                  <td className="px-4 py-3 whitespace-nowrap">{formatDate(`${item.date}T00:00:00Z`, "short")}</td>
-                  <td className="px-4 py-3">{item.categoryName}</td>
-                  <td className="px-4 py-3 whitespace-pre-line text-muted-foreground">{item.note || "—"}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{formatRupiah(item.amount)}</td>
+            {/* Dikelompokkan per tanggal + subtotal harian, sama dengan detail reimburse. */}
+            {groupByDate(c.items).map(([day, items]) => (
+              <Fragment key={day}>
+                {items.map((item) => (
+                  <tr key={item.id} className="border-t border-border align-top">
+                    <td className="px-4 py-3 whitespace-nowrap">{formatDate(`${item.date}T00:00:00Z`, "short")}</td>
+                    <td className="px-4 py-3">{item.categoryName}</td>
+                    <td className="px-4 py-3 whitespace-pre-line text-muted-foreground">{item.note || "—"}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{formatRupiah(item.amount)}</td>
+                  </tr>
+                ))}
+                <tr className="border-t border-border bg-muted/40 text-sm">
+                  <td colSpan={3} className="px-4 py-2 text-right font-medium text-muted-foreground">
+                    Subtotal {formatDate(`${day}T00:00:00Z`, "short")}
+                  </td>
+                  <td className="px-4 py-2 text-right font-semibold tabular-nums">{formatRupiah(items.reduce((sum, i) => sum + i.amount, 0))}</td>
                 </tr>
-              ))}
-            <tr className="border-t border-border bg-muted/40">
+              </Fragment>
+            ))}
+            <tr className="border-t-2 border-border">
               <td colSpan={3} className="px-4 py-2 text-right font-medium text-muted-foreground">
                 Total diajukan
               </td>
@@ -154,6 +164,12 @@ export default async function DetailKlaimKesehatanPage({ params }: { params: Pro
       )}
     </div>
   );
+}
+
+function groupByDate<T extends { date: string }>(items: T[]): [string, T[]][] {
+  const groups = new Map<string, T[]>();
+  for (const item of [...items].sort((a, b) => a.date.localeCompare(b.date))) groups.set(item.date, [...(groups.get(item.date) ?? []), item]);
+  return [...groups.entries()];
 }
 
 function Info({ label, value }: { label: string; value: React.ReactNode }) {

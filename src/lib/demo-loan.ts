@@ -1,12 +1,11 @@
 // Peminjaman unit demo / Product Trial Form (Fase 16, 2026-11-17) — aturan murni tanpa database, dipakai server & client.
-import type { AssetOwnership, DemoLoanExtensionStatus, DemoLoanStatus, LoanPurpose, ReturnCondition } from "@/generated/prisma/enums";
+import type { DemoLoanExtensionStatus, DemoLoanStatus, LoanPurpose, ReturnCondition } from "@/generated/prisma/enums";
 import type { StatusVariant } from "@/components/shared/status-badge";
-import { ASSET_OWNERSHIP_LABEL } from "@/lib/inventory";
 
 /**
  * Status yang menahan unit: unit di peminjaman ini tidak bisa diajukan di peminjaman lain. PICKUP (2026-11-19) = barang
  * sedang diambil kurir / belum dicek Operational; RETURN_REVIEW (2026-11-20) = hasil pengecekan menunggu verifikasi
- * engineer — unit masih tertahan.
+ * engineer — unit masih tertahan. FOLLOW_UP juga menahan semua unit (services/demo-loan-hold.ts, revisi 2026-11-20).
  */
 export const ACTIVE_LOAN_STATUSES = ["PENDING", "APPROVED", "ON_LOAN", "PICKUP", "RETURN_REVIEW"] as const satisfies readonly DemoLoanStatus[];
 
@@ -76,7 +75,9 @@ export const MAX_LOAN_MONTHS = 24;
 export const MAX_LOAN_ITEMS = 50;
 
 // ---------------------------------------------------------------------
-// Pemilik unit di nomor form (2026-11-19): `NNN/AMI-PTF/<pemilik>/<tahun>` — "AMI" atau nama principal / distributor.
+// Pemilik di nomor form (2026-11-19): `NNN/AMI-PTF/<pemilik>/<tahun>`. Sejak 2026-11-20 peminjaman ke customer selalu
+// "AMI" (barang titipan principal / distributor milik AMI untuk sementara); HAF penerimaan & pengembalian barang memakai
+// nama principal / distributor.
 // ---------------------------------------------------------------------
 
 export const AMI_OWNER = "AMI";
@@ -89,29 +90,7 @@ export function cleanOwnerName(name: string): string {
   return name.replaceAll("/", "-").replace(/\s+/g, " ").trim();
 }
 
-/** Segmen pemilik satu unit: "AMI", atau nama principal / distributor. */
-export function unitOwnerSegment(ownership: AssetOwnership, ownerName: string | null | undefined): string {
-  if (ownership === "AMI") return AMI_OWNER;
-  return cleanOwnerName(ownerName ?? "") || ASSET_OWNERSHIP_LABEL[ownership];
-}
 
-/**
- * Pemilik berbeda di antara unit yang dipilih (beda huruf besar / kecil dianggap sama; ejaan unit pertama dipakai).
- * Satu form hanya boleh satu pemilik, karena pemilik tertulis di nomor PTF & HAF.
- */
-export function loanUnitOwners(units: { ownership: AssetOwnership; ownerName: string | null | undefined }[]): string[] {
-  const owners = new Map<string, string>();
-  for (const unit of units) {
-    const owner = unitOwnerSegment(unit.ownership, unit.ownerName);
-    if (!owners.has(owner.toLowerCase())) owners.set(owner.toLowerCase(), owner);
-  }
-  return [...owners.values()];
-}
-
-/** Pesan untuk unit yang pemiliknya berbeda-beda. */
-export function mixedOwnerMessage(owners: string[]): string {
-  return `Unit dalam satu form harus milik satu pihak karena pemilik tertulis di nomor form (terpilih: ${owners.join(", ")}). Ajukan form terpisah per pemilik.`;
-}
 
 const DAY_MS = 86_400_000;
 
@@ -298,15 +277,12 @@ export const RETURN_CONDITION_VARIANT: Record<ReturnCondition, StatusVariant> = 
 
 // ---------------------------------------------------------------------
 // Tindak lanjut (2026-11-20): pengecekan menemukan unit Rusak / Tidak lengkap → peminjaman "Perlu Tindak Lanjut" (bukan
-// Selesai). Unit Baik langsung bebas; unit bermasalah tertahan sampai Operational menyelesaikan tindak lanjutnya.
-// PIC & Operational diberi tahu (email + lonceng), diulang tiap 7 hari selama belum selesai.
+// Selesai). Revisi 2026-11-20: tindak lanjut diselesaikan DULU, baru hasilnya diverifikasi engineer; semua unit
+// tertahan sampai verifikasi disetujui. PIC & Operational diberi tahu (email + lonceng), diulang tiap 7 hari.
 // ---------------------------------------------------------------------
 
 /** Pengingat tindak lanjut diulang tiap 7 hari. */
 export const FOLLOW_UP_REPEAT_DAYS = 7;
-
-/** Kondisi yang perlu ditindaklanjuti (Rusak / Tidak lengkap). */
-export const PROBLEM_CONDITIONS = ["DAMAGED", "INCOMPLETE"] as const satisfies readonly ReturnCondition[];
 
 export function isProblemCondition(condition: ReturnCondition | null | undefined): boolean {
   return condition === "DAMAGED" || condition === "INCOMPLETE";
@@ -328,6 +304,27 @@ export const FOLLOW_UP_RESULT_LABEL = {
   UNRESOLVED: "Tetap rusak / tidak lengkap",
 } as const;
 export type FollowUpResult = keyof typeof FOLLOW_UP_RESULT_LABEL;
+
+/**
+ * Satu baris hasil pengecekan unit untuk ringkasan approval verifikasi (halaman Approval & email): kondisi + catatan,
+ * hasil tindak lanjut (sejak revisi 2026-11-20 diverifikasi setelah tindak lanjut selesai), tempat ditaruh.
+ */
+export function returnCheckLine(item: {
+  deviceName: string;
+  serialNo: string;
+  returnCondition: ReturnCondition | null;
+  returnNote: string | null;
+  resolvedCondition: ReturnCondition | null;
+  returnRack: { name: string } | null;
+  returnRackPosition: string | null;
+}): string {
+  const condition = item.returnCondition ? RETURN_CONDITION_LABEL[item.returnCondition] : "-";
+  const followUp = isProblemCondition(item.returnCondition) && item.resolvedCondition
+    ? ` → tindak lanjut: ${FOLLOW_UP_RESULT_LABEL[item.resolvedCondition === "GOOD" ? "RESOLVED" : "UNRESOLVED"].toLowerCase()}`
+    : "";
+  const rack = item.returnRack && item.returnRackPosition ? ` · ditaruh ${item.returnRack.name} ${item.returnRackPosition}` : "";
+  return `${item.deviceName} · SN ${item.serialNo} — ${condition}${item.returnNote ? `: ${item.returnNote}` : ""}${followUp}${rack}`;
+}
 
 // ---------------------------------------------------------------------
 // Form cetak (Product Trial Form, Fase 16.3) — label berbahasa Inggris seperti form kertas.

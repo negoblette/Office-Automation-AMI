@@ -6,22 +6,22 @@
 //  2. Disetujui final → status APPROVED = antrian Operational (Devi): pilih Item Sender, cetak form, antar
 //     ("Sudah Diantar" → ON_LOAN, Tahap 16.3).
 //  3. Barang akan diambil → Operational menjadwalkan pengambilan (tanggal + kurir AMI) → nomor HAF terbit, HAF dibawa
-//     kurir (PICKUP). Barang tiba di AMI → Operational WAJIB mengisi Pengecekan Unit → semua Baik: RETURNED (Selesai);
-//     ada yang Rusak / Tidak lengkap: FOLLOW_UP (2026-11-20) — PIC & Operational diberi tahu, unit bermasalah tertahan
-//     sampai Operational menyelesaikan tindak lanjutnya → RETURNED.
+//     kurir (PICKUP). Barang tiba di AMI → Operational WAJIB mengisi Pengecekan Unit → ada yang Rusak / Tidak lengkap:
+//     FOLLOW_UP dulu (PIC & Operational diberi tahu, Operational menyelesaikan tindak lanjutnya) → RETURN_REVIEW =
+//     verifikasi engineer (approval DEMO_LOAN_RETURN, Ko Yosep) → disetujui RETURNED (Selesai); semua Baik langsung
+//     RETURN_REVIEW. Ditolak → PICKUP, cek ulang (urutan revisi 2026-11-20: tindak lanjut sebelum approval).
 // Langkah Operational HANYA untuk user yang ditunjuk di Setting → Inventaris & Rak; Admin tidak otomatis (2026-11-19).
 // Unit yang tertahan (services/demo-loan-hold.ts) tidak bisa diajukan lagi: baris Asset dikunci (FOR UPDATE) supaya dua
 // pengajuan bersamaan tidak sama-sama lolos. Email dikirim action SETELAH transaksi commit.
 import { Prisma, type PrismaClient, type Role } from "@/generated/prisma/client";
 import {
   addDaysIso,
+  AMI_OWNER,
   formatHafNumber,
   formatTrialFormNumber,
   isEditableLoanStatus,
   isProblemCondition,
-  loanUnitOwners,
   MAX_PICKUP_AHEAD_DAYS,
-  mixedOwnerMessage,
   OWNER_PLACEHOLDER,
   parseHafNumber,
   parseTrialFormNumber,
@@ -105,12 +105,12 @@ const itemData = (unit: Unit) => ({
 /** PIC dari AMI (2026-11-19, dulu Sales Person): karyawan aktif divisi Engineer / Sales. */
 const assertPic = (tx: Tx, employeeId: string) => assertInventoryPic(tx, employeeId);
 
-/** Pemilik unit untuk nomor form (2026-11-19): semua unit dalam satu form harus satu pemilik. */
-function loanOwner(units: Unit[]): string {
-  const owners = loanUnitOwners(units);
-  if (owners.length !== 1) throw new ServiceError(mixedOwnerMessage(owners), "assetIds");
-  return owners[0];
-}
+/**
+ * Pemilik unit di nomor form. Keputusan user 2026-11-20: barang yang dipinjam AMI dari principal / distributor menjadi
+ * milik AMI untuk sementara (sampai dikembalikan lewat Penerimaan Barang), jadi peminjaman ke customer selalu atas nama
+ * AMI dan satu form boleh mencampur unit AMI & titipan. (2026-11-19 s/d 20: segmen = nama principal, satu form satu pemilik.)
+ */
+const LOAN_OWNER = AMI_OWNER;
 
 function assertStartDate(startDate: string, today: string) {
   if (startDate < today) throw new ServiceError("Tanggal mulai tidak boleh sebelum hari ini", "startDate");
@@ -156,7 +156,7 @@ export async function submitDemoLoan(db: PrismaClient, actor: LoanActor, input: 
     assertStartDate(input.startDate, today);
     await assertPic(tx, input.picId);
     const units = await loadAvailableUnits(tx, input.assetIds);
-    const unitOwner = loanOwner(units);
+    const unitOwner = LOAN_OWNER;
     // Tahun nomor = tanggal pengajuan (Jakarta); segmen ketiga = pemilik unit.
     const number = await nextTrialFormNumber(tx, unitOwner, fromIsoDate(today));
     const loan = await tx.demoLoan.create({
@@ -186,7 +186,7 @@ export async function reviseDemoLoan(db: PrismaClient, actor: LoanActor, loanId:
     assertStartDate(input.startDate, today);
     await assertPic(tx, input.picId);
     const units = await loadAvailableUnits(tx, input.assetIds, loanId);
-    const unitOwner = loanOwner(units);
+    const unitOwner = LOAN_OWNER;
     const parsed = parseTrialFormNumber(before.number);
     const number = parsed ? formatTrialFormNumber(parsed.sequence, unitOwner, parsed.year) : before.number;
     await tx.demoLoanItem.deleteMany({ where: { loanId } });
@@ -384,34 +384,50 @@ export async function returnDemoLoan(db: PrismaClient, actor: LoanActor, loanId:
       }
     }
 
-    // Hasil pengecekan diverifikasi engineer dulu (2026-11-20, approval DEMO_LOAN_RETURN, default Ko Yosep): disetujui →
-    // Selesai, atau Perlu Tindak Lanjut bila ada unit Rusak / Tidak lengkap (demo-loan-return-effects.ts); ditolak →
-    // kembali Pengambilan untuk dicek ulang. Pengecekan ulang setelah ditolak = approval dimulai lagi dari level 1.
+    // Pengecekan (ulang) = hasil tindak lanjut sebelumnya tidak berlaku lagi.
+    await tx.demoLoanItem.updateMany({ where: { loanId }, data: { resolvedCondition: null } });
+    // Keputusan user 2026-11-20 (revisi): ada unit Rusak / Tidak lengkap → tindak lanjut DULU (Perlu Tindak Lanjut, email
+    // ke PIC & Operational dikirim action setelah commit; pengingat berikutnya 7 hari lagi), approval engineer setelah
+    // tindak lanjut selesai (resolveLoanFollowUp). Semua Baik → langsung diverifikasi engineer (approval DEMO_LOAN_RETURN,
+    // default Ko Yosep). Ditolak → kembali Pengambilan untuk dicek ulang (demo-loan-return-effects.ts).
+    const followUp = input.items.some((item) => isProblemCondition(item.condition));
     const after = await tx.demoLoan.update({
       where: { id: loanId },
       data: {
-        status: "RETURN_REVIEW",
+        status: followUp ? "FOLLOW_UP" : "RETURN_REVIEW",
         returnedAt: fromIsoDate(input.returnedAt),
         returnedByName: input.returnedByName,
         returnNote: input.note,
         receivedById: actor.id,
-        followUpRemindedAt: null,
+        followUpRemindedAt: followUp ? new Date() : null,
+        followUpNote: null,
+        followUpResolvedAt: null,
+        followUpResolvedById: null,
       },
       include: { items: true },
     });
     await logAudit(tx, { actorId: actor.id, action: "UPDATE", entity: "DemoLoan", entityId: loanId, before, after });
-    // Flow tanpa level / semua level terlewati → langsung disetujui (efek final berjalan di transaksi ini).
-    const approval = await restartApproval(tx, { module: "DEMO_LOAN_RETURN", entityId: loanId, entityNumber: before.number, requesterId: actor.id });
-    const loan = await tx.demoLoan.findUniqueOrThrow({ where: { id: loanId }, select: { id: true, status: true } });
-    return { loanId: loan.id, status: loan.status, notifications: approval.notifications as ApprovalNotification[] };
+    if (followUp) return { loanId, status: after.status, notifications: [] as ApprovalNotification[] };
+    return { loanId, ...(await startReturnVerification(tx, loanId, before.number, actor.id)) };
   });
+}
+
+/**
+ * Mulai verifikasi engineer (approval DEMO_LOAN_RETURN; pengecekan / tindak lanjut ulang = dari level 1 lagi). Flow tanpa
+ * level / semua level terlewati → langsung disetujui (efek final berjalan di transaksi ini). Status akhir dibaca ulang.
+ */
+async function startReturnVerification(tx: Tx, loanId: string, number: string, requesterId: string) {
+  const approval = await restartApproval(tx, { module: "DEMO_LOAN_RETURN", entityId: loanId, entityNumber: number, requesterId });
+  const loan = await tx.demoLoan.findUniqueOrThrow({ where: { id: loanId }, select: { status: true } });
+  return { status: loan.status, notifications: approval.notifications as ApprovalNotification[] };
 }
 
 /**
  * Selesaikan tindak lanjut (2026-11-20, Operational): setiap unit yang kembali Rusak / Tidak lengkap diisi hasilnya —
  * sudah lengkap / diperbaiki (kondisi akhir Baik) atau tetap rusak / tidak lengkap (kondisi akhir sama, unit tetap
- * ditandai di Daftar Unit) — dengan catatan penyelesaian. Status Selesai, unit bebas lagi. Audit memuat unit (Riwayat
- * Unit: "Tindak lanjut selesai").
+ * ditandai di Daftar Unit) — dengan catatan penyelesaian. Lalu hasil pengecekan + tindak lanjut diverifikasi engineer
+ * (approval DEMO_LOAN_RETURN, revisi 2026-11-20); disetujui → Selesai & unit bebas. Kirim `notifications` setelah commit.
+ * Audit memuat unit (Riwayat Unit: "Tindak lanjut selesai").
  */
 export async function resolveLoanFollowUp(db: PrismaClient, actor: LoanActor, loanId: string, input: ResolveFollowUpInput) {
   return db.$transaction(async (tx) => {
@@ -431,11 +447,11 @@ export async function resolveLoanFollowUp(db: PrismaClient, actor: LoanActor, lo
     }
     const after = await tx.demoLoan.update({
       where: { id: loanId },
-      data: { status: "RETURNED", followUpNote: input.note, followUpResolvedAt: new Date(), followUpResolvedById: actor.id },
+      data: { status: "RETURN_REVIEW", followUpNote: input.note, followUpResolvedAt: new Date(), followUpResolvedById: actor.id },
       include: { items: true },
     });
     await logAudit(tx, { actorId: actor.id, action: "UPDATE", entity: "DemoLoan", entityId: loanId, before, after });
-    return after;
+    return { loanId, ...(await startReturnVerification(tx, loanId, before.number, actor.id)) };
   });
 }
 

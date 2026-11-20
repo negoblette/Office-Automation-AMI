@@ -261,7 +261,7 @@ export async function buildLoanFollowUpEmails(db: PrismaClient, loanId: string, 
       props: {
         ...base,
         recipientName: personName(user),
-        statusLine: "Tindak lanjuti bersama PIC. Setelah beres, tekan Selesaikan Tindak Lanjut di halaman peminjaman; unit bermasalah tertahan sampai itu.",
+        statusLine: "Tindak lanjuti bersama PIC. Setelah beres, tekan Selesaikan Tindak Lanjut di halaman peminjaman — hasilnya lalu diverifikasi engineer; unit tertahan sampai verifikasi disetujui.",
         replyTo: replyTo.length ? `PIC (${loan.pic.fullName})` : undefined,
       },
     });

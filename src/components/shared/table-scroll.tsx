@@ -45,7 +45,9 @@ export function TableScroll({
       aria-label={scrollable ? label : undefined}
       tabIndex={scrollable ? 0 : undefined}
       className={cn(
-        "overflow-x-auto overscroll-x-contain focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
+        // `relative` (2026-11-20): elemen `absolute` di dalam tabel (mis. judul kolom `sr-only` "Aksi") ikut terkurung di
+        // area geser. Tanpa itu posisinya dihitung dari halaman, jadi halaman melebar (HP me-zoom-out seluruh tampilan).
+        "relative overflow-x-auto overscroll-x-contain focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
         shade && scrollable && "scroll-shade-x",
         className,
       )}

@@ -135,13 +135,15 @@ export async function assetHistory(db: PrismaClient, assetId: string): Promise<A
     const unitOf = (snapshot: Json) =>
       Array.isArray(snapshot.items) ? snapshot.items.map((item) => obj(item as Prisma.JsonValue)).find((item) => item.assetId === assetId) : undefined;
     // Tindak lanjut selesai (2026-11-20): hanya untuk unit yang memang bermasalah; unit Baik di peminjaman itu dilewati.
-    const followUpDone = status === "RETURNED" && before.status === "FOLLOW_UP";
+    // Sejak revisi 2026-11-20 lanjut ke Menunggu verifikasi; data lama langsung Selesai.
+    const followUpDone = (status === "RETURN_REVIEW" || status === "RETURNED") && before.status === "FOLLOW_UP";
     const resolved = followUpDone ? (str(unitOf(after)?.resolvedCondition) as ReturnCondition | null) : null;
     if (followUpDone && !resolved) continue;
     // Jatuh tempo berubah saat dipinjam = perpanjangan disetujui / persetujuannya dibatalkan (Tahap 16.4).
     const dueChanged = status === "ON_LOAN" && before.status === "ON_LOAN" && str(after.dueDate) && str(after.dueDate) !== str(before.dueDate);
-    // Barang tiba & dicek (Tahap 16.5): sejak 2026-11-20 menunggu verifikasi engineer (data lama: langsung Selesai /
-    // Perlu Tindak Lanjut). Verifikasi disetujui → Selesai / Perlu Tindak Lanjut; ditolak → kembali Pengambilan.
+    // Barang tiba & dicek (Tahap 16.5): ada unit bermasalah → Perlu Tindak Lanjut, selain itu menunggu verifikasi engineer
+    // (data lama: langsung Selesai). Verifikasi disetujui → Selesai (alur lama: bisa Perlu Tindak Lanjut); ditolak →
+    // kembali Pengambilan.
     const returned = (status === "RETURN_REVIEW" || status === "RETURNED" || status === "FOLLOW_UP") && before.status === "PICKUP";
     const verified = (status === "RETURNED" || status === "FOLLOW_UP") && before.status === "RETURN_REVIEW";
     const verifyRejected = status === "PICKUP" && before.status === "RETURN_REVIEW";

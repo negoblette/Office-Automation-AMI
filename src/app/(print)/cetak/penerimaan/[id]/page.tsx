@@ -39,8 +39,6 @@ export default async function ReceiptHafPrintPage({ params }: { params: Promise<
 
   return (
     <>
-      {/* Hanya selama halaman ini terbuka: lembar A4 tegak (halaman cetak lain tetap memakai pengaturan browser). */}
-      <style>{"@page { size: A4 portrait; margin: 10mm 12mm; } @media print { html, body { background: #fff !important; } }"}</style>
       <PrintToolbar backHref={`/inventory/penerimaan/${receipt.id}`} />
       <SheetLabel>Lembar 1 dari 2 — asli</SheetLabel>
       <HafSheet data={data} />

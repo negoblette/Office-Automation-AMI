@@ -3,6 +3,8 @@ import type { Actor } from "@/lib/services/access";
 import { approveRequest, rejectRequest, revokeApproval } from "@/lib/services/approval";
 import { listCorrections } from "@/lib/services/approval-correction";
 import { listMyApprovalQueue } from "@/lib/services/approval-queries";
+import { toJakartaIsoDate } from "@/lib/format";
+import { formatDocumentNumber } from "@/lib/services/numbering";
 import { cancelOvertime, finishOvertime, overtimeReimburseType, startOvertime } from "@/lib/services/overtime";
 import { listOvertimes, listReimbursableOvertimes } from "@/lib/services/overtime-queries";
 import { saveCustomer, saveProject } from "@/lib/services/project";
@@ -38,6 +40,11 @@ const finish = (activity = "Migrasi router") => overtimeFinishSchema.parse({ cus
 const approvalOf = (module: "OVERTIME" | "REIMBURSE", entityId: string) =>
   testDb.approvalRequest.findUniqueOrThrow({ where: { module_entityId: { module, entityId } }, include: { steps: { orderBy: { level: "asc" } } } });
 const overtime = (id: string) => testDb.overtime.findUniqueOrThrow({ where: { id } });
+/** Nomor OVT ikut bulan pengajuan (jam server saat clock out), bukan tanggal sesi — jadi dihitung dari hari ini. */
+const ovtNumber = (sequence: number) => {
+  const [year, month] = toJakartaIsoDate(new Date()).split("-").map(Number);
+  return formatDocumentNumber("OVT", year, month, sequence);
+};
 
 /** Satu sesi overtime Andi (Engineer) yang sudah di-finalize (menunggu Ko Yosep). */
 async function session(start: string, end: string) {
@@ -70,7 +77,7 @@ describe("overtime engineer (2026-10-30)", () => {
     expect(() => overtimeFinishSchema.parse({ customerId, projectId: "", activity: "Kerja" })).toThrow("Project wajib dipilih");
 
     const result = await finishOvertime(testDb, actors.andi, first.id, finish(), at("2026-10-20T20:00"));
-    expect(result).toMatchObject({ number: "OVT/2026/10/0001", status: "PENDING" });
+    expect(result).toMatchObject({ number: ovtNumber(1), status: "PENDING" });
     expect(result.notifications).toEqual([expect.objectContaining({ template: "approval-requested", recipientIds: [u.yosep] })]);
     await expect(finishOvertime(testDb, actors.andi, first.id, finish(), at("2026-10-20T21:00"))).rejects.toThrow("Overtime ini sudah selesai");
     await session("2026-10-20T21:00", "2026-10-20T23:30");
@@ -81,9 +88,11 @@ describe("overtime engineer (2026-10-30)", () => {
       ["2026-10-20", "21:00", "23:30", 150, "PENDING", "PRJ-01 - Core Network"],
       ["2026-10-20", "18:00", "20:00", 120, "PENDING", "PRJ-01 - Core Network"],
     ]);
-    const [queued] = await listMyApprovalQueue(testDb, u.yosep);
-    expect(queued).toMatchObject({ module: "OVERTIME", entityNumber: "OVT/2026/10/0001", canApprove: true });
-    expect(queued.summary).toContain("PT Maju Selaras · PRJ-01 - Core Network · Migrasi router");
+    // Antrian approval juga paling baru di atas: sesi 21:00 (nomor 2) lalu sesi 18:00 (nomor 1).
+    const queue = await listMyApprovalQueue(testDb, u.yosep);
+    expect(queue.map((r) => r.entityNumber)).toEqual([ovtNumber(2), ovtNumber(1)]);
+    expect(queue[1]).toMatchObject({ module: "OVERTIME", canApprove: true });
+    expect(queue[1].summary).toContain("PT Maju Selaras · PRJ-01 - Core Network · Migrasi router");
   });
 
   it("sesi berjalan bisa dibatalkan pemiliknya; sesi selesai tidak", async () => {
