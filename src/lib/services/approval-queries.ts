@@ -3,7 +3,7 @@ import type { ApprovalModule, Prisma, PrismaClient, RequestStatus } from "@/gene
 import type { ApprovalStepView } from "@/components/shared/approval-stepper";
 import { CORRECTABLE_MODULES, type CorrectionView, listCorrections } from "./approval-correction";
 import { APPEAL_REASON_LABEL, formatDuration } from "@/lib/attendance";
-import { formatLoanDuration, LOAN_PURPOSE_LABEL, loanPurposeDescription, loanPurposeText } from "@/lib/demo-loan";
+import { formatLoanDuration, LOAN_PURPOSE_LABEL, loanPurposeDescription, loanPurposeText, RETURN_CONDITION_LABEL } from "@/lib/demo-loan";
 import { ownershipText } from "@/lib/inventory";
 import { formatDate, formatRupiah, formatTime, toJakartaIsoDate } from "@/lib/format";
 import { overtimeMinutes } from "@/lib/validators/overtime";
@@ -137,7 +137,7 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
     ? await db.demoLoan.findMany({
         where: { id: { in: loanIds } },
         include: {
-          salesPerson: { select: { fullName: true } },
+          pic: { select: { fullName: true } },
           items: { orderBy: { id: "asc" }, include: { rack: { select: { name: true } }, asset: { select: { ownership: true, ownerName: true } } } },
         },
       })
@@ -152,6 +152,18 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
       })
     : [];
   const extensionOf = new Map(extensions.map((extension) => [extension.id, extension]));
+  // Verifikasi Pengecekan Unit (2026-11-20): hasil cek Operational per unit (kondisi, catatan, tempat ditaruh).
+  const returnIds = requests.filter((r) => r.module === "DEMO_LOAN_RETURN").map((r) => r.entityId);
+  const returnLoans = returnIds.length
+    ? await db.demoLoan.findMany({
+        where: { id: { in: returnIds } },
+        include: {
+          receivedBy: { select: { email: true, employee: { select: { fullName: true } } } },
+          items: { orderBy: { id: "asc" }, include: { returnRack: { select: { name: true } } } },
+        },
+      })
+    : [];
+  const returnLoanOf = new Map(returnLoans.map((loan) => [loan.id, loan]));
 
   return requests.map((request) => ({
     id: request.id,
@@ -218,11 +230,33 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
           headline: `${loanPurposeText(loan.purpose, loan.purposeDetail)} · ${loan.borrowerName} · ${loan.items.length} unit`,
           summary: [
             `${LOAN_PURPOSE_LABEL[loan.purpose]} — ${loanPurposeDescription(loan.purpose, loan.purposeDetail)}`,
-            `Peminjam: ${loan.borrowerName} (up: ${loan.picName})`,
+            `Peminjam: ${loan.borrowerName} (up: ${loan.contactName})`,
             `Periode: ${period}`,
-            `Sales Person: ${loan.salesPerson.fullName}`,
+            `PIC: ${loan.pic.fullName}`,
             ...units,
             loan.remarks && `Keperluan: ${loan.remarks}`,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          file: null,
+        };
+      }
+      const checked = returnLoanOf.get(request.entityId);
+      if (request.module === "DEMO_LOAN_RETURN" && checked) {
+        const problems = checked.items.filter((item) => item.returnCondition && item.returnCondition !== "GOOD").length;
+        const checker = checked.receivedBy ? (checked.receivedBy.employee?.fullName ?? checked.receivedBy.email) : null;
+        return {
+          headline: `Pengecekan · ${checked.borrowerName} · ${checked.items.length} unit${problems ? ` · ${problems} rusak / tidak lengkap` : " · semua Baik"}`,
+          summary: [
+            `Pengecekan Unit peminjaman ke ${checked.borrowerName}${checked.hafNumber ? ` (HAF ${checked.hafNumber})` : ""}`,
+            checked.returnedAt && `Tiba & dicek: ${formatDate(checked.returnedAt, "short")}${checker ? ` oleh ${checker}` : ""}`,
+            ...checked.items.map(
+              (item) =>
+                `${item.deviceName} · SN ${item.serialNo} — ${item.returnCondition ? RETURN_CONDITION_LABEL[item.returnCondition] : "-"}${item.returnNote ? `: ${item.returnNote}` : ""}${
+                  item.returnRack && item.returnRackPosition ? ` · ditaruh ${item.returnRack.name} ${item.returnRackPosition}` : ""
+                }`,
+            ),
+            checked.returnNote && `Catatan: ${checked.returnNote}`,
           ]
             .filter(Boolean)
             .join("\n"),
@@ -236,7 +270,7 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
         return {
           headline: `${loan.borrowerName} · jatuh tempo ${change}`,
           summary: [
-            `Perpanjangan peminjaman ke ${loan.borrowerName} (up: ${loan.picName})`,
+            `Perpanjangan peminjaman ke ${loan.borrowerName} (up: ${loan.contactName})`,
             `Jatuh tempo: ${change}`,
             `Periode menjadi: ${formatDate(loan.startDate, "short")} – ${formatDate(extension.newDueDate, "short")} (${formatLoanDuration(toJakartaIsoDate(loan.startDate), toJakartaIsoDate(extension.newDueDate))})`,
             `Alasan: ${extension.reason}`,

@@ -29,11 +29,13 @@ export default async function InventorySettingPage() {
     getFormCounter(prisma, "PTF"),
     getFormCounter(prisma, "HAF"),
   ]);
+  // Segmen ketiga = pemilik unit (2026-11-19): "AMI" atau nama principal / distributor, terisi saat nomor terbit.
   const counters = [
-    { kind: "PTF" as const, title: "Product Trial Form", format: "NNN/AMI-PTF/bulan Romawi/tahun", counter: ptf },
-    { kind: "HAF" as const, title: "Hardware Admission Form", format: "NNN/AMI-HAF/(kosong)/tahun", counter: haf },
+    { kind: "PTF" as const, title: "Product Trial Form", format: "NNN/AMI-PTF/pemilik unit/tahun", counter: ptf },
+    { kind: "HAF" as const, title: "Hardware Admission Form", format: "NNN/AMI-HAF/pemilik unit/tahun", counter: haf },
   ];
   const operational = operationalIds.map((id) => users.find((user) => user.id === id)).filter((user) => user !== undefined);
+  const activeOperational = operational.filter((user) => user.isActive);
   const options = users
     .filter((user) => user.isActive)
     .map((user) => ({ value: user.id, label: userLabel(user) }))
@@ -52,18 +54,20 @@ export default async function InventorySettingPage() {
           <div className="max-w-2xl space-y-1">
             <h2 className="text-base font-semibold">Operational</h2>
             <p className="text-sm text-muted-foreground">
-              Menyiapkan peminjaman yang sudah disetujui (pilih Item Sender, cetak form), mengecek barang yang kembali, menerima peringatan jatuh tempo, dan
-              bisa mengelola unit & posisi rak. Mereka
-              otomatis mendapat menu Inventaris walau bukan divisi Engineer / Sales.
+              Menyiapkan peminjaman yang sudah disetujui (pilih Item Sender, cetak form, Sudah Diantar), menjadwalkan pengambilan (HAF untuk kurir),
+              mengisi Pengecekan Unit saat barang tiba, menerima peringatan jatuh tempo, dan bisa mengelola unit & posisi rak. Mereka otomatis mendapat
+              menu Inventaris walau bukan divisi Engineer / Sales. Langkah-langkah peminjaman ini hanya untuk yang terdaftar di sini — Admin tidak
+              otomatis menjadi Operational.
             </p>
           </div>
           <OperationalDialog selected={operationalIds} users={options} />
         </div>
-        {operational.length === 0 ? (
+        {activeOperational.length === 0 && (
           <p className="rounded-xl bg-warning-soft px-4 py-3 text-sm font-medium text-warning">
-            Belum ada Operational. Pengajuan peminjaman dan peringatan jatuh tempo tidak punya penerima sampai diatur.
+            Belum ada Operational aktif. Peminjaman yang disetujui tidak bisa disiapkan, diambil, atau dicek sampai Operational ditunjuk.
           </p>
-        ) : (
+        )}
+        {operational.length > 0 && (
           <ul className="flex flex-wrap gap-2">
             {operational.map((user) => (
               <li key={user.id} className="flex items-center gap-2 rounded-full bg-panel px-3.5 py-1.5 text-sm font-semibold text-ink">
@@ -83,8 +87,9 @@ export default async function InventorySettingPage() {
         <div className="max-w-2xl space-y-1">
           <h2 className="text-base font-semibold">Nomor form</h2>
           <p className="text-sm text-muted-foreground">
-            Urut ulang dari 001 tiap tahun. Product Trial Form terbit saat peminjaman diajukan; Hardware Admission Form terbit saat barang kembali
-            dan selesai dicek. Atur nomor terakhir bila melanjutkan nomor form manual.
+            Urut ulang dari 001 tiap tahun. Product Trial Form terbit saat peminjaman diajukan; Hardware Admission Form (semua barang masuk)
+            terbit saat Operational menjadwalkan pengambilan peminjaman atau mencatat penerimaan barang principal / distributor. Segmen ketiga
+            diisi pemilik unit: AMI, atau nama principal / distributor. Atur nomor terakhir bila melanjutkan nomor form manual.
           </p>
         </div>
         <ul className="flex flex-col divide-y divide-border">

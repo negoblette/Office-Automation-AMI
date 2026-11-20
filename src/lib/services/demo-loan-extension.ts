@@ -1,9 +1,10 @@
 // Perpanjangan jatuh tempo peminjaman unit (Tahap 16.4, 2026-11-18; rekomendasi yang disepakati user):
-//  - Diajukan pemohon peminjaman, atau Operational / Admin atas namanya, selama barang masih Dipinjam: tanggal selesai
-//    baru + alasan. Paling banyak satu perpanjangan menunggu per peminjaman (baris DemoLoan dikunci FOR UPDATE).
+//  - Diajukan pemohon peminjaman, atau Operational atas namanya (Admin tidak otomatis, 2026-11-19), selama barang masih
+//    Dipinjam: tanggal selesai baru + alasan. Paling banyak satu perpanjangan menunggu per peminjaman (baris DemoLoan
+//    dikunci FOR UPDATE).
 //  - Disetujui lewat approval engine (modul DEMO_LOAN_EXTENSION, Approval Flow DEMO_LOAN = Ko Yosep). Efeknya di
 //    demo-loan-extension-effects.ts: jatuh tempo pindah, pengingat mulai lagi dari tanggal baru.
-//  - Dibatalkan pengaju sebelum diputuskan, atau ditutup otomatis saat barang diterima kembali.
+//  - Dibatalkan pengaju sebelum diputuskan, atau ditutup otomatis saat pengambilan barang dijadwalkan.
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { FLOW_MODULE_OF } from "@/lib/approval-modules";
 import { extensionDueError } from "@/lib/demo-loan";
@@ -27,8 +28,8 @@ export async function requestLoanExtension(db: PrismaClient, actor: LoanActor, l
     const loan = await tx.demoLoan.findUnique({ where: { id: loanId }, select: { id: true, number: true, status: true, requesterId: true, startDate: true, dueDate: true } });
     if (!loan) throw new ServiceError("Peminjaman tidak ditemukan");
     const access = await inventoryAccess(tx, actor);
-    if (!access.canView || (loan.requesterId !== actor.id && !access.canManage)) {
-      throw new ServiceError("Hanya pemohon peminjaman, Operational, atau Admin yang bisa mengajukan perpanjangan");
+    if (!access.canView || (loan.requesterId !== actor.id && !access.isOperational)) {
+      throw new ServiceError("Hanya pemohon peminjaman atau Operational yang bisa mengajukan perpanjangan");
     }
     if (loan.status !== "ON_LOAN") throw new ServiceError("Perpanjangan hanya untuk peminjaman yang barangnya sedang dipinjam");
     if (await tx.demoLoanExtension.count({ where: { loanId, status: "PENDING" } })) {
@@ -82,14 +83,14 @@ export async function cancelLoanExtension(db: PrismaClient, actor: LoanActor, ex
 }
 
 /**
- * Barang diterima kembali (dipanggil di transaksi pengembalian, baris DemoLoan sudah dikunci): perpanjangan yang masih
- * menunggu tidak berlaku lagi → dibatalkan & keluar dari antrian approval.
+ * Pengambilan barang dijadwalkan (dipanggil di transaksi pengambilan, baris DemoLoan sudah dikunci): perpanjangan yang
+ * masih menunggu tidak berlaku lagi → dibatalkan & keluar dari antrian approval.
  */
 export async function closePendingExtensions(tx: Tx, loanId: string, actorId: string) {
   const pending = await tx.demoLoanExtension.findMany({ where: { loanId, status: "PENDING" } });
   const now = new Date();
   for (const before of pending) {
-    await closeApproval(tx, before.id, actorId, "Barang sudah kembali", now);
+    await closeApproval(tx, before.id, actorId, "Barang dijadwalkan diambil kembali", now);
     const after = await tx.demoLoanExtension.update({ where: { id: before.id }, data: { status: "CANCELLED", decidedAt: now } });
     await logAudit(tx, { actorId, action: "UPDATE", entity: "DemoLoanExtension", entityId: before.id, before, after });
   }

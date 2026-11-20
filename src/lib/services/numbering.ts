@@ -39,11 +39,11 @@ export async function nextDocumentNumber(
 }
 
 /**
- * Product Trial Form (Fase 16, 2026-11-17): `NNN/AMI-PTF/<bulan Romawi>/<tahun>`, urut ulang tiap TAHUN — counter
- * disimpan di NumberSequence dengan `month = 0`. Nomor awal bisa diatur Admin (services/demo-loan.ts).
+ * Product Trial Form (Fase 16, 2026-11-17): `NNN/AMI-PTF/<pemilik unit>/<tahun>` (pemilik sejak 2026-11-19), urut ulang
+ * tiap TAHUN — counter disimpan di NumberSequence dengan `month = 0`. Nomor awal bisa diatur Admin (services/demo-loan.ts).
  */
 export const TRIAL_FORM_PREFIX = "PTF";
-/** Hardware Admission Form (Tahap 16.5): `NNN/AMI-HAF/<kosong>/<tahun>`, urut per tahun, counter sendiri. */
+/** Hardware Admission Form (Tahap 16.5): `NNN/AMI-HAF/<pemilik unit>/<tahun>`, urut per tahun, counter sendiri. */
 export const HAF_PREFIX = "HAF";
 
 /** Urutan berikutnya untuk counter tahunan (`month = 0`), atomik seperti `nextDocumentNumber`. */
@@ -57,14 +57,14 @@ async function nextYearlySequence(tx: Prisma.TransactionClient, prefix: string, 
   return row.lastValue;
 }
 
-/** Nomor form berikutnya (bulan & tahun kalender Jakarta dari `at`). Panggil di dalam transaksi pengajuan. */
-export async function nextTrialFormNumber(tx: Prisma.TransactionClient, at: Date = new Date()): Promise<string> {
-  const [year, month] = toJakartaIsoDate(at).split("-").map(Number);
-  return formatTrialFormNumber(await nextYearlySequence(tx, TRIAL_FORM_PREFIX, year), month, year);
+/** Nomor form berikutnya (tahun kalender Jakarta dari `at`). Panggil di dalam transaksi pengajuan. */
+export async function nextTrialFormNumber(tx: Prisma.TransactionClient, owner: string, at: Date = new Date()): Promise<string> {
+  const [year] = toJakartaIsoDate(at).split("-").map(Number);
+  return formatTrialFormNumber(await nextYearlySequence(tx, TRIAL_FORM_PREFIX, year), owner, year);
 }
 
-/** Nomor Hardware Admission Form berikutnya (tahun kalender Jakarta dari `at`). Panggil di dalam transaksi pengembalian. */
-export async function nextHafNumber(tx: Prisma.TransactionClient, at: Date = new Date()): Promise<string> {
+/** Nomor Hardware Admission Form berikutnya (tahun kalender Jakarta dari `at`). Panggil di dalam transaksi pengambilan. */
+export async function nextHafNumber(tx: Prisma.TransactionClient, owner: string, at: Date = new Date()): Promise<string> {
   const [year] = toJakartaIsoDate(at).split("-").map(Number);
-  return formatHafNumber(await nextYearlySequence(tx, HAF_PREFIX, year), year);
+  return formatHafNumber(await nextYearlySequence(tx, HAF_PREFIX, year), owner, year);
 }

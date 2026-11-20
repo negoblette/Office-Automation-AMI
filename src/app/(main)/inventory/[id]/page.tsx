@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { buttonVariants } from "@/components/ui/button";
 import { requireInventory } from "@/lib/auth/inventory";
 import { prisma } from "@/lib/db";
-import { isActiveLoanStatus, loanPurposeText, RETURN_CONDITION_LABEL } from "@/lib/demo-loan";
+import { loanPurposeText, RETURN_CONDITION_LABEL } from "@/lib/demo-loan";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { ownershipText, rackLocationLabel } from "@/lib/inventory";
 import { ASSET_CATEGORY_LABEL } from "@/lib/labels";
@@ -51,7 +51,8 @@ export default async function AssetDetailPage({ params, searchParams }: { params
     assetHistory(prisma, asset.id),
     access.canManage ? listRacks(prisma) : [],
   ]);
-  const busy = loans.some((loan) => isActiveLoanStatus(loan.status));
+  // Tertahan peminjaman (termasuk unit yang masih ditindaklanjuti karena kembali rusak / tidak lengkap, 2026-11-20).
+  const busy = Boolean(asset.activeLoan);
   // Halaman riwayat: angka tidak valid / di luar jangkauan → halaman terdekat yang ada.
   const historyPages = Math.max(1, Math.ceil(history.length / HISTORY_PAGE_SIZE));
   const requestedPage = Number.parseInt(riwayat ?? "1", 10);
@@ -105,6 +106,15 @@ export default async function AssetDetailPage({ params, searchParams }: { params
         ))}
         {(asset.warrantyNote || asset.notes) && (
           <p className="text-sm text-muted-foreground sm:col-span-3 lg:col-span-6">{[asset.warrantyNote, asset.notes].filter(Boolean).join(" · ")}</p>
+        )}
+        {/* Unit principal / distributor yang masuk lewat Penerimaan Barang (2026-11-20). */}
+        {asset.receipt && (
+          <p className="text-sm sm:col-span-3 lg:col-span-6">
+            Masuk lewat penerimaan barang ·{" "}
+            <Link href={`/inventory/penerimaan/${asset.receipt.id}`} className="font-semibold underline-offset-4 hover:underline">
+              HAF <span className="font-mono">{asset.receipt.hafNumber}</span>
+            </Link>
+          </p>
         )}
       </section>
 

@@ -142,6 +142,9 @@ enum ApprovalModule {
   /// Perpanjangan jatuh tempo peminjaman (Tahap 16.4, 2026-11-18). Approval Flow-nya memakai flow DEMO_LOAN (tidak diatur
   /// terpisah di Setting); entityId = DemoLoanExtension.id.
   DEMO_LOAN_EXTENSION
+  /// Verifikasi hasil Pengecekan Unit oleh engineer (2026-11-20, default Ko Yosep; Approval Flow sendiri). entityId =
+  /// DemoLoan.id.
+  DEMO_LOAN_RETURN
 }
 
 /// Jenis perubahan data karyawan yang menunggu persetujuan (2026-10-12).
@@ -213,6 +216,9 @@ model User {
   demoLoansRequested     DemoLoan[]             @relation("DemoLoanRequester")
   demoLoansPrepared      DemoLoan[]             @relation("DemoLoanOperational")
   demoLoansReceived      DemoLoan[]             @relation("DemoLoanReceiver")
+  demoLoansHafPrepared   DemoLoan[]             @relation("DemoLoanHafPreparer")
+  demoLoansFollowedUp    DemoLoan[]             @relation("DemoLoanFollowUpResolver")
+  goodsReceiptsPrepared  GoodsReceipt[]         @relation("GoodsReceiptPreparer")
   demoLoanExtensions     DemoLoanExtension[]
 }
 
@@ -307,8 +313,11 @@ model Employee {
   attendanceAppeals AttendanceAppeal[]
   overtimes         Overtime[]
   fromCandidate     Candidate?
-  demoLoansAsSales  DemoLoan[]         @relation("DemoLoanSalesPerson")
-  demoLoansAsSender DemoLoan[]         @relation("DemoLoanItemSender")
+  demoLoansAsPic     DemoLoan[]        @relation("DemoLoanPic")
+  demoLoansAsSender  DemoLoan[]        @relation("DemoLoanItemSender")
+  demoLoansAsCourier DemoLoan[]        @relation("DemoLoanCourier")
+  goodsReceiptsAsPic GoodsReceipt[]    @relation("GoodsReceiptPic")
+  goodsReceived      GoodsReceipt[]    @relation("GoodsReceiptReceiver")
 
   @@index([status, division])
 }
@@ -409,6 +418,10 @@ model Asset {
   ownership     AssetOwnership @default(AMI)
   /// Nama principal / distributor (wajib bila bukan milik AMI).
   ownerName     String?
+  /// Penerimaan barang (HAF) tempat unit principal / distributor ini masuk (2026-11-20). Kosong = milik AMI, atau unit
+  /// titipan lama yang didaftarkan sebelum ada penerimaan barang. Kepemilikan unit hanya bisa diisi lewat penerimaan.
+  receiptId     String?
+  receipt       GoodsReceipt? @relation(fields: [receiptId], references: [id])
   /// Lokasi penyimpanan (2026-11-17): rak + posisi "A1" (huruf kolom + nomor baris). Satu posisi boleh banyak unit.
   rackId        String?
   rack          StorageRack?  @relation(fields: [rackId], references: [id])
@@ -421,6 +434,41 @@ model Asset {
   deletedAt   DateTime? // soft delete: data tidak dihapus permanen (NFR v1.14)
 
   @@index([rackId, rackPosition])
+  @@index([receiptId])
+}
+
+/// Penerimaan barang principal / distributor (2026-11-20) = satu Hardware Admission Form untuk barang yang masuk ke AMI
+/// (HAF mendata semua barang masuk: unit pinjaman yang kembali & unit yang dipinjam AMI dari principal / distributor).
+/// Satu kedatangan = satu HAF, boleh banyak unit; unit-unitnya langsung terdaftar di Daftar Unit dengan kepemilikan ini.
+/// Dicatat HANYA oleh Operational. Nomor `NNN/AMI-HAF/<nama pemilik>/<tahun>` memakai counter HAF yang sama dengan
+/// pengambilan peminjaman.
+model GoodsReceipt {
+  id           String         @id @default(cuid())
+  hafNumber    String         @unique
+  /// PRINCIPAL / DISTRIBUTOR (bukan AMI) + namanya — "From" di HAF.
+  ownership    AssetOwnership
+  ownerName    String
+  /// Kontak di principal / distributor ("up:" di HAF, wajib).
+  contactName  String
+  /// Tanggal barang diterima ("Date" di HAF).
+  receivedDate DateTime       @db.Date
+  /// PIC dari AMI (karyawan aktif Engineer / Sales) — kolom "PIC" di HAF.
+  picId        String
+  pic          Employee       @relation("GoodsReceiptPic", fields: [picId], references: [id])
+  /// Pengirim dari principal / distributor ("Returned By", opsional) & karyawan AMI penerima ("Received By").
+  senderName   String?
+  receiverId   String
+  receiver     Employee       @relation("GoodsReceiptReceiver", fields: [receiverId], references: [id])
+  /// Keperluan / catatan (Remarks di HAF).
+  purpose      String?
+  /// Operational yang mencatat ("Prepared By").
+  preparedById String
+  preparedBy   User           @relation("GoodsReceiptPreparer", fields: [preparedById], references: [id])
+  createdAt    DateTime       @default(now())
+
+  assets Asset[]
+
+  @@index([receivedDate])
 }
 
 /// Rak penyimpanan unit Inventory (2026-11-17), diatur Admin di Setting → Inventaris & Rak. Posisi di rak = huruf kolom
@@ -448,6 +496,9 @@ enum DemoLoanStatus {
   CANCELLED // dibatalkan pemohon sebelum disetujui
   ON_LOAN // barang sudah diantar ke peminjam (Tahap 16.3)
   RETURNED // barang kembali & sudah dicek Operational (Tahap 16.5)
+  PICKUP // pengambilan dijadwalkan Operational: HAF terbit & dibawa kurir AMI, menunggu Pengecekan Unit (2026-11-19)
+  FOLLOW_UP // sudah dicek tapi ada unit Rusak / Tidak lengkap → ditindaklanjuti PIC & Operational, ditutup Operational (2026-11-20)
+  RETURN_REVIEW // Pengecekan Unit tersimpan, menunggu verifikasi engineer (approval DEMO_LOAN_RETURN, Ko Yosep) (2026-11-20)
 }
 
 /// Kegunaan peminjaman (2026-11-17).
@@ -472,8 +523,8 @@ enum AssetOwnership {
 }
 
 /// Peminjaman unit demo ke perusahaan lain (Fase 16, 2026-11-17) = satu Product Trial Form. Unit yang sedang ada di
-/// peminjaman PENDING / APPROVED / ON_LOAN tidak bisa diajukan di peminjaman lain (dikunci di services/demo-loan.ts).
-/// Nomor `NNN/AMI-PTF/<bulan Romawi>/<tahun>` terbit saat diajukan (seperti nomor pengajuan lain), urut ulang tiap tahun.
+/// peminjaman PENDING / APPROVED / ON_LOAN / PICKUP tidak bisa diajukan di peminjaman lain (dikunci di
+/// services/demo-loan.ts). Nomor `NNN/AMI-PTF/<pemilik unit>/<tahun>` terbit saat diajukan, urut ulang tiap tahun.
 /// Persetujuan lewat approval engine (modul DEMO_LOAN); keputusan & alasan tolak ada di ApprovalRequest.
 model DemoLoan {
   id            String           @id @default(cuid())
@@ -485,16 +536,20 @@ model DemoLoan {
   /// Pemohon = "Prepared By" di form.
   requesterId   String
   requester     User             @relation("DemoLoanRequester", fields: [requesterId], references: [id])
-  salesPersonId String
-  salesPerson   Employee         @relation("DemoLoanSalesPerson", fields: [salesPersonId], references: [id])
+  /// PIC dari AMI (2026-11-19, dulu "Sales Person"): karyawan aktif divisi Engineer / Sales — kolom "PIC" di form cetak.
+  picId         String
+  pic           Employee         @relation("DemoLoanPic", fields: [picId], references: [id])
+  /// Pemilik unit (2026-11-19): "AMI" atau nama principal / distributor — segmen ketiga nomor PTF & HAF. Satu form = satu
+  /// pemilik (dicek saat diajukan / diubah).
+  unitOwner     String
   /// Peminjam: dipilih dari master Customer (customerId terisi) atau diketik bebas (hanya borrowerName).
   customerId    String?
   customer      Customer?        @relation(fields: [customerId], references: [id])
   borrowerName  String
-  /// PIC peminjam ("up:" di form) & emailnya. Email PIC TIDAK dikirimi pengingat jatuh tempo (keputusan user
-  /// 2026-11-17: pengingat hanya ke pemohon & Operational).
-  picName       String
-  picEmail      String
+  /// Kontak di perusahaan peminjam ("up:" di form) & emailnya (2026-11-19, dulu "PIC"). TIDAK dikirimi email
+  /// (keputusan user 2026-11-17: pengingat hanya ke pemohon & Operational).
+  contactName   String
+  contactEmail  String
   /// Jangka pinjam = tanggal mulai s/d tanggal selesai (keduanya diisi pengaju, inklusif). Lamanya (tahun / bulan / hari)
   /// dihitung dari kedua tanggal ini (lib/demo-loan.ts#loanSpan), tidak disimpan.
   startDate     DateTime         @db.Date
@@ -513,15 +568,31 @@ model DemoLoan {
   /// Barang diantar ke peminjam (Tahap 16.3): tanggal & nama penerima ("Received By").
   deliveredAt   DateTime?        @db.Date
   receivedByName String?
-  /// Barang kembali & sudah dicek Operational (Tahap 16.5): tanggal kembali, yang mengembalikan ("Returned By" di HAF),
-  /// Operational yang menerima & mengecek ("Received By"), nomor Hardware Admission Form, catatan umum.
+  /// Pengambilan (2026-11-19): Operational menjadwalkan → nomor Hardware Admission Form terbit, HAF dibawa kurir AMI ke
+  /// peminjam. Tanggal pengambilan ("Date" di HAF), kurir ("Received By"), Operational yang menerbitkan ("Prepared By").
+  pickupDate      DateTime?      @db.Date
+  courierId       String?
+  courier         Employee?      @relation("DemoLoanCourier", fields: [courierId], references: [id])
+  hafPreparedById String?
+  hafPreparedBy   User?          @relation("DemoLoanHafPreparer", fields: [hafPreparedById], references: [id])
+  /// `NNN/AMI-HAF/<pemilik unit>/<tahun>`, urut per tahun. Terbit saat pengambilan dijadwalkan; tetap melekat bila
+  /// pengambilan dibatalkan lalu dijadwalkan lagi.
+  hafNumber      String?         @unique
+  /// Barang tiba di AMI & sudah dicek Operational (Pengecekan Unit): tanggal tiba, yang menyerahkan di peminjam
+  /// ("Returned By" di HAF, opsional), Operational yang mengecek, catatan umum.
   returnedAt     DateTime?       @db.Date
   returnedByName String?
   receivedById   String?
   receivedBy     User?           @relation("DemoLoanReceiver", fields: [receivedById], references: [id])
-  /// `NNN/AMI-HAF/<kosong>/<tahun>` — segmen tengah dikosongkan dulu (keputusan user 2026-11-18), urut per tahun.
-  hafNumber      String?         @unique
   returnNote     String?
+  /// Tindak lanjut (2026-11-20): pengecekan menemukan unit Rusak / Tidak lengkap → status FOLLOW_UP sampai Operational
+  /// menyelesaikannya (catatan wajib, hasil per unit di DemoLoanItem.resolvedCondition). `followUpRemindedAt` = email
+  /// tindak lanjut terakhir ke PIC & Operational (pengingat diulang tiap 7 hari; kosong = belum pernah dikirim).
+  followUpRemindedAt   DateTime?
+  followUpNote         String?
+  followUpResolvedAt   DateTime?
+  followUpResolvedById String?
+  followUpResolvedBy   User?     @relation("DemoLoanFollowUpResolver", fields: [followUpResolvedById], references: [id])
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
@@ -538,7 +609,7 @@ enum DemoLoanExtensionStatus {
   PENDING // menunggu approval (Approval Flow modul DEMO_LOAN — Ko Yosep)
   APPROVED // disetujui → DemoLoan.dueDate = newDueDate
   REJECTED // ditolak approver (alasan di ApprovalRequestStep.note)
-  CANCELLED // dibatalkan pemohon, atau barang keburu kembali sebelum diputuskan
+  CANCELLED // dibatalkan pemohon, atau pengambilan barang keburu dijadwalkan sebelum diputuskan
 }
 
 /// Perpanjangan jatuh tempo peminjaman yang sedang Dipinjam (Tahap 16.4, 2026-11-18). Diajukan pemohon / Operational,
@@ -594,6 +665,9 @@ model DemoLoanItem {
   returnRackId       String?
   returnRack         StorageRack?     @relation("DemoLoanItemReturnRack", fields: [returnRackId], references: [id])
   returnRackPosition String?
+  /// Kondisi akhir setelah tindak lanjut (2026-11-20): GOOD = sudah lengkap / diperbaiki, sama dengan returnCondition =
+  /// tetap rusak / tidak lengkap. Kosong = tidak perlu / belum ditindaklanjuti. returnCondition tetap = kondisi saat tiba.
+  resolvedCondition  ReturnCondition?
 
   @@unique([loanId, assetId])
   @@index([assetId])

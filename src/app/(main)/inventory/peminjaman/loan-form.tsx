@@ -17,7 +17,7 @@ import { useFeedback } from "@/components/shared/feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { LoanPurpose } from "@/generated/prisma/enums";
-import { formatLoanDuration, LOAN_PURPOSE_HINT, LOAN_PURPOSE_LABEL, MAX_LOAN_ITEMS, maxLoanEnd, RETURN_CONDITION_LABEL } from "@/lib/demo-loan";
+import { formatLoanDuration, LOAN_PURPOSE_HINT, LOAN_PURPOSE_LABEL, MAX_LOAN_ITEMS, maxLoanEnd, mixedOwnerMessage, RETURN_CONDITION_LABEL } from "@/lib/demo-loan";
 import { formatDate, toJakartaIsoDate } from "@/lib/format";
 import { ASSET_CATEGORY_LABEL } from "@/lib/labels";
 import type { LoanFormOptions, LoanUnitOption } from "@/lib/services/demo-loan-queries";
@@ -35,9 +35,11 @@ export type LoanFormValues = {
   purposeDetail: string;
   assetIds: string[];
   borrowerName: string;
-  picName: string;
-  picEmail: string;
-  salesPersonId: string;
+  /** Kontak di perusahaan peminjam ("up:"). */
+  contactName: string;
+  contactEmail: string;
+  /** PIC dari AMI (Engineer / Sales). */
+  picId: string;
   startDate: string;
   /** Tanggal selesai (hari terakhir pinjam). */
   dueDate: string;
@@ -108,28 +110,29 @@ export function LoanForm({
             <UnitPicker units={options.units} />
           </FormSection>
 
-          <FormSection title="Peminjam" description="Perusahaan tujuan dan PIC-nya (tertulis di form sebagai “Lend To … up: …”).">
+          <FormSection title="Peminjam" description="Perusahaan tujuan dan kontaknya (tertulis di form sebagai “Lend To … up: …”).">
             <BorrowerField customers={options.customers} />
-            <TextInputField name="picName" label="Nama PIC (up:)" required placeholder="mis. Bapak Surahman" autoComplete="off" />
+            <TextInputField name="contactName" label="Kontak Peminjam (up:)" required placeholder="mis. Bapak Surahman" autoComplete="off" />
             <TextInputField
-              name="picEmail"
-              label="Email PIC"
+              name="contactEmail"
+              label="Email kontak peminjam"
               type="email"
               inputMode="email"
               autoComplete="off"
               required
-              hint="Kontak PIC untuk Operational (sistem tidak mengirim email ke peminjam)."
+              hint="Untuk Operational menghubungi peminjam (sistem tidak mengirim email ke peminjam)."
             />
           </FormSection>
 
           <FormSection title="Periode & penanggung jawab" description="Pilih tanggal mulai dan tanggal selesai; lama pinjam dihitung otomatis.">
             <SelectInputField
-              name="salesPersonId"
-              label="Sales Person"
+              name="picId"
+              label="PIC"
               required
-              options={options.salesPeople}
-              placeholder={options.salesPeople.length ? "Pilih Sales Person…" : "Belum ada karyawan Sales aktif"}
-              disabled={options.salesPeople.length === 0}
+              options={options.pics}
+              placeholder={options.pics.length ? "Pilih PIC…" : "Belum ada karyawan Engineer / Sales aktif"}
+              disabled={options.pics.length === 0}
+              hint="Penanggung jawab dari AMI (Engineer / Sales). Tercetak di kolom PIC form."
             />
             <PeriodFields today={today} />
 
@@ -362,13 +365,28 @@ function UnitPicker({ units }: { units: LoanUnitOption[] }) {
         const toggle = (id: string, checked: boolean) =>
           field.onChange(checked ? [...selected, id] : selected.filter((value) => value !== id));
         const full = selected.length >= MAX_LOAN_ITEMS;
+        // Pemilik unit tertulis di nomor form (2026-11-19): satu form = satu pemilik (dicek ulang di server).
+        const owners = [
+          ...new Map(
+            selected
+              .map((id) => byId.get(id))
+              .filter((unit): unit is LoanUnitOption => Boolean(unit))
+              .map((unit) => [unit.owner.toLowerCase(), unit.owner] as const),
+          ).values(),
+        ];
         return (
           <div className="flex flex-col gap-4 sm:col-span-2">
             {selected.length > 0 && (
               <div className="flex flex-col gap-2">
                 <p className="text-[13px] font-bold text-ink-2">
                   Dipilih: {selected.length} unit
+                  {owners.length === 1 && <span className="font-semibold text-ink-3"> · pemilik {owners[0]} (nomor form …/AMI-PTF/{owners[0]}/…)</span>}
                 </p>
+                {owners.length > 1 && (
+                  <p role="alert" className="rounded-[12px] bg-red-soft px-3 py-2 text-[12.5px] font-semibold text-red-deep">
+                    {mixedOwnerMessage(owners)}
+                  </p>
+                )}
                 <ul className="flex flex-wrap gap-2" aria-label="Unit yang dipilih">
                   {selected.map((id) => {
                     const unit = byId.get(id);

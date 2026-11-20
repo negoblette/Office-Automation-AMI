@@ -11,17 +11,18 @@
 // - antrian  → kunci tetap "approval"; muncul lagi bila ada pengajuan menunggu yang belum ada saat dihapus
 //
 // Peminjaman unit demo (Fase 16, 2026-11-17): disetujui & ditolak lewat approval engine (antrian approval Ko Yosep,
-// "ditolak" untuk pemohon). Tambahan untuk Operational & Admin: peminjaman yang sudah disetujui & menunggu disiapkan
-// (kunci tetap "loanqueue", aturannya sama dengan antrian approval).
+// "ditolak" untuk pemohon). Tambahan khusus user yang ditunjuk Operational (Admin tidak otomatis, 2026-11-19):
+// peminjaman yang disetujui & menunggu disiapkan ("loanqueue") dan yang dalam pengambilan & menunggu Pengecekan Unit
+// ("loanpickup") — aturannya sama dengan antrian approval. Admin: peringatan "belum ada Operational" ("loannoops").
 import { Prisma, type PrismaClient, type Role } from "@/generated/prisma/client";
 import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
-import { addDaysIso, daysUntilDue, DUE_SOON_DAYS, dueLabel, dueNotificationStage } from "@/lib/demo-loan";
+import { addDaysIso, daysUntilDue, DUE_SOON_DAYS, dueLabel, dueNotificationStage, followUpWeek, isProblemCondition } from "@/lib/demo-loan";
 import { inventoryEnabled } from "@/lib/features";
 import { fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { canApprove } from "@/lib/roles";
 import { pendingApprovalIds } from "./approval-queries";
 import { expiryAlerts } from "./dashboard-queries";
-import { loansAwaitingOperational } from "./demo-loan-queries";
+import { loansAwaitingCheck, loansAwaitingOperational } from "./demo-loan-queries";
 import { getHolidaySyncStatus, holidayNotifyRecipients, listHolidayRuns } from "./holiday-sync";
 import { getOperationalUserIds, inventoryAccess } from "./inventory-access";
 
@@ -40,32 +41,103 @@ export type NotificationItem = {
 
 type NotificationUser = { id: string; role: Role; employeeId: string | null; isSuperAdmin?: boolean };
 
-/** Antrian Operational (Operational & Admin): peminjaman yang sudah disetujui & menunggu disiapkan / dicetak. */
-async function loanQueue(db: PrismaClient, user: NotificationUser): Promise<NotificationItem | null> {
-  if (!inventoryEnabled({ isSuperAdmin: Boolean(user.isSuperAdmin) })) return null;
-  if (!(await inventoryAccess(db, user)).canManage) return null;
-  const ids = await loansAwaitingOperational(db);
-  if (ids.length === 0) return null;
+/**
+ * Antrian Operational (hanya user yang ditunjuk Operational): peminjaman yang sudah disetujui & menunggu disiapkan /
+ * dicetak, dan yang dalam pengambilan & wajib dicek setelah barang tiba (2026-11-19).
+ */
+async function loanQueues(db: PrismaClient, user: NotificationUser): Promise<NotificationItem[]> {
+  if (!inventoryEnabled({ isSuperAdmin: Boolean(user.isSuperAdmin) })) return [];
+  if (!(await inventoryAccess(db, user)).isOperational) return [];
+  const [toPrepare, toCheck] = await Promise.all([loansAwaitingOperational(db), loansAwaitingCheck(db)]);
+  const items: NotificationItem[] = [];
+  if (toPrepare.length) {
+    items.push({
+      key: "loanqueue",
+      kind: "loan",
+      title: `${toPrepare.length} peminjaman unit disetujui, siap disiapkan`,
+      detail: "Siapkan barang, pilih Item Sender, cetak form",
+      href: "/inventory/peminjaman",
+      tone: "info",
+      seen: toPrepare,
+    });
+  }
+  if (toCheck.length) {
+    items.push({
+      key: "loanpickup",
+      kind: "loan",
+      title: `${toCheck.length} peminjaman unit dalam pengambilan`,
+      detail: "Setelah barang tiba di AMI, isi Pengecekan Unit",
+      href: "/inventory/peminjaman",
+      tone: "info",
+      seen: toCheck,
+    });
+  }
+  return items;
+}
+
+/**
+ * Belum ada Operational aktif (2026-11-19): Admin diberi peringatan untuk menunjuknya selama ada peminjaman yang butuh
+ * Operational (disetujui / dipinjam / dalam pengambilan). Admin tidak menggantikan Operational.
+ */
+async function noOperationalWarning(db: PrismaClient, user: NotificationUser): Promise<NotificationItem | null> {
+  if (!inventoryEnabled({ isSuperAdmin: Boolean(user.isSuperAdmin) }) || user.role !== "ADMIN") return null;
+  const operationalIds = await getOperationalUserIds(db);
+  if (operationalIds.length && (await db.user.count({ where: { id: { in: operationalIds }, isActive: true } }))) return null;
+  const loans = await db.demoLoan.findMany({
+    where: { status: { in: ["APPROVED", "ON_LOAN", "PICKUP", "FOLLOW_UP"] } },
+    orderBy: [{ submittedAt: "asc" }, { id: "asc" }],
+    select: { id: true },
+  });
+  if (loans.length === 0) return null;
   return {
-    key: "loanqueue",
+    key: "loannoops",
     kind: "loan",
-    title: `${ids.length} peminjaman unit disetujui, siap disiapkan`,
-    detail: "Siapkan barang, pilih Item Sender, cetak form",
-    href: "/inventory/peminjaman",
-    tone: "info",
-    seen: ids,
+    title: "Belum ada Operational untuk peminjaman unit",
+    detail: `${loans.length} peminjaman menunggu Operational — tunjuk di Setting → Inventaris & Rak`,
+    href: "/setting/inventaris",
+    tone: "danger",
+    seen: loans.map((loan) => loan.id),
   };
 }
 
 /**
+ * Tindak lanjut (2026-11-20): peminjaman yang unitnya kembali Rusak / Tidak lengkap & belum diselesaikan. Untuk PIC
+ * internal AMI (karyawan PIC = karyawan user) & Operational — sama dengan penerima emailnya. Tampil sampai selesai; kunci
+ * memuat minggu ke-n sejak barang tiba, jadi yang dihapus muncul lagi tiap 7 hari.
+ */
+async function loanFollowUpItems(db: PrismaClient, user: NotificationUser, todayIso: string): Promise<NotificationItem[]> {
+  if (!inventoryEnabled({ isSuperAdmin: Boolean(user.isSuperAdmin) })) return [];
+  const seesAll = (await getOperationalUserIds(db)).includes(user.id);
+  if (!seesAll && !user.employeeId) return [];
+  const loans = await db.demoLoan.findMany({
+    where: { status: "FOLLOW_UP", ...(seesAll ? {} : { picId: user.employeeId! }) },
+    orderBy: [{ returnedAt: "asc" }, { id: "asc" }],
+    take: 20,
+    select: { id: true, number: true, borrowerName: true, returnedAt: true, items: { select: { returnCondition: true, resolvedCondition: true } } },
+  });
+  return loans.map((loan) => {
+    const problems = loan.items.filter((item) => isProblemCondition(item.returnCondition) && !item.resolvedCondition).length;
+    const week = loan.returnedAt ? followUpWeek(toJakartaIsoDate(loan.returnedAt), todayIso) : 0;
+    return {
+      key: `loanfollowup:${loan.id}:${week}`,
+      kind: "loan" as const,
+      title: `Peminjaman ${loan.number} perlu tindak lanjut`,
+      detail: `${loan.borrowerName} · ${problems} unit rusak / tidak lengkap${week ? ` · ${week * 7}+ hari` : ""}`,
+      href: `/inventory/peminjaman/${loan.id}`,
+      tone: "danger" as const,
+    };
+  });
+}
+
+/**
  * Jatuh tempo peminjaman unit (Tahap 16.4): peminjaman yang sedang dipinjam & jatuh tempo ≤ 7 hari lagi atau sudah lewat.
- * Pemohon: miliknya; Operational (belum diatur → Admin): semua — sama dengan penerima email pengingat. Kunci memuat
- * jatuh tempo & tahap, jadi notifikasi yang dihapus muncul lagi saat terlambat / tiap 7 hari terlambat / diperpanjang.
+ * Pemohon: miliknya; Operational: semua — sama dengan penerima email pengingat (Admin tidak menggantikan Operational,
+ * 2026-11-19). Kunci memuat jatuh tempo & tahap, jadi notifikasi yang dihapus muncul lagi saat terlambat / tiap 7 hari
+ * terlambat / diperpanjang.
  */
 async function loanDueItems(db: PrismaClient, user: NotificationUser, todayIso: string): Promise<NotificationItem[]> {
   if (!inventoryEnabled({ isSuperAdmin: Boolean(user.isSuperAdmin) })) return [];
-  const operationalIds = await getOperationalUserIds(db);
-  const seesAll = operationalIds.length ? operationalIds.includes(user.id) : user.role === "ADMIN";
+  const seesAll = (await getOperationalUserIds(db)).includes(user.id);
   const loans = await db.demoLoan.findMany({
     where: { status: "ON_LOAN", dueDate: { lte: fromIsoDate(addDaysIso(todayIso, DUE_SOON_DAYS)) }, ...(seesAll ? {} : { requesterId: user.id }) },
     orderBy: { dueDate: "asc" },
@@ -139,7 +211,7 @@ const retentionStart = (now: Date) => new Date(now.getTime() - DISMISSAL_RETENTI
 async function collectNotifications(db: PrismaClient, user: NotificationUser, todayIso: string, now: Date): Promise<NotificationItem[]> {
   const isAdmin = user.role === "ADMIN";
   const since = new Date(now.getTime() - REJECTED_WINDOW_DAYS * DAY_MS);
-  const [expiring, pendingIds, rejected, loanQueueItem, loanDue, holiday] = await Promise.all([
+  const [expiring, pendingIds, rejected, loanQueueItems, noOperational, loanFollowUp, loanDue, holiday] = await Promise.all([
     isAdmin ? expiryAlerts(db, todayIso) : user.employeeId ? expiryAlerts(db, todayIso, user.employeeId) : [],
     canApprove(user.role) ? pendingApprovalIds(db, user.id) : [],
     db.approvalRequest.findMany({
@@ -148,7 +220,9 @@ async function collectNotifications(db: PrismaClient, user: NotificationUser, to
       take: 10,
       select: { id: true, module: true, entityId: true, entityNumber: true, completedAt: true },
     }),
-    loanQueue(db, user),
+    loanQueues(db, user),
+    noOperationalWarning(db, user),
+    loanFollowUpItems(db, user, todayIso),
     loanDueItems(db, user, todayIso),
     holidayItems(db, user, now),
   ]);
@@ -177,9 +251,9 @@ async function collectNotifications(db: PrismaClient, user: NotificationUser, to
       seen: pendingIds,
     });
   }
-  // Antrian Operational tepat setelah antrian approval, lalu jatuh tempo peminjaman (paling mendesak dulu).
-  if (loanQueueItem) items.push(loanQueueItem);
-  items.push(...loanDue, ...holiday);
+  // Antrian Operational / peringatan Admin tepat setelah antrian approval, lalu jatuh tempo peminjaman.
+  if (noOperational) items.push(noOperational);
+  items.push(...loanQueueItems, ...loanFollowUp, ...loanDue, ...holiday);
   for (const r of rejected) {
     if (cancelled.has(r.entityId)) continue;
     const meta = APPROVAL_MODULE_META[r.module];
@@ -187,7 +261,12 @@ async function collectNotifications(db: PrismaClient, user: NotificationUser, to
       key: `rejected:${r.id}:${r.completedAt?.getTime() ?? 0}`,
       kind: "rejected",
       title: `${meta.label} ${r.entityNumber} ditolak`,
-      detail: r.module === "DEMO_LOAN_EXTENSION" ? "Jatuh tempo tidak berubah" : "Revisi lalu ajukan ulang",
+      detail:
+        r.module === "DEMO_LOAN_EXTENSION"
+          ? "Jatuh tempo tidak berubah"
+          : r.module === "DEMO_LOAN_RETURN"
+            ? "Cek ulang unit lalu simpan Pengecekan Unit lagi"
+            : "Revisi lalu ajukan ulang",
       href: meta.path(r.entityId),
       tone: "danger",
     });

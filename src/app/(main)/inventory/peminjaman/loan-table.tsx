@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 const col = dataTableColumnHelper<LoanRow>();
 const date = (iso: string) => formatDate(`${iso}T00:00:00Z`, "short");
 
-type Filter = "ALL" | "MINE" | "PENDING" | "APPROVED" | "ON_LOAN" | "OVERDUE" | "REJECTED" | "DONE";
+type Filter = "ALL" | "MINE" | "PENDING" | "APPROVED" | "ON_LOAN" | "OVERDUE" | "PICKUP" | "RETURN_REVIEW" | "FOLLOW_UP" | "REJECTED" | "DONE";
 
 const matches = (row: LoanRow, filter: Filter, userId: string) => {
   switch (filter) {
@@ -38,18 +38,20 @@ export function LoanStatus({ status, overdue }: { status: LoanRow["status"]; ove
 
 /**
  * Daftar peminjaman unit (Fase 16.2). Semua user Inventaris melihat semua peminjaman (supaya tahu unit sedang ke mana);
- * Operational & Admin (`canPrepare`) langsung disaring ke "Disiapkan" bila ada peminjaman disetujui yang perlu disiapkan.
+ * Operational (`isOperational`, Admin tidak otomatis) langsung disaring ke pekerjaannya: "Disiapkan" bila ada yang perlu
+ * disiapkan, lalu "Pengambilan" (menunggu Pengecekan Unit), lalu "Tindak lanjut" (unit rusak / tidak lengkap).
  */
-export function LoanTable({ rows, userId, canPrepare }: { rows: LoanRow[]; userId: string; canPrepare: boolean }) {
-  const toPrepare = rows.some((row) => row.status === "APPROVED");
-  const [filter, setFilter] = useState<Filter>(canPrepare && toPrepare ? "APPROVED" : "ALL");
+export function LoanTable({ rows, userId, isOperational }: { rows: LoanRow[]; userId: string; isOperational: boolean }) {
+  const work = (["APPROVED", "PICKUP", "FOLLOW_UP"] as const).find((status) => rows.some((row) => row.status === status));
+  const initial: Filter = isOperational && work ? work : "ALL";
+  const [filter, setFilter] = useState<Filter>(initial);
   const data = useMemo(() => rows.filter((row) => matches(row, filter, userId)), [rows, filter, userId]);
   const count = (value: Filter) => rows.filter((row) => matches(row, value, userId)).length;
 
   const columns = useMemo(
     () =>
       col.columns([
-        col.accessor((row) => `${row.borrowerName} ${row.picName} ${row.number} ${loanPurposeText(row.purpose, row.purposeDetail)}`, {
+        col.accessor((row) => `${row.borrowerName} ${row.contactName} ${row.number} ${loanPurposeText(row.purpose, row.purposeDetail)}`, {
           id: "borrower",
           header: "Peminjam",
           sortFn: (a, b) => a.original.borrowerName.localeCompare(b.original.borrowerName, "id"),
@@ -59,7 +61,7 @@ export function LoanTable({ rows, userId, canPrepare }: { rows: LoanRow[]; userI
                 {row.original.borrowerName}
               </Link>
               <p className="text-xs text-ink-3">
-                {loanPurposeText(row.original.purpose, row.original.purposeDetail)} · up: {row.original.picName}
+                {loanPurposeText(row.original.purpose, row.original.purposeDetail)} · up: {row.original.contactName}
               </p>
               <p className="font-mono text-xs text-ink-3">{row.original.number}</p>
             </div>
@@ -88,16 +90,19 @@ export function LoanTable({ rows, userId, canPrepare }: { rows: LoanRow[]; userI
                   {row.original.daysLeft < 0 ? `Terlambat ${-row.original.daysLeft} hari` : `Jatuh tempo ${dueLabel(row.original.daysLeft)}`}
                 </p>
               )}
+              {row.original.status === "PICKUP" && row.original.pickupDate && (
+                <p className="text-xs font-semibold text-brand-deep">Diambil {date(row.original.pickupDate)}</p>
+              )}
             </div>
           ),
         }),
-        col.accessor((row) => `${row.requesterName} ${row.salesPersonName}`, {
+        col.accessor((row) => `${row.requesterName} ${row.picName}`, {
           id: "requester",
           header: "Pemohon",
           cell: ({ row }) => (
             <div>
               <p>{row.original.requesterName}</p>
-              <p className="text-xs text-ink-3">Sales: {row.original.salesPersonName}</p>
+              <p className="text-xs text-ink-3">PIC: {row.original.picName}</p>
             </div>
           ),
         }),
@@ -116,14 +121,14 @@ export function LoanTable({ rows, userId, canPrepare }: { rows: LoanRow[]; userI
                 className={buttonVariants({ variant: "ghost", size: "sm" })}
                 aria-label={`Buka peminjaman ke ${row.original.borrowerName}`}
               >
-                {row.original.status === "APPROVED" && canPrepare ? "Siapkan" : "Detail"}
+                {!isOperational ? "Detail" : ({ APPROVED: "Siapkan", PICKUP: "Cek Unit", FOLLOW_UP: "Tindak Lanjut" } as Partial<Record<LoanRow["status"], string>>)[row.original.status] ?? "Detail"}
                 <ChevronRight aria-hidden />
               </Link>
             </div>
           ),
         }),
       ]),
-    [canPrepare],
+    [isOperational],
   );
 
   return (
@@ -139,6 +144,9 @@ export function LoanTable({ rows, userId, canPrepare }: { rows: LoanRow[]; userI
           { value: "APPROVED", label: "Disiapkan", count: count("APPROVED") },
           { value: "ON_LOAN", label: "Dipinjam", count: count("ON_LOAN") },
           ...(count("OVERDUE") ? [{ value: "OVERDUE" as const, label: "Terlambat", count: count("OVERDUE") }] : []),
+          { value: "PICKUP", label: "Pengambilan", count: count("PICKUP") },
+          ...(count("RETURN_REVIEW") ? [{ value: "RETURN_REVIEW" as const, label: "Menunggu verifikasi", count: count("RETURN_REVIEW") }] : []),
+          ...(count("FOLLOW_UP") ? [{ value: "FOLLOW_UP" as const, label: "Tindak lanjut", count: count("FOLLOW_UP") }] : []),
           { value: "REJECTED", label: "Ditolak", count: count("REJECTED") },
           { value: "DONE", label: "Selesai / batal", count: count("DONE") },
         ]}
@@ -147,7 +155,7 @@ export function LoanTable({ rows, userId, canPrepare }: { rows: LoanRow[]; userI
         columns={columns}
         data={data}
         getRowId={(row) => row.id}
-        searchPlaceholder="Cari perusahaan, PIC, nomor form, unit…"
+        searchPlaceholder="Cari perusahaan, kontak, nomor form, unit…"
         rowNoun="peminjaman"
         emptyMessage={rows.length ? "Tidak ada peminjaman dengan status ini." : "Belum ada pengajuan peminjaman."}
       />

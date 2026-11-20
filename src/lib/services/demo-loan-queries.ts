@@ -12,9 +12,10 @@ import type {
 import type { ApprovalStepView } from "@/components/shared/approval-stepper";
 import { approverRoleLabel } from "@/components/shared/approval-status";
 import type { SelectOption } from "@/components/form/select-field";
-import { ACTIVE_LOAN_STATUSES, DEMO_LOAN_STATUS_LABEL, daysUntilDue, formatLoanDuration, groupLoanItems, LOAN_SALES_DIVISION } from "@/lib/demo-loan";
+import { DEMO_LOAN_STATUS_LABEL, daysUntilDue, finalCondition, formatLoanDuration, groupLoanItems, unitOwnerSegment } from "@/lib/demo-loan";
 import { toJakartaIsoDate } from "@/lib/format";
-import { ownershipText, rackLocationLabel } from "@/lib/inventory";
+import { INVENTORY_DIVISIONS, ownershipText, rackLocationLabel } from "@/lib/inventory";
+import { heldLoanItemWhere } from "./demo-loan-hold";
 
 const iso = (date: Date) => toJakartaIsoDate(date);
 const personName = (user: { email: string; employee: { fullName: string } | null }) => user.employee?.fullName ?? user.email;
@@ -27,10 +28,14 @@ export type LoanRow = {
   /** Detail kegunaan "Lainnya". */
   purposeDetail: string | null;
   borrowerName: string;
-  picName: string;
+  /** Kontak di perusahaan peminjam ("up:"). */
+  contactName: string;
   requesterId: string;
   requesterName: string;
-  salesPersonName: string;
+  /** PIC dari AMI (Engineer / Sales; dulu Sales Person). */
+  picName: string;
+  /** Pemilik unit (segmen ketiga nomor form). */
+  unitOwner: string;
   startDate: string;
   dueDate: string;
   durationLabel: string;
@@ -42,11 +47,13 @@ export type LoanRow = {
   overdue: boolean;
   /** Sedang dipinjam: sisa hari ke jatuh tempo (0 = hari ini, negatif = terlambat); selain itu null (Tahap 16.4). */
   daysLeft: number | null;
+  /** Tanggal pengambilan (status Pengambilan). */
+  pickupDate: string | null;
 };
 
 const rowInclude = {
   requester: { select: { email: true, employee: { select: { fullName: true } } } },
-  salesPerson: { select: { fullName: true } },
+  pic: { select: { fullName: true } },
   items: { select: { deviceName: true, serialNo: true }, orderBy: { id: "asc" } },
 } as const;
 
@@ -57,13 +64,15 @@ type RowSource = {
   purpose: LoanPurpose;
   purposeDetail: string | null;
   borrowerName: string;
-  picName: string;
+  contactName: string;
+  unitOwner: string;
   requesterId: string;
   startDate: Date;
   dueDate: Date;
   submittedAt: Date;
+  pickupDate: Date | null;
   requester: { email: string; employee: { fullName: string } | null };
-  salesPerson: { fullName: string };
+  pic: { fullName: string };
   items: { deviceName: string; serialNo: string }[];
 };
 
@@ -76,10 +85,11 @@ function toRow(loan: RowSource, today: string): LoanRow {
     purpose: loan.purpose,
     purposeDetail: loan.purposeDetail,
     borrowerName: loan.borrowerName,
-    picName: loan.picName,
+    contactName: loan.contactName,
     requesterId: loan.requesterId,
     requesterName: personName(loan.requester),
-    salesPersonName: loan.salesPerson.fullName,
+    picName: loan.pic.fullName,
+    unitOwner: loan.unitOwner,
     startDate: iso(loan.startDate),
     dueDate,
     durationLabel: formatLoanDuration(iso(loan.startDate), dueDate),
@@ -90,6 +100,7 @@ function toRow(loan: RowSource, today: string): LoanRow {
     submittedAt: loan.submittedAt.toISOString(),
     overdue: loan.status === "ON_LOAN" && dueDate < today,
     daysLeft: loan.status === "ON_LOAN" ? daysUntilDue(dueDate, today) : null,
+    pickupDate: loan.pickupDate ? iso(loan.pickupDate) : null,
   };
 }
 
@@ -115,14 +126,16 @@ export type LoanItemView = {
   /** Hasil cek saat kembali (Tahap 16.5); null = belum kembali. */
   returnCondition: ReturnCondition | null;
   returnNote: string | null;
+  /** Kondisi akhir setelah tindak lanjut (2026-11-20); null = tidak perlu / belum ditindaklanjuti. */
+  resolvedCondition: ReturnCondition | null;
   /** Posisi rak tempat unit ditaruh kembali. */
   returnLocation: string | null;
 };
 
 export type LoanDetail = LoanRow & {
   customerId: string | null;
-  picEmail: string;
-  salesPersonId: string;
+  contactEmail: string;
+  picId: string;
   remarks: string | null;
   approvedAt: string | null;
   itemSenderId: string | null;
@@ -132,14 +145,24 @@ export type LoanDetail = LoanRow & {
   /** Barang diantar (Tahap 16.3). */
   deliveredAt: string | null;
   receivedByName: string | null;
-  /** Barang kembali & dicek (Tahap 16.5): tanggal, yang mengembalikan, Operational penerima, nomor HAF, catatan. */
+  /** Pengambilan (2026-11-19): kurir AMI ("Received By" di HAF) & Operational yang menerbitkan HAF ("Prepared By"). */
+  courierId: string | null;
+  courierName: string | null;
+  hafPreparerName: string | null;
+  hafNumber: string | null;
+  /** Pengecekan Unit: tanggal tiba, yang menyerahkan di peminjam, Operational yang mengecek, catatan. */
   returnedAt: string | null;
   returnedByName: string | null;
   returnReceiverName: string | null;
-  hafNumber: string | null;
   returnNote: string | null;
+  /** Tindak lanjut unit Rusak / Tidak lengkap (2026-11-20): catatan penyelesaian, kapan & oleh siapa. */
+  followUpNote: string | null;
+  followUpResolvedAt: string | null;
+  followUpResolverName: string | null;
   /** Approval (Approval Flow modul DEMO_LOAN). */
   approval: LoanApprovalView;
+  /** Verifikasi hasil Pengecekan Unit oleh engineer (2026-11-20, modul DEMO_LOAN_RETURN); kosong bila belum dicek. */
+  returnApproval: LoanApprovalView;
   items: LoanItemView[];
   /** Perpanjangan jatuh tempo (Tahap 16.4), terbaru dulu. */
   extensions: LoanExtensionView[];
@@ -171,7 +194,11 @@ export type LoanExtensionView = {
   approval: LoanApprovalView;
 };
 
-async function approvalOf(db: PrismaClient, loanId: string, module: "DEMO_LOAN" | "DEMO_LOAN_EXTENSION" = "DEMO_LOAN"): Promise<LoanApprovalView> {
+async function approvalOf(
+  db: PrismaClient,
+  loanId: string,
+  module: "DEMO_LOAN" | "DEMO_LOAN_EXTENSION" | "DEMO_LOAN_RETURN" = "DEMO_LOAN",
+): Promise<LoanApprovalView> {
   const request = await db.approvalRequest.findUnique({
     where: { module_entityId: { module, entityId: loanId } },
     include: { steps: { orderBy: { level: "asc" } } },
@@ -212,8 +239,11 @@ export async function getDemoLoanDetail(db: PrismaClient, loanId: string, today 
     include: {
       ...rowInclude,
       itemSender: { select: { fullName: true } },
+      courier: { select: { fullName: true } },
       operational: { select: { email: true, employee: { select: { fullName: true } } } },
+      hafPreparedBy: { select: { email: true, employee: { select: { fullName: true } } } },
       receivedBy: { select: { email: true, employee: { select: { fullName: true } } } },
+      followUpResolvedBy: { select: { email: true, employee: { select: { fullName: true } } } },
       extensions: { orderBy: { createdAt: "desc" }, include: { requester: { select: { email: true, employee: { select: { fullName: true } } } } } },
       items: {
         orderBy: { id: "asc" },
@@ -229,8 +259,8 @@ export async function getDemoLoanDetail(db: PrismaClient, loanId: string, today 
   return {
     ...toRow(loan, today),
     customerId: loan.customerId,
-    picEmail: loan.picEmail,
-    salesPersonId: loan.salesPersonId,
+    contactEmail: loan.contactEmail,
+    picId: loan.picId,
     remarks: loan.remarks,
     approvedAt: loan.approvedAt?.toISOString() ?? null,
     itemSenderId: loan.itemSenderId,
@@ -238,12 +268,19 @@ export async function getDemoLoanDetail(db: PrismaClient, loanId: string, today 
     operationalName: loan.operational ? personName(loan.operational) : null,
     deliveredAt: loan.deliveredAt ? iso(loan.deliveredAt) : null,
     receivedByName: loan.receivedByName,
+    courierId: loan.courierId,
+    courierName: loan.courier?.fullName ?? null,
+    hafPreparerName: loan.hafPreparedBy ? personName(loan.hafPreparedBy) : null,
+    hafNumber: loan.hafNumber,
     returnedAt: loan.returnedAt ? iso(loan.returnedAt) : null,
     returnedByName: loan.returnedByName,
     returnReceiverName: loan.receivedBy ? personName(loan.receivedBy) : null,
-    hafNumber: loan.hafNumber,
     returnNote: loan.returnNote,
+    followUpNote: loan.followUpNote,
+    followUpResolvedAt: loan.followUpResolvedAt?.toISOString() ?? null,
+    followUpResolverName: loan.followUpResolvedBy ? personName(loan.followUpResolvedBy) : null,
     approval: await approvalOf(db, loan.id),
+    returnApproval: await approvalOf(db, loan.id, "DEMO_LOAN_RETURN"),
     items: loan.items.map((item) => ({
       id: item.id,
       assetId: item.assetId,
@@ -256,6 +293,7 @@ export async function getDemoLoanDetail(db: PrismaClient, loanId: string, today 
       category: item.asset.category,
       returnCondition: item.returnCondition,
       returnNote: item.returnNote,
+      resolvedCondition: item.resolvedCondition,
       returnLocation: rackLocationLabel(item.returnRack?.name, item.returnRackPosition),
     })),
     extensions: await Promise.all(
@@ -285,6 +323,8 @@ export type LoanUnitOption = {
   /** Kepemilikan: milik AMI atau titipan principal / distributor (label "Principal · Cisco"). */
   ownership: AssetOwnership;
   ownerLabel: string;
+  /** Segmen pemilik di nomor form: "AMI" / "Cisco" (2026-11-19 — satu form satu pemilik). */
+  owner: string;
   /** Kondisi saat terakhir kembali dari peminjaman; null = belum pernah / tidak dicatat. */
   lastReturn: LastReturn | null;
   /** Alasan tidak bisa dipilih, mis. "Dipinjam · PT Bank Danamon"; null = tersedia. */
@@ -295,26 +335,31 @@ export type LoanFormOptions = {
   units: LoanUnitOption[];
   /** Nama Customer aktif untuk saran isian peminjam (boleh juga diketik bebas). */
   customers: string[];
-  salesPeople: SelectOption[];
+  /** PIC dari AMI: karyawan aktif divisi Engineer & Sales (2026-11-19). */
+  pics: SelectOption[];
 };
 
 /** Pilihan form pengajuan. `exceptLoanId` = peminjaman yang sedang direvisi (unitnya sendiri tetap bisa dipilih). */
 export async function getLoanFormOptions(db: PrismaClient, exceptLoanId?: string): Promise<LoanFormOptions> {
-  const [assets, customers, sales] = await Promise.all([
+  const [assets, customers, pics] = await Promise.all([
     db.asset.findMany({
       where: { deletedAt: null },
       orderBy: [{ deviceName: "asc" }, { serialNo: "asc" }],
       include: {
         rack: { select: { name: true } },
         loanItems: {
-          where: { loan: { status: { in: [...ACTIVE_LOAN_STATUSES] }, ...(exceptLoanId ? { id: { not: exceptLoanId } } : {}) } },
+          where: heldLoanItemWhere(exceptLoanId),
           select: { loan: { select: { status: true, borrowerName: true } } },
           take: 1,
         },
       },
     }),
     db.customer.findMany({ where: { deletedAt: null }, orderBy: { name: "asc" }, select: { name: true } }),
-    db.employee.findMany({ where: { status: "ACTIVE", division: LOAN_SALES_DIVISION }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true } }),
+    db.employee.findMany({
+      where: { status: "ACTIVE", division: { in: [...INVENTORY_DIVISIONS] } },
+      orderBy: { fullName: "asc" },
+      select: { id: true, fullName: true, position: true },
+    }),
   ]);
   const lastReturns = await lastReturnConditions(db);
   return {
@@ -328,16 +373,17 @@ export async function getLoanFormOptions(db: PrismaClient, exceptLoanId?: string
         location: rackLocationLabel(asset.rack?.name, asset.rackPosition),
         ownership: asset.ownership,
         ownerLabel: ownershipText(asset.ownership, asset.ownerName),
+        owner: unitOwnerSegment(asset.ownership, asset.ownerName),
         lastReturn: lastReturns.get(asset.id) ?? null,
         unavailable: busy ? `${DEMO_LOAN_STATUS_LABEL[busy.status]} · ${busy.borrowerName}` : null,
       };
     }),
     customers: customers.map((customer) => customer.name),
-    salesPeople: sales.map((employee) => ({ value: employee.id, label: employee.fullName })),
+    pics: pics.map((employee) => ({ value: employee.id, label: `${employee.fullName} — ${employee.position}` })),
   };
 }
 
-/** Karyawan aktif untuk pilihan Item Sender (pengantar barang). */
+/** Karyawan aktif untuk pilihan Item Sender (pengantar barang) & kurir pengambilan. */
 export async function getItemSenderOptions(db: PrismaClient): Promise<SelectOption[]> {
   const employees = await db.employee.findMany({ where: { status: "ACTIVE" }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true, position: true } });
   return employees.map((employee) => ({ value: employee.id, label: `${employee.fullName} — ${employee.position}` }));
@@ -346,6 +392,12 @@ export async function getItemSenderOptions(db: PrismaClient): Promise<SelectOpti
 /** Peminjaman yang sudah disetujui & menunggu disiapkan Operational (belum diantar), terlama dulu. */
 export async function loansAwaitingOperational(db: PrismaClient): Promise<string[]> {
   const loans = await db.demoLoan.findMany({ where: { status: "APPROVED" }, orderBy: { approvedAt: "asc" }, select: { id: true } });
+  return loans.map((loan) => loan.id);
+}
+
+/** Peminjaman dalam pengambilan (HAF sudah terbit) yang menunggu Pengecekan Unit Operational, jadwal terdekat dulu. */
+export async function loansAwaitingCheck(db: PrismaClient): Promise<string[]> {
+  const loans = await db.demoLoan.findMany({ where: { status: "PICKUP" }, orderBy: [{ pickupDate: "asc" }, { id: "asc" }], select: { id: true } });
   return loans.map((loan) => loan.id);
 }
 
@@ -393,12 +445,14 @@ export async function lastReturnConditions(db: PrismaClient, assetIds?: string[]
   const items = await db.demoLoanItem.findMany({
     where: { returnCondition: { not: null }, ...(assetIds ? { assetId: { in: assetIds } } : {}) },
     orderBy: [{ loan: { returnedAt: "desc" } }, { loan: { updatedAt: "desc" } }],
-    select: { assetId: true, returnCondition: true, returnNote: true, loan: { select: { returnedAt: true } } },
+    select: { assetId: true, returnCondition: true, resolvedCondition: true, returnNote: true, loan: { select: { returnedAt: true } } },
   });
   const result = new Map<string, LastReturn>();
   for (const item of items) {
-    if (!result.has(item.assetId) && item.returnCondition) {
-      result.set(item.assetId, { condition: item.returnCondition, note: item.returnNote, returnedAt: item.loan.returnedAt ? iso(item.loan.returnedAt) : null });
+    // Kondisi akhir setelah tindak lanjut bila ada (2026-11-20: sudah diperbaiki / dilengkapi = Baik).
+    const condition = finalCondition(item);
+    if (!result.has(item.assetId) && condition) {
+      result.set(item.assetId, { condition, note: item.returnNote, returnedAt: item.loan.returnedAt ? iso(item.loan.returnedAt) : null });
     }
   }
   return result;

@@ -750,6 +750,98 @@ HAF **dikosongkan**; unit yang akhirnya dipakai/dibeli customer **belum** dibuat
   [x] lint/typecheck · [x] test penuh 588 lulus, 3 gagal lama dari `main`
 - Belum: kembali sebagian (beberapa HAF per peminjaman), unit dibeli / dipakai customer (keluar dari stok, PO / invoice)
 
+### 16.5b Revisi alur: Operational saja, PIC, pemilik unit di nomor, HAF sebelum kembali, asli + COPY ✅ (2026-11-19)
+Keputusan user: Admin **tidak** boleh memposisikan diri sebagai Operational di alur peminjaman; "Sales Person" diganti
+**PIC** (Engineer juga bisa mengajukan); HAF harus sudah ada **sebelum** barang kembali karena dibawa kurir AMI, lalu
+Operational **wajib** mengisi pengecekan unit setelah barang tiba; PTF & HAF dicetak **asli + copy** (tanda "COPY" di atas
+judul); segmen ketiga nomor PTF & HAF = **pemilik unit** (AMI / nama principal). Daftar Unit (kelola unit & rak) tetap
+Admin & Operational. Rekomendasi yang disetujui: belum ada Operational → Admin hanya diberi peringatan; kurir dipilih dari
+karyawan aktif; selama pengambilan pengingat & perpanjangan berhenti; batal pengambilan → nomor HAF tetap; satu tombol
+cetak langsung 2 lembar; PIC = karyawan Engineer & Sales; "Nama PIC (up:)" → "Kontak Peminjam (up:)".
+- [x] **Operational saja**: Item Sender, Sudah Diantar, jadwalkan / ubah / batalkan pengambilan, Pengecekan Unit,
+      perpanjangan atas nama pemohon, lonceng antrian (`loanqueue`, `loanpickup`) & pengingat jatuh tempo hanya untuk user
+      yang ditunjuk Operational (`isOperational`, dicek di server; halaman `/kembali` = `requireInventory("operate")`).
+      Admin yang juga ditunjuk tetap boleh. Belum ada Operational aktif → email "Belum ada Operational" ke Admin saat
+      disetujui + lonceng `loannoops` (danger, ke Setting → Inventaris & Rak); pengingat jatuh tempo hanya ke pemohon
+- [x] **PIC** (kolom `picId`, dulu `salesPersonId`): karyawan aktif Engineer / Sales, pemohon Engineer / Sales terpilih
+      otomatis; label di form, detail, daftar ("PIC: …"), Approval Center, email, kotak & tanda tangan PTF, kotak HAF.
+      Kontak peminjam = `contactName` / `contactEmail` ("Kontak Peminjam (up:)"). Data lama tetap (ganti nama kolom)
+- [x] **Pemilik unit di nomor**: `NNN/AMI-PTF/<pemilik>/<tahun>` & `NNN/AMI-HAF/<pemilik>/<tahun>` (`DemoLoan.unitOwner`);
+      satu form satu pemilik (ditolak + peringatan langsung di pemilih unit, pratinjau "…/AMI-PTF/<pemilik>/…"); revisi
+      mengganti segmen pemilik (urutan tetap, nomor approval ikut). Nomor yang sudah terbit tidak diubah
+- [x] **Pengambilan** (status baru `PICKUP`): tombol **Jadwalkan Pengambilan** (tanggal ≤ 90 hari, ≥ tanggal diantar; kurir
+      karyawan aktif) → nomor HAF terbit, HAF dicetak untuk kurir; **Ubah Jadwal** (nomor tetap), **Batalkan Pengambilan**
+      (kembali Dipinjam, nomor tetap melekat). Perpanjangan menunggu ditutup; unit tetap tertahan ("Pengambilan" di
+      Daftar Unit); kartu & filter "Pengambilan" di daftar peminjaman; Riwayat Unit mencatat jadwal / ubah / batal
+- [x] **Pengecekan Unit** (dulu Terima Pengembalian): hanya untuk status Pengambilan, tanggal tiba ≥ tanggal pengambilan;
+      isi sama (kondisi tiap unit, catatan, rak) → Selesai. HAF tidak lagi memuat kondisi (terbit sebelum dicek)
+- [x] **Cetak asli + COPY**: PTF & HAF satu kali cetak = 2 lembar A4, lembar 2 bertanda **COPY** di atas judul
+      (`components/print/form-copy.tsx`); HAF berisi Date = tanggal pengambilan, Prepared By = Operational penerbit,
+      Received By = kurir, Returned By diisi tangan peminjam
+- [x] Migrasi `20261119090000_demo_loan_pic_pickup` (enum `PICKUP`; ganti nama `salesPersonId`/`picName`/`picEmail`;
+      `unitOwner` diisi dari unit; `pickupDate`, `courierId`, `hafPreparedById`; tanpa drift)
+- **Cek:** [x] unit test nomor & pemilik, jadwal pengambilan, validasi PIC · [x] DB test 17 (Operational saja termasuk
+  Admin ditolak, PIC Engineer, pemilik campur, revisi ganti pemilik, pengambilan, ubah/batal dengan nomor HAF sama,
+  Pengecekan Unit, HAF principal, peringatan belum ada Operational) + test jatuh tempo diperbarui · [x] uji browser 33/33
+  (Admin tanpa tombol Operational & `/kembali` tidak ditemukan; Leonard ditunjuk Operational sementara: jadwalkan →
+  HAF 003/AMI-HAF/AMI/2026 → Pengecekan → Selesai, batal pengambilan; cetak PTF & HAF 2 halaman PDF dengan COPY; form
+  PIC & peringatan pemilik campur; axe 0; HP tanpa geser samping) · [x] lint/typecheck · [x] test penuh 621 lulus,
+  3 gagal lama
+- Belum: dokumen HAF untuk pengambilan sebagian
+
+### 16.5c Tindak lanjut unit rusak / tidak lengkap ✅ (2026-11-20)
+Keputusan user: pengecekan yang menemukan unit Rusak / Tidak lengkap **tidak dianggap Selesai** — disimpan sebagai status
+tersendiri supaya diperhatikan & di-follow up; PIC internal AMI & Operational diberi notifikasi dan email beserta
+catatannya. Rekomendasi yang disetujui: unit Baik langsung bebas, unit bermasalah tertahan; hanya Operational yang
+menutup; pengingat email + lonceng tiap 7 hari; data lama (`004/AMI-PTF/AMI/2026`) dipindahkan.
+- [x] Status baru **Tindak lanjut** (`FOLLOW_UP`): badge merah, filter & kartu di daftar peminjaman (bila ada), kalimat
+      status di detail menyebut unit bermasalah + catatan; label unit "Ditindaklanjuti · unit tertahan"; form Pengecekan
+      Unit memberi tahu sebelum disimpan bila ada unit rusak / tidak lengkap
+- [x] Unit tertahan dihitung satu aturan (`services/demo-loan-hold.ts`): pengajuan menolak ("masih ditindaklanjuti"),
+      pemilih unit & Daftar Unit menampilkan "Tindak lanjut", tombol Ajukan Peminjaman di detail unit disembunyikan
+- [x] Email `loan-follow-up` ke PIC & Operational saat pengecekan disimpan, diulang tiap 7 hari (job `reminder.demo-loan`,
+      klaim atomik); lonceng `loanfollowup` (muncul lagi tiap minggu bila dihapus). Belum ada Operational → peringatan Admin
+      ikut menghitung peminjaman Tindak lanjut
+- [x] **Selesaikan Tindak Lanjut** (Operational): hasil per unit — sudah lengkap / diperbaiki (kondisi akhir Baik, tanda di
+      Daftar Unit hilang) atau tetap rusak / tidak lengkap (tetap ditandai) — + catatan wajib → Selesai; info "Tindak
+      lanjut" di detail; Riwayat Unit "Tindak lanjut selesai · Kondisi akhir …"; PTF & HAF tetap bisa dicetak
+- [x] Migrasi `20261120090000_demo_loan_follow_up` (enum, kolom) + `20261120090100_demo_loan_follow_up_data` (pindahkan
+      data lama; dipisah karena nilai enum baru tidak boleh dipakai di transaksi yang sama); tanpa drift
+- **Cek:** [x] unit test (kondisi akhir, minggu, kunci lonceng) · [x] DB test (Tindak lanjut vs langsung Selesai, email
+  PIC & Operational + isi, lonceng PIC/Operational saja & muncul lagi tiap minggu, unit Baik bebas / bermasalah tertahan,
+  aturan menyelesaikan, pengingat 7 hari tanpa dobel, tetap rusak tetap ditandai) · [x] uji browser 19/19 (004 hasil
+  migrasi, Admin tanpa tombol, Pengecekan → Tindak lanjut + 3 email antri, Daftar Unit, dialog Selesaikan + validasi,
+  Selesai; axe 0; HP tanpa geser samping) · [x] lint/typecheck
+
+### 16.5d Penerimaan Barang principal / distributor (HAF barang masuk) ✅ (2026-11-20)
+Keputusan user: HAF mendata **semua barang masuk** — termasuk barang yang dipinjam AMI dari principal / distributor; setiap
+mendaftarkan barang bukan milik AMI wajib menerbitkan HAF. Satu HAF untuk satu kedatangan (banyak unit); yang mencatat
+Operational; unit titipan lama dibiarkan; kontak wajib; menu tersendiri **Penerimaan Barang** di Inventaris, dan Tambah
+Unit di Daftar Unit tidak lagi menampilkan kepemilikan principal / distributor.
+- [x] Menu **Inventaris → Penerimaan Barang**: daftar (semua user Inventaris), **Terima Barang** (Operational) → form asal
+      barang + penerimaan + banyak baris unit → unit terdaftar & HAF terbit → detail + **Cetak HAF** (asli + COPY)
+- [x] Nomor `NNN/AMI-HAF/<nama pemilik>/<tahun>` satu counter dengan HAF pengambilan; Setting → Nomor form ikut memeriksa
+- [x] Tambah / Ubah Unit tanpa kepemilikan (keterangan + tautan ke Penerimaan Barang); detail unit "Masuk lewat penerimaan
+      barang · HAF …"; Riwayat Unit "Diterima dari …"
+- [x] Migrasi `20261120120000_goods_receipt` (tabel `GoodsReceipt`, `Asset.receiptId`; tanpa drift)
+- **Cek:** typecheck bersih; test & uji alur dilakukan user (lihat langkah di laporan). Belum: menyesuaikan
+  `demo-loan.db.test.ts` (`toCisco` & ekspektasi riwayat kepemilikan) dan menambah DB test penerimaan
+
+### 16.5e Verifikasi Pengecekan Unit oleh engineer + form unit tanpa support/warranty ✅ (2026-11-20)
+Keputusan user: hasil pengecekan akhir barang yang kembali dibuatkan **approval ke Ko Yosep** supaya engineer mengecek
+ulang kesesuaiannya; unit yang bukan dari principal / distributor wajib milik AMI di database; kolom support & warranty
+dihapus dari form unit. Rekomendasi yang disetujui: Approval Flow sendiri (bawaan Ko Yosep); ditolak → Operational cek
+ulang; pemberitahuan tindak lanjut dikirim setelah disetujui.
+- [x] Status **Menunggu verifikasi** (`RETURN_REVIEW`) + modul approval `DEMO_LOAN_RETURN` (Setting → Approval Flow
+      "Verifikasi Pengembalian Unit"); Setujui / Tolak di Approval Center & detail peminjaman (riwayat "Verifikasi
+      Pengecekan Unit"); ditolak → kembali Pengambilan dengan alasan, form Pengecekan Unit terisi hasil sebelumnya
+- [x] Migrasi `20261120150000_demo_loan_return_review` (enum) + `20261120150100_demo_loan_return_flow` (flow disalin dari
+      Peminjaman Unit); seed menambah flow Ko Yosep
+- [x] Form Tambah / Ubah Unit tanpa support & warranty (nilai lama tetap); unit baru selalu milik AMI di server
+- **Cek:** typecheck kode aplikasi & lint bersih; test & uji alur oleh user. **Perlu disesuaikan user:** `src/test/entities.ts`
+  (case `DEMO_LOAN_RETURN`), `demo-loan.db.test.ts` (alur cek → verifikasi), test warranty (`asset.db.test.ts`,
+  `reminder.db.test.ts`, `dashboard-queries.db.test.ts`) — sampai itu `npm run typecheck` / `next build` gagal di file test
+
 ### 16.6 Dashboard Inventaris
 - [ ] Unit di gudang (per rak/posisi), sedang dipinjam (ke mana, PIC, sampai kapan, sisa hari), terlambat, akan jatuh tempo;
       kartu ringkas di Dashboard utama untuk user terkait

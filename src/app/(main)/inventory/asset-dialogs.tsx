@@ -1,17 +1,17 @@
 "use client";
 
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useTransition } from "react";
 import { Controller, useFormContext, useWatch } from "react-hook-form";
-import { DateInputField, SelectInputField, TextareaField, TextInputField } from "@/components/form/fields";
+import { SelectInputField, TextareaField, TextInputField } from "@/components/form/fields";
 import { FormDialog } from "@/components/form/form-dialog";
 import { fieldDescriptionId, FormField } from "@/components/form/form-field";
 import { SelectField } from "@/components/form/select-field";
 import { useFeedback } from "@/components/shared/feedback";
 import { Button } from "@/components/ui/button";
-import type { AssetOwnership } from "@/generated/prisma/enums";
-import { ASSET_OWNERSHIP_LABEL, rackPositions, rackRangeLabel } from "@/lib/inventory";
+import { ownershipText, rackPositions, rackRangeLabel } from "@/lib/inventory";
 import { ASSET_CATEGORY_LABEL, toOptions } from "@/lib/labels";
 import type { AssetRow } from "@/lib/services/asset-queries";
 import { assetSchema } from "@/lib/validators/asset";
@@ -80,31 +80,26 @@ function RackFields({ racks }: { racks: RackOption[] }) {
 }
 
 /**
- * Kepemilikan (2026-11-17): milik AMI, atau titipan principal / distributor — nama pemiliknya wajib diisi (kolom muncul
- * setelah memilih Principal / Distributor).
+ * Kepemilikan (2026-11-20): unit baru di sini selalu milik AMI dan kepemilikan tidak bisa diubah — unit principal /
+ * distributor dicatat lewat Penerimaan Barang (menerbitkan HAF). Hanya keterangan, bukan isian.
  */
-function OwnershipFields() {
-  const { control } = useFormContext();
-  const ownership = (useWatch({ control, name: "ownership" }) ?? "AMI") as AssetOwnership;
+function OwnershipNote({ asset }: { asset?: AssetRow }) {
+  if (asset && asset.ownership !== "AMI") {
+    return (
+      <p className="rounded-xl bg-panel px-4 py-3 text-sm text-ink-2 sm:col-span-2">
+        Kepemilikan: <span className="font-semibold text-ink">{ownershipText(asset.ownership, asset.ownerName)}</span>
+        {asset.receipt ? ` · masuk lewat HAF ${asset.receipt.hafNumber}` : ""}. Kepemilikan tidak bisa diubah di sini.
+      </p>
+    );
+  }
   return (
-    <>
-      <SelectInputField
-        name="ownership"
-        label="Kepemilikan"
-        required
-        options={toOptions(ASSET_OWNERSHIP_LABEL)}
-        hint={ownership === "AMI" ? "Unit dari principal / distributor dipisahkan dari milik AMI." : undefined}
-      />
-      {ownership !== "AMI" && (
-        <TextInputField
-          name="ownerName"
-          label={ownership === "PRINCIPAL" ? "Nama principal" : "Nama distributor"}
-          required
-          placeholder={ownership === "PRINCIPAL" ? "mis. Cisco, Fortinet" : "mis. PT Datascrip"}
-          className="sm:col-span-2"
-        />
-      )}
-    </>
+    <p className="rounded-xl bg-info-soft px-4 py-3 text-sm text-ink sm:col-span-2">
+      {asset ? "Unit milik AMI." : "Untuk unit milik AMI."} Barang dari principal / distributor dicatat lewat{" "}
+      <Link href="/inventory/penerimaan" className="font-semibold underline underline-offset-4">
+        Penerimaan Barang
+      </Link>{" "}
+      supaya Hardware Admission Form-nya terbit.
+    </p>
   );
 }
 
@@ -134,14 +129,7 @@ export function AssetFormDialog({ asset, racks, trigger }: { asset?: AssetRow; r
         deviceName: asset?.deviceName ?? "",
         serialNo: asset?.serialNo ?? "",
         category: asset?.category ?? "DEMO_UNIT",
-        supportStart: asset?.supportStart ?? "",
-        supportEnd: asset?.supportEnd ?? "",
-        warrantyStart: asset?.warrantyStart ?? "",
-        warrantyEnd: asset?.warrantyEnd ?? "",
-        warrantyNote: asset?.warrantyNote ?? "",
         notes: asset?.notes ?? "",
-        ownership: asset?.ownership ?? "AMI",
-        ownerName: asset?.ownerName ?? "",
         rackId: asset?.rackId ?? "",
         rackPosition: asset?.rackPosition ?? "",
       }}
@@ -149,16 +137,11 @@ export function AssetFormDialog({ asset, racks, trigger }: { asset?: AssetRow; r
       action={(values) => saveAssetAction(asset?.id ?? null, values)}
     >
       <div className="grid gap-4 sm:grid-cols-2">
+        <OwnershipNote asset={asset} />
         <TextInputField name="deviceName" label="Part number / deskripsi" required placeholder="mis. SFP+ (10G)" />
         <TextInputField name="serialNo" label="Serial number" required hint="Disimpan dalam huruf besar" />
         <SelectInputField name="category" label="Kategori" required options={toOptions(ASSET_CATEGORY_LABEL)} />
-        <OwnershipFields />
         <RackFields racks={racks} />
-        <DateInputField name="supportStart" label="Support mulai" />
-        <DateInputField name="supportEnd" label="Support berakhir" />
-        <DateInputField name="warrantyStart" label="Warranty mulai" />
-        <DateInputField name="warrantyEnd" label="Warranty berakhir" />
-        <TextInputField name="warrantyNote" label="Catatan warranty" className="sm:col-span-2" />
         <TextareaField name="notes" label="Catatan" className="sm:col-span-2" />
       </div>
     </FormDialog>

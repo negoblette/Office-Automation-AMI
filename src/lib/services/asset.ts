@@ -1,6 +1,8 @@
 // Inventory / demo unit — URD INV-01..03. Dikelola Admin & Operational (2026-11-17). Serah terima ke karyawan
 // (assignAsset/returnAsset, AssetAssignment) tidak dipakai lagi sejak 2026-11-17 — tidak ada aksi/tampilannya; fungsi
 // & data lama dibiarkan untuk riwayat. Unit dipinjamkan ke perusahaan lain lewat Product Trial Form (Fase 16).
+// Kepemilikan (2026-11-20): unit yang didaftarkan di sini selalu milik AMI dan Ubah Unit tidak mengubah kepemilikan —
+// unit principal / distributor hanya masuk lewat Penerimaan Barang (services/goods-receipt.ts, menerbitkan HAF).
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { formatDate, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import type { AssetInput, AssignAssetInput, ReturnAssetInput } from "@/lib/validators/asset";
@@ -10,30 +12,23 @@ import { assertRackPosition } from "./storage-rack";
 
 type Tx = Prisma.TransactionClient;
 
+/** Isian form unit. Support / warranty & kepemilikan tidak lewat form ini (2026-11-20) — nilai lama tidak diubah. */
 function assetData(input: AssetInput) {
-  const date = (iso: string | null) => (iso ? fromIsoDate(iso) : null);
   return {
     deviceName: input.deviceName,
     serialNo: input.serialNo,
     category: input.category,
-    supportStart: date(input.supportStart),
-    supportEnd: date(input.supportEnd),
-    warrantyStart: date(input.warrantyStart),
-    warrantyEnd: date(input.warrantyEnd),
-    warrantyNote: input.warrantyNote,
     notes: input.notes,
-    ownership: input.ownership,
-    // Milik AMI tidak menyimpan nama pemilik (isian lama dibuang bila kepemilikan diganti ke AMI).
-    ownerName: input.ownership === "AMI" ? null : input.ownerName,
     rackId: input.rackId,
     rackPosition: input.rackId ? input.rackPosition : null,
   };
 }
 
-async function assertSerialAvailable(tx: Tx, serialNo: string, exceptId?: string) {
+/** Serial number belum dipakai unit lain (termasuk yang sudah dihapus). `field` = kolom form untuk pesan error. */
+export async function assertSerialAvailable(tx: Tx, serialNo: string, exceptId?: string, field = "serialNo") {
   const existing = await tx.asset.findUnique({ where: { serialNo }, select: { id: true, deletedAt: true } });
   if (existing && existing.id !== exceptId) {
-    throw new ServiceError(existing.deletedAt ? "Serial number pernah dipakai aset yang sudah dihapus" : "Serial number sudah terdaftar", "serialNo");
+    throw new ServiceError(existing.deletedAt ? "Serial number pernah dipakai aset yang sudah dihapus" : "Serial number sudah terdaftar", field);
   }
 }
 
@@ -45,7 +40,7 @@ export async function createAsset(db: PrismaClient, actorId: string, input: Asse
   return db.$transaction(async (tx) => {
     await assertSerialAvailable(tx, input.serialNo);
     await assertRackPosition(tx, input.rackId, input.rackPosition);
-    const asset = await tx.asset.create({ data: assetData(input) });
+    const asset = await tx.asset.create({ data: { ...assetData(input), ownership: "AMI", ownerName: null } });
     await logAudit(tx, { actorId, action: "CREATE", entity: "Asset", entityId: asset.id, after: asset });
     return asset;
   });

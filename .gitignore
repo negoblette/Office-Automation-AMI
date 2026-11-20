@@ -58,5 +58,8 @@ next-env.d.ts
 /deploy/certs/
 /deploy/letsencrypt/
 
+# skrip data palsu khusus komputer developer — disimpan lokal saja, tidak di-push ke repo (2026-11-20)
+/scripts/dev-fake-data.ts
+
 
 

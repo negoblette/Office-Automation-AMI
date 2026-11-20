@@ -2,10 +2,12 @@
 // - loan-approved (2026-11-17): peminjaman disetujui → Operational menyiapkan barang & mencetak form
 // - loan-due-soon / loan-overdue (Tahap 16.4, 2026-11-18): pengingat jatuh tempo ke pemohon & Operational
 // - loan-extended (Tahap 16.4): perpanjangan disetujui → Operational tahu jatuh tempo baru
+// - loan-follow-up (2026-11-20): unit kembali Rusak / Tidak lengkap → PIC & Operational menindaklanjuti (diulang tiap
+//   7 hari selama belum selesai)
 // (Pengajuan / keputusan approval memakai template approval-*.) Semua isi teks di-escape React — tidak ada HTML mentah.
 import { Body, Button, Container, Head, Heading, Hr, Html, Preview, Section, Text } from "@react-email/components";
 
-export type DemoLoanEmailTemplate = "loan-approved" | "loan-due-soon" | "loan-overdue" | "loan-extended";
+export type DemoLoanEmailTemplate = "loan-approved" | "loan-due-soon" | "loan-overdue" | "loan-extended" | "loan-follow-up";
 
 export type DemoLoanEmailProps = {
   template: DemoLoanEmailTemplate;
@@ -29,6 +31,7 @@ const HEADINGS: Record<DemoLoanEmailTemplate, string> = {
   "loan-due-soon": "Peminjaman unit segera jatuh tempo",
   "loan-overdue": "Peminjaman unit lewat jatuh tempo",
   "loan-extended": "Jatuh tempo peminjaman unit diperpanjang",
+  "loan-follow-up": "Unit kembali rusak / tidak lengkap — perlu tindak lanjut",
 };
 
 const ACCENT: Record<DemoLoanEmailTemplate, string> = {
@@ -36,6 +39,7 @@ const ACCENT: Record<DemoLoanEmailTemplate, string> = {
   "loan-due-soon": "#b45309",
   "loan-overdue": "#b91c1c",
   "loan-extended": "#1d5fe0",
+  "loan-follow-up": "#b91c1c",
 };
 
 export function DemoLoanEmail(props: DemoLoanEmailProps) {

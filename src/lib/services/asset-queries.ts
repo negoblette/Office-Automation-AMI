@@ -1,8 +1,8 @@
 // Query halaman Inventory & tab inventory karyawan. Tanggal sebagai ISO string (aman ke client).
 import type { AssetCategory, AssetOwnership, DemoLoanStatus, PrismaClient } from "@/generated/prisma/client";
 import { type CertificateStatus, certificateStatus } from "@/lib/certificate-status";
-import { ACTIVE_LOAN_STATUSES } from "@/lib/demo-loan";
 import { toJakartaIsoDate } from "@/lib/format";
+import { heldLoanItemWhere } from "./demo-loan-hold";
 import { type LastReturn, lastReturnConditions } from "./demo-loan-queries";
 
 const iso = (date: Date | null) => (date ? toJakartaIsoDate(date) : null);
@@ -32,10 +32,15 @@ export type AssetRow = {
   assignmentCount: number;
   /** Pernah masuk peminjaman (Product Trial Form); > 0 = unit tidak bisa dihapus. */
   loanCount: number;
-  /** Peminjaman aktif yang menahan unit ini (Menunggu tinjauan / Disiapkan / Dipinjam); null = tersedia. */
+  /**
+   * Peminjaman yang menahan unit ini (Menunggu approval / Disiapkan / Dipinjam / Pengambilan, atau Tindak lanjut bila unit
+   * ini yang bermasalah); null = tersedia.
+   */
   activeLoan: { id: string; status: DemoLoanStatus; borrowerName: string } | null;
   /** Kondisi saat terakhir kembali dari peminjaman (Tahap 16.5); null = belum pernah kembali. */
   lastReturn: LastReturn | null;
+  /** Penerimaan barang (HAF) tempat unit principal / distributor ini masuk (2026-11-20); null = milik AMI / data lama. */
+  receipt: { id: string; hafNumber: string } | null;
 };
 
 /** Semua unit aktif, atau satu unit (`assetId`, halaman detail). */
@@ -46,9 +51,10 @@ export async function listAssets(db: PrismaClient, assetId?: string): Promise<As
     orderBy: [{ category: "asc" }, { deviceName: "asc" }],
     include: {
       rack: { select: { name: true } },
+      receipt: { select: { id: true, hafNumber: true } },
       _count: { select: { assignments: true, loanItems: true } },
       loanItems: {
-        where: { loan: { status: { in: [...ACTIVE_LOAN_STATUSES] } } },
+        where: heldLoanItemWhere(),
         select: { loan: { select: { id: true, status: true, borrowerName: true } } },
         take: 1,
       },
@@ -77,6 +83,7 @@ export async function listAssets(db: PrismaClient, assetId?: string): Promise<As
     loanCount: asset._count.loanItems,
     activeLoan: asset.loanItems[0]?.loan ?? null,
     lastReturn: lastReturns.get(asset.id) ?? null,
+    receipt: asset.receipt,
   }));
 }
 

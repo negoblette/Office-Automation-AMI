@@ -105,6 +105,7 @@ export const NAV_GROUPS: NavGroup[] = [
         children: [
           { label: "Daftar Unit", href: "/inventory" },
           { label: "Peminjaman", href: "/inventory/peminjaman" },
+          { label: "Penerimaan Barang", href: "/inventory/penerimaan" },
         ],
       },
       {

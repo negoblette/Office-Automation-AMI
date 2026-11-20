@@ -211,6 +211,8 @@ export const APPROVAL_FLOWS: SeedFlow[] = [
   { scope: "REGULAR", module: "OVERTIME_REIMBURSE", division: null, steps: [["ika"]] },
   // Peminjaman unit demo / Product Trial Form (2026-11-17) -> Ko Yosep, lalu Operational menyiapkan barang.
   { scope: "REGULAR", module: "DEMO_LOAN", division: null, steps: [["yosep"]] },
+  // Verifikasi hasil Pengecekan Unit oleh engineer (2026-11-20) -> Ko Yosep, lalu Selesai / Tindak lanjut.
+  { scope: "REGULAR", module: "DEMO_LOAN_RETURN", division: null, steps: [["yosep"]] },
   // Klaim kesehatan -> Bu Ika; klaim Bu Ika sendiri -> Fallback.
   { scope: "REGULAR", module: "HEALTH", division: null, steps: [["ika"]] },
   { scope: "FALLBACK", module: null, division: null, steps: [["rudy", "leonard"]] },

@@ -37,23 +37,25 @@ const CONDITION_STYLE: Record<ReturnCondition, string> = {
 const NO_RACK = "__none__";
 
 /**
- * Terima pengembalian (Tahap 16.5, kembali sepenuhnya): tanggal kembali, siapa yang mengembalikan, lalu cek setiap unit —
- * kondisi (wajib dipilih), catatan (wajib bila Rusak / Tidak lengkap), posisi rak tempat ditaruh (bawaan: posisi semula).
- * Simpan → status Selesai & Hardware Admission Form terbit. Dicek ulang di server.
+ * Pengecekan Unit (Tahap 16.5, revisi 2026-11-19 — setelah barang diambil kurir & tiba di AMI, kembali sepenuhnya):
+ * tanggal tiba, siapa yang menyerahkan di peminjam (opsional, sesuai HAF), lalu cek setiap unit — kondisi (wajib dipilih),
+ * catatan (wajib bila Rusak / Tidak lengkap), posisi rak tempat ditaruh (bawaan: posisi semula). Simpan → Menunggu
+ * verifikasi engineer (approval, 2026-11-20), lalu Selesai atau Perlu Tindak Lanjut. Dicek ulang di server.
  */
 export function ReturnForm({
   loanId,
   units,
   racks,
   defaultValues,
-  deliveredAt,
+  pickupDate,
   today,
 }: {
   loanId: string;
   units: ReturnUnit[];
   racks: RackOption[];
   defaultValues: FormInput;
-  deliveredAt: string | null;
+  /** Tanggal pengambilan di HAF — tanggal tiba tidak boleh sebelumnya. */
+  pickupDate: string | null;
   today: string;
 }) {
   const router = useRouter();
@@ -61,6 +63,9 @@ export function ReturnForm({
   const form = useForm<FormInput, unknown, FormOutput>({ resolver: zodResolver(returnDemoLoanSchema), defaultValues });
   const { fields } = useFieldArray({ control: form.control, name: "items" });
   const { serverError, pending, submit } = useActionSubmit(form);
+  // Unit Rusak / Tidak lengkap → peminjaman berstatus Perlu Tindak Lanjut (2026-11-20).
+  const checked = useWatch({ control: form.control, name: "items" }) as { condition?: string }[] | undefined;
+  const flagged = (checked ?? []).filter((item) => item?.condition === "DAMAGED" || item?.condition === "INCOMPLETE").length;
   useUnsavedChangesGuard(form.formState.isDirty);
   const [incomplete, setIncomplete] = useState(false);
 
@@ -69,8 +74,15 @@ export function ReturnForm({
       setIncomplete(false);
       submit(
         () => returnDemoLoanAction(loanId, values),
-        () => {
-          notify("Pengembalian tercatat, Hardware Admission Form terbit");
+        (data) => {
+          notify(
+            data.status === "RETURN_REVIEW"
+              ? "Pengecekan tersimpan — menunggu verifikasi engineer"
+              : data.status === "FOLLOW_UP"
+                ? "Pengecekan tersimpan — perlu tindak lanjut, PIC & Operational sudah diberi tahu"
+                : "Pengecekan unit tersimpan — peminjaman selesai",
+            data.status === "RETURNED" ? "success" : "info",
+          );
           router.push(`/inventory/peminjaman/${loanId}`);
         },
       );
@@ -83,12 +95,12 @@ export function ReturnForm({
       <form onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
         <FormAlert message={serverError} />
         <div className="flex flex-col gap-[26px] rounded-2xl bg-card p-5 shadow-card sm:p-6">
-          <FormSection title="Barang kembali" description="Kapan diterima dan siapa yang mengembalikan (tertulis di kolom Returned By pada HAF).">
-            <DateInputField name="returnedAt" label="Tanggal kembali" required min={deliveredAt ?? undefined} max={today} />
-            <TextInputField name="returnedByName" label="Dikembalikan oleh (Returned By)" placeholder="mis. Bapak Uji / kurir" autoComplete="off" hint="Opsional." />
+          <FormSection title="Barang tiba di AMI" description="Kapan barang tiba, dan siapa yang menyerahkannya di peminjam (sesuai tanda tangan Returned By di HAF).">
+            <DateInputField name="returnedAt" label="Tanggal tiba" required min={pickupDate ?? undefined} max={today} />
+            <TextInputField name="returnedByName" label="Diserahkan oleh (Returned By)" placeholder="mis. Bapak Surahman" autoComplete="off" hint="Opsional." />
           </FormSection>
 
-          <FormSection title={`Cek unit (${units.length})`} description="Periksa setiap unit sebelum HAF dibuat, lalu taruh kembali di rak.">
+          <FormSection title={`Cek unit (${units.length})`} description="Periksa setiap unit, lalu taruh kembali di rak.">
             <ol className="flex flex-col gap-4 sm:col-span-2">
               {fields.map((field, index) => (
                 <UnitCheck key={field.id} index={index} unit={units[index]} racks={racks} />
@@ -101,6 +113,12 @@ export function ReturnForm({
           </FormSection>
         </div>
 
+        {flagged > 0 && (
+          <p role="status" className="rounded-2xl bg-amber-soft px-5 py-4 text-sm text-amber-deep">
+            <span className="font-semibold">{flagged} unit rusak / tidak lengkap.</span> Setelah hasil cek diverifikasi engineer, peminjaman
+            berstatus Perlu Tindak Lanjut (belum Selesai), unit tersebut tertahan, dan PIC & Operational diberi tahu lewat email & lonceng.
+          </p>
+        )}
         {incomplete && <FormAlert message="Masih ada unit yang belum dicek atau isian yang kurang. Periksa kolom yang ditandai." />}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Link href={`/inventory/peminjaman/${loanId}`} className={buttonVariants({ variant: "outline", size: "lg" })}>
@@ -108,7 +126,7 @@ export function ReturnForm({
           </Link>
           <Button type="submit" size="lg" disabled={pending}>
             {pending ? <Loader2 className="animate-spin" aria-hidden /> : <ClipboardCheck aria-hidden />}
-            Simpan & Terbitkan HAF
+            Simpan & Ajukan Verifikasi
           </Button>
         </div>
       </form>

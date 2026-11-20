@@ -80,7 +80,8 @@ export function InventoryTable({ rows, racks, canManage }: { rows: AssetRow[]; r
       compare: rackGroupComparator(label),
       label,
       summary: (_key, units) => {
-        const onLoan = units.filter((unit) => unit.activeLoan?.status === "ON_LOAN").length;
+        // Dipinjam atau dalam pengambilan (barang belum di rak).
+        const onLoan = units.filter((unit) => unit.activeLoan?.status === "ON_LOAN" || unit.activeLoan?.status === "PICKUP").length;
         return `${units.length} unit${onLoan ? ` · ${onLoan} sedang dipinjam` : ""}`;
       },
     };

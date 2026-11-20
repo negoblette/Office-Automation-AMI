@@ -23,7 +23,9 @@ export async function applyApprovedExtension(tx: Tx, extensionId: string, approv
   const extension = await tx.demoLoanExtension.findUniqueOrThrow({ where: { id: extensionId } });
   const loan = await lockLoanWithItems(tx, extension.loanId);
   if (extension.status !== "PENDING") throw new ServiceError("Perpanjangan ini sudah tidak menunggu approval");
-  if (loan.status !== "ON_LOAN") throw new ServiceError("Barang sudah kembali — perpanjangan ini tidak berlaku lagi. Tolak saja pengajuannya.");
+  if (loan.status !== "ON_LOAN") {
+    throw new ServiceError("Barang sudah dijadwalkan diambil atau sudah kembali — perpanjangan ini tidak berlaku lagi. Tolak saja pengajuannya.");
+  }
   if (toJakartaIsoDate(loan.dueDate) !== toJakartaIsoDate(extension.previousDueDate)) {
     throw new ServiceError("Jatuh tempo peminjaman sudah berubah sejak perpanjangan ini diajukan. Tolak saja pengajuannya.");
   }
@@ -39,7 +41,9 @@ export async function applyApprovedExtension(tx: Tx, extensionId: string, approv
 export async function revertApprovedExtension(tx: Tx, extensionId: string) {
   const extension = await tx.demoLoanExtension.findUniqueOrThrow({ where: { id: extensionId } });
   const loan = await lockLoanWithItems(tx, extension.loanId);
-  if (loan.status !== "ON_LOAN") throw new ServiceError("Barang sudah kembali — persetujuan perpanjangan ini tidak bisa dibatalkan");
+  if (loan.status !== "ON_LOAN") {
+    throw new ServiceError("Barang sudah dijadwalkan diambil atau sudah kembali — persetujuan perpanjangan ini tidak bisa dibatalkan");
+  }
   if (extension.status !== "APPROVED" || toJakartaIsoDate(loan.dueDate) !== toJakartaIsoDate(extension.newDueDate)) {
     throw new ServiceError("Jatuh tempo sudah berubah lagi — persetujuan perpanjangan ini tidak bisa dibatalkan");
   }

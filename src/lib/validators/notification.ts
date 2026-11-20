@@ -6,8 +6,10 @@ const ID = /^[\w-]{1,64}$/;
 
 // loandue (Tahap 16.4): id peminjaman + jatuh tempo + tahap ("soon" / "overdue-<minggu ke>").
 // holidaychange (2026-11-18): id sinkronisasi (UUID); holidaysync:blocked: tanggal sinkronisasi yang ditahan.
+// loanpickup / loannoops (2026-11-19): antrian Pengecekan Unit Operational / peringatan Admin "belum ada Operational".
+// loanfollowup (2026-11-20): id peminjaman + minggu ke-n sejak barang tiba.
 export const NOTIFICATION_KEY =
-  /^(approval|loanqueue|rejected:[\w-]{1,64}:\d{1,16}|expiry:(?:doc|cert)-[\w-]{1,64}:\d{4}-\d{2}-\d{2}:(?:expired|week|month)|loandue:[\w-]{1,64}:\d{4}-\d{2}-\d{2}:(?:soon|overdue-\d{1,4})|holidaychange:[\w-]{1,64}|holidaysync:blocked:\d{4}-\d{2}-\d{2})$/;
+  /^(approval|loanqueue|loanpickup|loannoops|loanfollowup:[\w-]{1,64}:\d{1,4}|rejected:[\w-]{1,64}:\d{1,16}|expiry:(?:doc|cert)-[\w-]{1,64}:\d{4}-\d{2}-\d{2}:(?:expired|week|month)|loandue:[\w-]{1,64}:\d{4}-\d{2}-\d{2}:(?:soon|overdue-\d{1,4})|holidaychange:[\w-]{1,64}|holidaysync:blocked:\d{4}-\d{2}-\d{2})$/;
 
 export const notificationKeySchema = z.string().regex(NOTIFICATION_KEY, "Notifikasi tidak dikenal");
 

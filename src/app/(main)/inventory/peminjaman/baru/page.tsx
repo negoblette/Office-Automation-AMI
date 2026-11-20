@@ -15,8 +15,8 @@ export default async function NewDemoLoanPage({ searchParams }: { searchParams: 
   const [options, params] = await Promise.all([getLoanFormOptions(prisma), searchParams]);
   const unitId = typeof params.unit === "string" ? params.unit : undefined;
   const preselected = options.units.find((unit) => unit.id === unitId && !unit.unavailable);
-  // Pemohon dari divisi Sales otomatis menjadi Sales Person (masih bisa diganti).
-  const salesPersonId = options.salesPeople.find((option) => option.value === user.employeeId)?.value ?? "";
+  // Pemohon dari divisi Engineer / Sales otomatis menjadi PIC (masih bisa diganti, 2026-11-19).
+  const picId = options.pics.find((option) => option.value === user.employeeId)?.value ?? "";
 
   return (
     <div className="flex flex-col gap-6">
@@ -32,16 +32,16 @@ export default async function NewDemoLoanPage({ searchParams }: { searchParams: 
       />
       <LoanForm
         loanId={null}
-        draftKey={`loan:${user.id}:baru`}
+        draftKey={`loan:v2:${user.id}:baru`}
         options={options}
         defaultValues={{
           purpose: "",
           purposeDetail: "",
           assetIds: preselected ? [preselected.id] : [],
           borrowerName: "",
-          picName: "",
-          picEmail: "",
-          salesPersonId,
+          contactName: "",
+          contactEmail: "",
+          picId,
           startDate: toJakartaIsoDate(),
           dueDate: defaultLoanEnd(toJakartaIsoDate()),
           remarks: "",

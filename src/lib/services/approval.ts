@@ -480,7 +480,7 @@ export async function rejectRequest(db: PrismaClient, input: { requestId: string
     });
     if (updated.count === 0) throw new ServiceError("Pengajuan ini sudah diproses approver lain");
     await tx.approvalRequest.update({ where: { id: request.id }, data: { status: "REJECTED", currentLevel: null, completedAt: now } });
-    await REJECT_EFFECTS[request.module]?.(tx, request.entityId);
+    await REJECT_EFFECTS[request.module]?.(tx, request.entityId, { actorId: input.actorId });
     await logAudit(tx, {
       actorId: input.actorId,
       action: "REJECT",

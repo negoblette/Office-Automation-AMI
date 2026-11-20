@@ -47,16 +47,17 @@ export default async function EditDemoLoanPage({ params }: { params: Promise<{ i
       <LoanForm
         loanId={loan.id}
         resubmit={rejected}
-        draftKey={`loan:${user.id}:${loan.id}`}
+        draftKey={`loan:v2:${user.id}:${loan.id}`}
         options={options}
         defaultValues={{
           purpose: loan.purpose,
           purposeDetail: loan.purposeDetail ?? "",
           assetIds: loan.items.map((item) => item.assetId),
           borrowerName: loan.borrowerName,
-          picName: loan.picName,
-          picEmail: loan.picEmail,
-          salesPersonId: loan.salesPersonId,
+          contactName: loan.contactName,
+          contactEmail: loan.contactEmail,
+          // PIC lama yang sudah tidak memenuhi syarat (bukan Engineer / Sales aktif) harus dipilih ulang.
+          picId: options.pics.some((option) => option.value === loan.picId) ? loan.picId : "",
           startDate: loan.startDate,
           dueDate: loan.dueDate,
           remarks: loan.remarks ?? "",

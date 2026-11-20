@@ -78,6 +78,11 @@ export async function assetHistory(db: PrismaClient, assetId: string): Promise<A
     : [];
   const loanIdOfNumber = new Map(loanLogs.map((log) => [str(obj(log.after).number) ?? str(obj(log.before).number), log.entityId]));
 
+  // Unit principal / distributor yang masuk lewat penerimaan barang (2026-11-20): nomor HAF untuk catatan riwayatnya.
+  const receiptIds = [...new Set(assetLogs.map((log) => str(obj(log.after).receiptId)).filter((id): id is string => Boolean(id)))];
+  const receipts = receiptIds.length ? await db.goodsReceipt.findMany({ where: { id: { in: receiptIds } }, select: { id: true, hafNumber: true } }) : [];
+  const hafOfReceipt = new Map(receipts.map((receipt) => [receipt.id, receipt.hafNumber]));
+
   // Nama rak (termasuk yang sudah dihapus) untuk kolom Lokasi.
   const rackIds = new Set<string>();
   for (const log of assetLogs) for (const snapshot of [obj(log.before), obj(log.after)]) if (str(snapshot.rackId)) rackIds.add(snapshot.rackId as string);
@@ -92,7 +97,18 @@ export async function assetHistory(db: PrismaClient, assetId: string): Promise<A
   for (const log of assetLogs) {
     const before = obj(log.before);
     const after = obj(log.after);
-    if (log.action === "CREATE") {
+    if (log.action === "CREATE" && str(after.receiptId)) {
+      const owner = `${ASSET_OWNERSHIP_LABEL[(str(after.ownership) ?? "PRINCIPAL") as AssetOwnership]} ${str(after.ownerName) ?? ""}`.trim();
+      const haf = hafOfReceipt.get(after.receiptId as string);
+      events.push({
+        ...base(log),
+        kind: "created",
+        title: `Diterima dari ${owner}`,
+        changes: [],
+        note: [haf && `HAF ${haf}`, `Lokasi awal: ${location(after)}`].filter(Boolean).join(" · "),
+        href: `/inventory/penerimaan/${after.receiptId as string}`,
+      });
+    } else if (log.action === "CREATE") {
       events.push({ ...base(log), kind: "created", title: "Unit didaftarkan", changes: [], note: `Lokasi awal: ${location(after)}`, href: null });
     } else if (log.action === "DELETE") {
       events.push({ ...base(log), kind: "deleted", title: "Unit dihapus", changes: [], note: null, href: null });
@@ -116,29 +132,55 @@ export async function assetHistory(db: PrismaClient, assetId: string): Promise<A
     const wasIn = hasAsset(before, assetId);
     const isIn = hasAsset(after, assetId);
     const status = str(after.status) as DemoLoanStatus | null;
+    const unitOf = (snapshot: Json) =>
+      Array.isArray(snapshot.items) ? snapshot.items.map((item) => obj(item as Prisma.JsonValue)).find((item) => item.assetId === assetId) : undefined;
+    // Tindak lanjut selesai (2026-11-20): hanya untuk unit yang memang bermasalah; unit Baik di peminjaman itu dilewati.
+    const followUpDone = status === "RETURNED" && before.status === "FOLLOW_UP";
+    const resolved = followUpDone ? (str(unitOf(after)?.resolvedCondition) as ReturnCondition | null) : null;
+    if (followUpDone && !resolved) continue;
     // Jatuh tempo berubah saat dipinjam = perpanjangan disetujui / persetujuannya dibatalkan (Tahap 16.4).
     const dueChanged = status === "ON_LOAN" && before.status === "ON_LOAN" && str(after.dueDate) && str(after.dueDate) !== str(before.dueDate);
+    // Barang tiba & dicek (Tahap 16.5): sejak 2026-11-20 menunggu verifikasi engineer (data lama: langsung Selesai /
+    // Perlu Tindak Lanjut). Verifikasi disetujui → Selesai / Perlu Tindak Lanjut; ditolak → kembali Pengambilan.
+    const returned = (status === "RETURN_REVIEW" || status === "RETURNED" || status === "FOLLOW_UP") && before.status === "PICKUP";
+    const verified = (status === "RETURNED" || status === "FOLLOW_UP") && before.status === "RETURN_REVIEW";
+    const verifyRejected = status === "PICKUP" && before.status === "RETURN_REVIEW";
     let title: string;
-    if (dueChanged) title = String(after.dueDate) > String(before.dueDate) ? "Jatuh tempo diperpanjang" : "Perpanjangan jatuh tempo dibatalkan";
+    if (followUpDone) title = "Tindak lanjut selesai";
+    else if (verified) title = "Pengecekan diverifikasi";
+    else if (verifyRejected) title = "Verifikasi pengecekan ditolak";
+    else if (dueChanged) title = String(after.dueDate) > String(before.dueDate) ? "Jatuh tempo diperpanjang" : "Perpanjangan jatuh tempo dibatalkan";
     else if (log.action === "CREATE") title = "Diajukan pinjam";
     else if (status === "CANCELLED") title = "Pengajuan pinjam dibatalkan";
+    // Pengambilan (2026-11-19): HAF terbit & dibawa kurir; jadwal diubah; dibatalkan → kembali Dipinjam.
+    else if (status === "PICKUP") title = before.status === "PICKUP" ? "Jadwal pengambilan diubah" : "Dijadwalkan diambil kembali";
+    else if (status === "ON_LOAN" && before.status === "PICKUP") title = "Pengambilan dibatalkan";
     else if (status === "ON_LOAN" && before.status !== "ON_LOAN") title = "Diantar ke peminjam";
-    else if (status === "RETURNED" && before.status !== "RETURNED") title = "Dikembalikan dari peminjam";
+    else if (returned || (status === "RETURNED" && before.status !== "RETURNED")) title = "Dikembalikan dari peminjam";
     else if (wasIn && Array.isArray(after.items) && !isIn) title = "Dikeluarkan dari pengajuan pinjam";
     else if (!wasIn && isIn) title = "Ditambahkan ke pengajuan pinjam";
     else if (before.status === "REJECTED") title = "Diajukan ulang";
     else title = "Pengajuan pinjam diubah";
     const purposeText = purpose ? `${loanPurposeText(purpose as LoanPurpose, str(after.purposeDetail) ?? str(before.purposeDetail))} · ` : "";
-    // Dikembalikan (Tahap 16.5): kondisi unit ini saat dicek + nomor HAF.
-    const returned = status === "RETURNED" && before.status !== "RETURNED";
-    const check = returned && Array.isArray(after.items) ? after.items.map((item) => obj(item as Prisma.JsonValue)).find((item) => item.assetId === assetId) : undefined;
+    // Dikembalikan (Tahap 16.5): kondisi unit ini saat dicek + nomor HAF (+ perlu tindak lanjut bila bermasalah).
+    const arrived = returned || (status === "RETURNED" && before.status !== "RETURNED" && !followUpDone && !verified);
+    const check = arrived || verified ? unitOf(after) : undefined;
     const condition = str(check?.returnCondition) as ReturnCondition | null;
     const conditionText = condition ? `Kondisi ${RETURN_CONDITION_LABEL[condition]}${str(check?.returnNote) ? ` — ${check?.returnNote}` : ""}` : null;
-    const note = returned
-      ? [conditionText, str(after.hafNumber) && `HAF ${after.hafNumber}`, `${borrower} · ${number}`].filter(Boolean).join(" · ")
+    const flagged = status === "FOLLOW_UP" && condition !== null && condition !== "GOOD" ? "perlu tindak lanjut" : status === "RETURN_REVIEW" ? "menunggu verifikasi" : null;
+    const note = followUpDone
+      ? [`Kondisi akhir ${resolved ? RETURN_CONDITION_LABEL[resolved] : "—"}`, str(after.followUpNote), `${borrower} · ${number}`].filter(Boolean).join(" · ")
+      : verified
+      ? [conditionText, flagged, `${borrower} · ${number}`].filter(Boolean).join(" · ")
+      : verifyRejected
+      ? `Dicek ulang Operational · ${borrower} · ${number}`
+      : arrived
+      ? [conditionText, flagged, str(after.hafNumber) && `HAF ${after.hafNumber}`, `${borrower} · ${number}`].filter(Boolean).join(" · ")
       : dueChanged
         ? `Jatuh tempo ${dateText(before.dueDate)} → ${dateText(after.dueDate)} · ${borrower} · ${number}`
-        : `${purposeText}${borrower} · ${number}`;
+        : status === "PICKUP"
+          ? [`Diambil ${dateText(after.pickupDate)}`, str(after.hafNumber) && `HAF ${after.hafNumber}`, `${borrower} · ${number}`].filter(Boolean).join(" · ")
+          : `${purposeText}${borrower} · ${number}`;
     events.push({ ...base(log), kind: "loan", title, changes: [], note, href: `/inventory/peminjaman/${log.entityId}` });
   }
 

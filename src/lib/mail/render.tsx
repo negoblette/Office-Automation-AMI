@@ -20,12 +20,13 @@ export type EmailTemplates = {
   "loan-due-soon": DemoLoanEmailProps;
   "loan-overdue": DemoLoanEmailProps;
   "loan-extended": DemoLoanEmailProps;
+  "loan-follow-up": DemoLoanEmailProps;
   "holiday-change": HolidayEmailProps;
 };
 
 export type EmailTemplateName = keyof EmailTemplates;
 
-const LOAN_TEMPLATES = new Set<EmailTemplateName>(["loan-approved", "loan-due-soon", "loan-overdue", "loan-extended"]);
+const LOAN_TEMPLATES = new Set<EmailTemplateName>(["loan-approved", "loan-due-soon", "loan-overdue", "loan-extended", "loan-follow-up"]);
 
 function buildElement<T extends EmailTemplateName>(template: T, props: EmailTemplates[T]): ReactElement {
   if (template === "reminder-expiry") return <ReminderEmail {...(props as ReminderEmailProps)} />;

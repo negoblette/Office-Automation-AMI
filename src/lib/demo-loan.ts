@@ -1,9 +1,17 @@
 // Peminjaman unit demo / Product Trial Form (Fase 16, 2026-11-17) — aturan murni tanpa database, dipakai server & client.
-import type { DemoLoanExtensionStatus, DemoLoanStatus, LoanPurpose, ReturnCondition } from "@/generated/prisma/enums";
+import type { AssetOwnership, DemoLoanExtensionStatus, DemoLoanStatus, LoanPurpose, ReturnCondition } from "@/generated/prisma/enums";
 import type { StatusVariant } from "@/components/shared/status-badge";
+import { ASSET_OWNERSHIP_LABEL } from "@/lib/inventory";
 
-/** Status yang menahan unit: unit di peminjaman ini tidak bisa diajukan di peminjaman lain. */
-export const ACTIVE_LOAN_STATUSES = ["PENDING", "APPROVED", "ON_LOAN"] as const satisfies readonly DemoLoanStatus[];
+/**
+ * Status yang menahan unit: unit di peminjaman ini tidak bisa diajukan di peminjaman lain. PICKUP (2026-11-19) = barang
+ * sedang diambil kurir / belum dicek Operational; RETURN_REVIEW (2026-11-20) = hasil pengecekan menunggu verifikasi
+ * engineer — unit masih tertahan.
+ */
+export const ACTIVE_LOAN_STATUSES = ["PENDING", "APPROVED", "ON_LOAN", "PICKUP", "RETURN_REVIEW"] as const satisfies readonly DemoLoanStatus[];
+
+/** Barang ada di luar AMI (di peminjam atau dalam perjalanan pulang). */
+export const OUT_LOAN_STATUSES = ["ON_LOAN", "PICKUP"] as const satisfies readonly DemoLoanStatus[];
 
 export function isActiveLoanStatus(status: DemoLoanStatus): boolean {
   return (ACTIVE_LOAN_STATUSES as readonly DemoLoanStatus[]).includes(status);
@@ -43,6 +51,9 @@ export const DEMO_LOAN_STATUS_LABEL: Record<DemoLoanStatus, string> = {
   REJECTED: "Ditolak",
   CANCELLED: "Dibatalkan",
   ON_LOAN: "Dipinjam",
+  PICKUP: "Pengambilan",
+  RETURN_REVIEW: "Menunggu verifikasi",
+  FOLLOW_UP: "Tindak lanjut",
   RETURNED: "Selesai",
 };
 
@@ -52,6 +63,9 @@ export const DEMO_LOAN_STATUS_VARIANT: Record<DemoLoanStatus, StatusVariant> = {
   REJECTED: "danger",
   CANCELLED: "neutral",
   ON_LOAN: "warning",
+  PICKUP: "info",
+  RETURN_REVIEW: "pending",
+  FOLLOW_UP: "danger",
   RETURNED: "success",
 };
 
@@ -61,8 +75,43 @@ export const MAX_LOAN_MONTHS = 24;
 /** Unit maksimal dalam satu form. */
 export const MAX_LOAN_ITEMS = 50;
 
-/** "Sales Person" di form dipilih dari karyawan aktif divisi ini (kode persis). */
-export const LOAN_SALES_DIVISION = "SALES";
+// ---------------------------------------------------------------------
+// Pemilik unit di nomor form (2026-11-19): `NNN/AMI-PTF/<pemilik>/<tahun>` — "AMI" atau nama principal / distributor.
+// ---------------------------------------------------------------------
+
+export const AMI_OWNER = "AMI";
+
+/** Contoh segmen pemilik untuk pratinjau nomor berikutnya di Setting (pemilik baru diketahui saat diajukan). */
+export const OWNER_PLACEHOLDER = "pemilik";
+
+/** Nama pemilik yang aman untuk nomor form: "/" (pemisah nomor) diganti "-", spasi dirapikan. */
+export function cleanOwnerName(name: string): string {
+  return name.replaceAll("/", "-").replace(/\s+/g, " ").trim();
+}
+
+/** Segmen pemilik satu unit: "AMI", atau nama principal / distributor. */
+export function unitOwnerSegment(ownership: AssetOwnership, ownerName: string | null | undefined): string {
+  if (ownership === "AMI") return AMI_OWNER;
+  return cleanOwnerName(ownerName ?? "") || ASSET_OWNERSHIP_LABEL[ownership];
+}
+
+/**
+ * Pemilik berbeda di antara unit yang dipilih (beda huruf besar / kecil dianggap sama; ejaan unit pertama dipakai).
+ * Satu form hanya boleh satu pemilik, karena pemilik tertulis di nomor PTF & HAF.
+ */
+export function loanUnitOwners(units: { ownership: AssetOwnership; ownerName: string | null | undefined }[]): string[] {
+  const owners = new Map<string, string>();
+  for (const unit of units) {
+    const owner = unitOwnerSegment(unit.ownership, unit.ownerName);
+    if (!owners.has(owner.toLowerCase())) owners.set(owner.toLowerCase(), owner);
+  }
+  return [...owners.values()];
+}
+
+/** Pesan untuk unit yang pemiliknya berbeda-beda. */
+export function mixedOwnerMessage(owners: string[]): string {
+  return `Unit dalam satu form harus milik satu pihak karena pemilik tertulis di nomor form (terpilih: ${owners.join(", ")}). Ajukan form terpisah per pemilik.`;
+}
 
 const DAY_MS = 86_400_000;
 
@@ -198,46 +247,43 @@ export const EXTENSION_STATUS_VARIANT: Record<DemoLoanExtensionStatus, StatusVar
   CANCELLED: "neutral",
 };
 
-const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+const formNumber = (sequence: number, code: string, owner: string, year: number) =>
+  `${String(sequence).padStart(3, "0")}/AMI-${code}/${cleanOwnerName(owner)}/${year}`;
 
-export function romanMonth(month: number): string {
-  const roman = ROMAN[month - 1];
-  if (!roman) throw new RangeError(`Bulan tidak valid: ${month}`);
-  return roman;
-}
-
-/** Nomor Product Trial Form: `001/AMI-PTF/XI/2026` (urut per tahun; bulan = bulan disetujui). */
-export function formatTrialFormNumber(sequence: number, month: number, year: number): string {
-  return `${String(sequence).padStart(3, "0")}/AMI-PTF/${romanMonth(month)}/${year}`;
-}
-
-/** Urutan dari nomor form, mis. "008/AMI-PTF/III/2025" → { sequence: 8, year: 2025 }; null bila formatnya lain. */
-export function parseTrialFormNumber(number: string): { sequence: number; year: number } | null {
-  const match = /^(\d+)\/AMI-PTF\/[IVX]+\/(\d{4})$/.exec(number);
-  return match ? { sequence: Number(match[1]), year: Number(match[2]) } : null;
+/** Nomor Product Trial Form: `008/AMI-PTF/AMI/2025`, `009/AMI-PTF/Cisco/2025` (urut per tahun; segmen 3 = pemilik unit). */
+export function formatTrialFormNumber(sequence: number, owner: string, year: number): string {
+  return formNumber(sequence, "PTF", owner, year);
 }
 
 /**
- * Segmen tengah nomor Hardware Admission Form — dikosongkan dulu (keputusan user 2026-11-18). Bila nanti ditentukan
- * (mis. bulan Romawi), ubah di sini; nomor yang sudah terbit tidak berubah.
+ * Urutan & tahun dari nomor form, mis. "008/AMI-PTF/AMI/2025" → { sequence: 8, year: 2025 }; segmen tengah apa pun
+ * (nomor lama berisi bulan Romawi tetap terbaca). null bila formatnya lain.
  */
-export const HAF_MIDDLE_SEGMENT = "";
-
-/** Nomor Hardware Admission Form: `001/AMI-HAF//2026` (urut per tahun; segmen tengah kosong). */
-export function formatHafNumber(sequence: number, year: number): string {
-  return `${String(sequence).padStart(3, "0")}/AMI-HAF/${HAF_MIDDLE_SEGMENT}/${year}`;
+export function parseTrialFormNumber(number: string): { sequence: number; year: number } | null {
+  const match = /^(\d+)\/AMI-PTF\/[^/]*\/(\d{4})$/.exec(number);
+  return match ? { sequence: Number(match[1]), year: Number(match[2]) } : null;
 }
 
-/** Urutan & tahun dari nomor HAF (segmen tengah apa pun); null bila formatnya lain. */
+/** Nomor Hardware Admission Form: `001/AMI-HAF/AMI/2026` (urut per tahun; segmen 3 = pemilik unit). */
+export function formatHafNumber(sequence: number, owner: string, year: number): string {
+  return formNumber(sequence, "HAF", owner, year);
+}
+
+/** Urutan & tahun dari nomor HAF (segmen tengah apa pun, termasuk nomor lama yang kosong); null bila formatnya lain. */
 export function parseHafNumber(number: string): { sequence: number; year: number } | null {
   const match = /^(\d+)\/AMI-HAF\/[^/]*\/(\d{4})$/.exec(number);
   return match ? { sequence: Number(match[1]), year: Number(match[2]) } : null;
 }
 
 // ---------------------------------------------------------------------
-// Pengembalian (Tahap 16.5): kondisi unit saat dicek Operational.
+// Pengambilan & Pengecekan Unit (2026-11-19): Operational menjadwalkan pengambilan → HAF terbit & dibawa kurir AMI;
+// setelah barang tiba di AMI, Operational wajib mengisi Pengecekan Unit (kondisi tiap unit & posisi rak).
 // ---------------------------------------------------------------------
 
+/** Tanggal pengambilan paling jauh 90 hari ke depan. */
+export const MAX_PICKUP_AHEAD_DAYS = 90;
+
+/** Kondisi unit saat dicek Operational (Tahap 16.5). HAF tidak memuat kondisi sejak 2026-11-19 (terbit sebelum dicek). */
 export const RETURN_CONDITION_LABEL: Record<ReturnCondition, string> = {
   GOOD: "Baik",
   DAMAGED: "Rusak",
@@ -250,12 +296,38 @@ export const RETURN_CONDITION_VARIANT: Record<ReturnCondition, StatusVariant> = 
   INCOMPLETE: "warning",
 };
 
-/** Kondisi dalam bahasa Inggris untuk form HAF (form kertas berbahasa Inggris). */
-export const RETURN_CONDITION_ENGLISH: Record<ReturnCondition, string> = {
-  GOOD: "Good",
-  DAMAGED: "Damaged",
-  INCOMPLETE: "Incomplete",
-};
+// ---------------------------------------------------------------------
+// Tindak lanjut (2026-11-20): pengecekan menemukan unit Rusak / Tidak lengkap → peminjaman "Perlu Tindak Lanjut" (bukan
+// Selesai). Unit Baik langsung bebas; unit bermasalah tertahan sampai Operational menyelesaikan tindak lanjutnya.
+// PIC & Operational diberi tahu (email + lonceng), diulang tiap 7 hari selama belum selesai.
+// ---------------------------------------------------------------------
+
+/** Pengingat tindak lanjut diulang tiap 7 hari. */
+export const FOLLOW_UP_REPEAT_DAYS = 7;
+
+/** Kondisi yang perlu ditindaklanjuti (Rusak / Tidak lengkap). */
+export const PROBLEM_CONDITIONS = ["DAMAGED", "INCOMPLETE"] as const satisfies readonly ReturnCondition[];
+
+export function isProblemCondition(condition: ReturnCondition | null | undefined): boolean {
+  return condition === "DAMAGED" || condition === "INCOMPLETE";
+}
+
+/** Kondisi akhir unit: hasil tindak lanjut bila ada, selain itu kondisi saat dicek. */
+export function finalCondition(item: { returnCondition: ReturnCondition | null; resolvedCondition: ReturnCondition | null }): ReturnCondition | null {
+  return item.resolvedCondition ?? item.returnCondition;
+}
+
+/** Minggu ke berapa sejak barang tiba (0 = minggu pertama) — tahap lonceng tindak lanjut muncul lagi tiap minggu. */
+export function followUpWeek(returnedIso: string, todayIso: string): number {
+  return Math.max(0, Math.floor(daysBetween(returnedIso, todayIso) / FOLLOW_UP_REPEAT_DAYS));
+}
+
+/** Hasil tindak lanjut per unit bermasalah. */
+export const FOLLOW_UP_RESULT_LABEL = {
+  RESOLVED: "Sudah lengkap / sudah diperbaiki",
+  UNRESOLVED: "Tetap rusak / tidak lengkap",
+} as const;
+export type FollowUpResult = keyof typeof FOLLOW_UP_RESULT_LABEL;
 
 // ---------------------------------------------------------------------
 // Form cetak (Product Trial Form, Fase 16.3) — label berbahasa Inggris seperti form kertas.

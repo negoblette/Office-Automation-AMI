@@ -8,9 +8,9 @@ import { emailSchema, isoDateSchema, optionalField, textSchema } from "./common"
 const requiredId = (message: string) => z.string({ error: message }).min(1, { error: message });
 
 /**
- * Form pengajuan (Engineer / Sales): kegunaan (Backup Unit / POC), unit, peminjam (nama Customer atau diketik), PIC +
- * email, Sales Person, tanggal mulai & tanggal selesai (lamanya dihitung), keperluan. Ketersediaan unit & Sales Person
- * dicek di service.
+ * Form pengajuan (Engineer / Sales): kegunaan (Backup Unit / POC), unit, peminjam (nama Customer atau diketik), kontak
+ * peminjam + email, PIC dari AMI (Engineer / Sales, 2026-11-19 — dulu Sales Person), tanggal mulai & tanggal selesai
+ * (lamanya dihitung), keperluan. Ketersediaan & pemilik unit serta PIC dicek di service.
  */
 export const demoLoanSchema = z
   .object({
@@ -23,9 +23,9 @@ export const demoLoanSchema = z
       .max(MAX_LOAN_ITEMS, { error: `Maksimal ${MAX_LOAN_ITEMS} unit dalam satu form` })
       .refine((ids) => new Set(ids).size === ids.length, { error: "Ada unit yang terpilih dua kali" }),
     borrowerName: textSchema("Perusahaan peminjam", { min: 2, max: 150 }),
-    picName: textSchema("Nama PIC", { min: 2, max: 100 }),
-    picEmail: emailSchema,
-    salesPersonId: requiredId("Sales Person wajib dipilih"),
+    contactName: textSchema("Nama kontak peminjam", { min: 2, max: 100 }),
+    contactEmail: emailSchema,
+    picId: requiredId("PIC wajib dipilih"),
     startDate: isoDateSchema,
     /** Tanggal selesai = hari terakhir pinjam (inklusif) = jatuh tempo; lamanya dihitung dari kedua tanggal. */
     dueDate: isoDateSchema,
@@ -57,13 +57,23 @@ export const deliverDemoLoanSchema = z.object({
 export type DeliverDemoLoanInput = z.infer<typeof deliverDemoLoanSchema>;
 
 /**
- * Pengembalian (Tahap 16.5, kembali sepenuhnya): tanggal kembali, siapa yang mengembalikan, catatan umum, dan hasil cek
- * setiap unit (kondisi wajib, catatan, posisi rak tempat ditaruh — rak & posisi berpasangan). Semua unit wajib dicek
- * (dicocokkan dengan isi peminjaman di service).
+ * Jadwalkan pengambilan (2026-11-19, Operational): tanggal pengambilan ("Date" di HAF) & kurir AMI ("Received By").
+ * Batas tanggal (tidak sebelum tanggal diantar, maks. 90 hari ke depan) dicek service — butuh data peminjaman.
+ */
+export const loanPickupSchema = z.object({
+  pickupDate: isoDateSchema,
+  courierId: requiredId("Kurir wajib dipilih"),
+});
+export type LoanPickupInput = z.infer<typeof loanPickupSchema>;
+
+/**
+ * Pengecekan Unit (Tahap 16.5; sejak 2026-11-19 setelah barang diambil kurir & tiba di AMI, kembali sepenuhnya): tanggal
+ * tiba, yang menyerahkan di peminjam (opsional, sesuai HAF), catatan umum, dan hasil cek setiap unit (kondisi wajib,
+ * catatan, posisi rak tempat ditaruh — rak & posisi berpasangan). Semua unit wajib dicek (dicocokkan di service).
  */
 export const returnDemoLoanSchema = z.object({
   returnedAt: isoDateSchema,
-  returnedByName: optionalField(textSchema("Nama yang mengembalikan", { min: 2, max: 100 })),
+  returnedByName: optionalField(textSchema("Nama yang menyerahkan", { min: 2, max: 100 })),
   note: optionalField(textSchema("Catatan", { max: 500 })),
   items: z
     .array(
@@ -84,6 +94,23 @@ export const returnDemoLoanSchema = z.object({
     .min(1, { error: "Belum ada unit yang dicek" }),
 });
 export type ReturnDemoLoanInput = z.infer<typeof returnDemoLoanSchema>;
+
+/**
+ * Selesaikan tindak lanjut (2026-11-20, Operational): hasil tiap unit bermasalah (sudah lengkap / diperbaiki, atau tetap
+ * rusak / tidak lengkap) + catatan penyelesaian wajib. Unit dicocokkan dengan unit bermasalah peminjaman di service.
+ */
+export const resolveFollowUpSchema = z.object({
+  note: textSchema("Catatan tindak lanjut", { min: 5, max: 500 }),
+  items: z
+    .array(
+      z.object({
+        itemId: z.string().min(1),
+        result: z.enum(["RESOLVED", "UNRESOLVED"], { error: "Pilih hasil tindak lanjut" }),
+      }),
+    )
+    .min(1, { error: "Belum ada unit yang diisi hasilnya" }),
+});
+export type ResolveFollowUpInput = z.infer<typeof resolveFollowUpSchema>;
 
 /**
  * Ajukan perpanjangan jatuh tempo (Tahap 16.4): tanggal selesai baru (hari terakhir pinjam) + alasan. Batas tanggal

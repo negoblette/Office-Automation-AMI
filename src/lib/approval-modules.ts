@@ -15,6 +15,8 @@ export const APPROVAL_MODULE_META: Record<ApprovalModule, { label: string; path:
   DEMO_LOAN: { label: "Peminjaman Unit", path: (id) => `/inventory/peminjaman/${id}` },
   // Tahap 16.4 (2026-11-18): perpanjangan jatuh tempo — entityId = id perpanjangan; halaman ini meneruskan ke peminjamannya.
   DEMO_LOAN_EXTENSION: { label: "Perpanjangan Peminjaman Unit", path: (id) => `/inventory/peminjaman/perpanjangan/${id}` },
+  // 2026-11-20: verifikasi hasil Pengecekan Unit oleh engineer (Ko Yosep) — entityId = id peminjaman.
+  DEMO_LOAN_RETURN: { label: "Verifikasi Pengembalian Unit", path: (id) => `/inventory/peminjaman/${id}` },
 };
 
 /**

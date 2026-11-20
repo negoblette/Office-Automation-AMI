@@ -3,6 +3,7 @@
 // (bukan registrasi lewat side-effect import, supaya tidak ada efek yang terlewat).
 import type { ApprovalModule, Prisma } from "@/generated/prisma/client";
 import { applyApprovedExtension, revertApprovedExtension } from "./demo-loan-extension-effects";
+import { applyVerifiedReturn, rejectVerifiedReturn } from "./demo-loan-return-effects";
 import { applyApprovedHealthClaim, revertApprovedHealthClaim } from "./health-payout";
 import { ServiceError } from "./errors";
 import { applyApprovedLeave, revertApprovedLeave } from "./leave-balance";
@@ -47,6 +48,9 @@ export const FINAL_EFFECTS: Partial<Record<ApprovalModule, FinalEffect>> = {
   },
   // Tahap 16.4 (2026-11-18): perpanjangan disetujui → jatuh tempo peminjaman pindah ke tanggal baru.
   DEMO_LOAN_EXTENSION: (tx, entityId, approvedAt, options) => applyApprovedExtension(tx, entityId, approvedAt, options.actorId ?? null),
+  // 2026-11-20: hasil Pengecekan Unit diverifikasi engineer → Selesai, atau Perlu Tindak Lanjut bila ada unit bermasalah.
+  // (Tanpa REVERT_EFFECTS: setelah final, unit sudah bisa dipinjam lagi / ditindaklanjuti — tidak bisa dibatalkan.)
+  DEMO_LOAN_RETURN: (tx, entityId, approvedAt, options) => applyVerifiedReturn(tx, entityId, approvedAt, options.actorId ?? null),
 };
 
 export type RevertEffect = (tx: Prisma.TransactionClient, entityId: string) => Promise<void>;
@@ -86,7 +90,8 @@ export const REVERT_EFFECTS: Partial<Record<ApprovalModule, RevertEffect>> = {
   DEMO_LOAN_EXTENSION: revertApprovedExtension,
 };
 
-export type RejectEffect = (tx: Prisma.TransactionClient, entityId: string) => Promise<void>;
+/** `options.actorId` = approver yang menolak (2026-11-20, untuk audit entitas); efek lama boleh mengabaikannya. */
+export type RejectEffect = (tx: Prisma.TransactionClient, entityId: string, options: { actorId?: string }) => Promise<void>;
 
 /**
  * Pengajuan ditolak approver (2026-10-12, OI-05): entitas berstatus REJECTED. Pemohon bisa merevisi lalu
@@ -121,4 +126,6 @@ export const REJECT_EFFECTS: Partial<Record<ApprovalModule, RejectEffect>> = {
   DEMO_LOAN_EXTENSION: async (tx, entityId) => {
     await tx.demoLoanExtension.updateMany({ where: { id: entityId, status: "PENDING" }, data: { status: "REJECTED", decidedAt: new Date() } });
   },
+  // 2026-11-20: verifikasi pengecekan ditolak → Operational mengisi Pengecekan Unit ulang.
+  DEMO_LOAN_RETURN: (tx, entityId, options) => rejectVerifiedReturn(tx, entityId, options.actorId ?? null),
 };

@@ -15,7 +15,7 @@ import { operationalUsersSchema, rackSchema } from "@/lib/validators/inventory";
 import { deleteRackAction, saveFormCounterAction, saveOperationalUsersAction, saveRackAction } from "./actions";
 
 const FORM_NAME = { PTF: "Product Trial Form", HAF: "Hardware Admission Form" } as const;
-const FORM_EXAMPLE = { PTF: "008/AMI-PTF/III/2026", HAF: "033/AMI-HAF//2026" } as const;
+const FORM_EXAMPLE = { PTF: "008/AMI-PTF/AMI/2026", HAF: "033/AMI-HAF/AMI/2026" } as const;
 
 /** Nomor terakhir Product Trial Form / Hardware Admission Form tahun ini — form berikutnya memakai nomor ini + 1. */
 export function FormCounterDialog({ kind, year, lastValue }: { kind: "PTF" | "HAF"; year: number; lastValue: number }) {

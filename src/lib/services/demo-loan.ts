@@ -1,20 +1,47 @@
 // Peminjaman unit demo ke perusahaan lain = Product Trial Form (Fase 16, Tahap 16.2, 2026-11-17).
-// Alur (keputusan user 2026-11-17):
-//  1. Engineer / Sales mengajukan (kegunaan Backup Unit / POC) → nomor form terbit, approval engine modul DEMO_LOAN
-//     (Approval Flow, default Ko Yosep). Ditolak → pemohon revisi & ajukan ulang (approval dimulai lagi), atau batalkan.
+// Alur (keputusan user 2026-11-17, direvisi 2026-11-19):
+//  1. Engineer / Sales mengajukan (kegunaan Backup Unit / POC; PIC = Engineer / Sales) → nomor form
+//     `NNN/AMI-PTF/<pemilik unit>/<tahun>` terbit, approval engine modul DEMO_LOAN (Approval Flow, default Ko Yosep).
+//     Ditolak → pemohon revisi & ajukan ulang (approval dimulai lagi), atau batalkan.
 //  2. Disetujui final → status APPROVED = antrian Operational (Devi): pilih Item Sender, cetak form, antar
 //     ("Sudah Diantar" → ON_LOAN, Tahap 16.3).
-// Unit di peminjaman PENDING / APPROVED / ON_LOAN tidak bisa diajukan lagi: baris Asset dikunci (FOR UPDATE) supaya dua
+//  3. Barang akan diambil → Operational menjadwalkan pengambilan (tanggal + kurir AMI) → nomor HAF terbit, HAF dibawa
+//     kurir (PICKUP). Barang tiba di AMI → Operational WAJIB mengisi Pengecekan Unit → semua Baik: RETURNED (Selesai);
+//     ada yang Rusak / Tidak lengkap: FOLLOW_UP (2026-11-20) — PIC & Operational diberi tahu, unit bermasalah tertahan
+//     sampai Operational menyelesaikan tindak lanjutnya → RETURNED.
+// Langkah Operational HANYA untuk user yang ditunjuk di Setting → Inventaris & Rak; Admin tidak otomatis (2026-11-19).
+// Unit yang tertahan (services/demo-loan-hold.ts) tidak bisa diajukan lagi: baris Asset dikunci (FOR UPDATE) supaya dua
 // pengajuan bersamaan tidak sama-sama lolos. Email dikirim action SETELAH transaksi commit.
 import { Prisma, type PrismaClient, type Role } from "@/generated/prisma/client";
-import { ACTIVE_LOAN_STATUSES, formatHafNumber, formatTrialFormNumber, isEditableLoanStatus, LOAN_SALES_DIVISION, parseHafNumber, parseTrialFormNumber } from "@/lib/demo-loan";
+import {
+  addDaysIso,
+  formatHafNumber,
+  formatTrialFormNumber,
+  isEditableLoanStatus,
+  isProblemCondition,
+  loanUnitOwners,
+  MAX_PICKUP_AHEAD_DAYS,
+  mixedOwnerMessage,
+  OWNER_PLACEHOLDER,
+  parseHafNumber,
+  parseTrialFormNumber,
+} from "@/lib/demo-loan";
 import { fromIsoDate, toJakartaIsoDate } from "@/lib/format";
-import type { DeliverDemoLoanInput, DemoLoanInput, ItemSenderInput, ReturnDemoLoanInput, TrialFormCounterInput } from "@/lib/validators/demo-loan";
+import type {
+  DeliverDemoLoanInput,
+  DemoLoanInput,
+  ItemSenderInput,
+  LoanPickupInput,
+  ResolveFollowUpInput,
+  ReturnDemoLoanInput,
+  TrialFormCounterInput,
+} from "@/lib/validators/demo-loan";
 import { type ApprovalNotification, buildApproval, restartApproval } from "./approval";
 import { logAudit } from "./audit";
 import { closePendingExtensions } from "./demo-loan-extension";
+import { heldLoanItemWhere } from "./demo-loan-hold";
 import { ServiceError } from "./errors";
-import { inventoryAccess } from "./inventory-access";
+import { assertOperational as assertOperationalAccess, assertInventoryPic, inventoryAccess } from "./inventory-access";
 import { HAF_PREFIX, nextHafNumber, nextTrialFormNumber, TRIAL_FORM_PREFIX } from "./numbering";
 import { assertRackPosition } from "./storage-rack";
 
@@ -45,21 +72,21 @@ async function loadAvailableUnits(tx: Tx, assetIds: string[], exceptLoanId?: str
   await tx.$queryRaw`SELECT id FROM "Asset" WHERE id IN (${Prisma.join([...assetIds].sort())}) ORDER BY id FOR UPDATE`;
   const assets = await tx.asset.findMany({
     where: { id: { in: assetIds }, deletedAt: null },
-    select: { id: true, deviceName: true, serialNo: true, rackId: true, rackPosition: true },
+    select: { id: true, deviceName: true, serialNo: true, rackId: true, rackPosition: true, ownership: true, ownerName: true },
   });
   if (assets.length !== assetIds.length) {
     throw new ServiceError("Ada unit yang tidak ditemukan atau sudah dihapus. Muat ulang halaman lalu pilih lagi.", "assetIds");
   }
   const busy = await tx.demoLoanItem.findMany({
-    where: {
-      assetId: { in: assetIds },
-      loan: { status: { in: [...ACTIVE_LOAN_STATUSES] }, ...(exceptLoanId ? { id: { not: exceptLoanId } } : {}) },
-    },
+    where: { assetId: { in: assetIds }, ...heldLoanItemWhere(exceptLoanId) },
     select: { asset: { select: { deviceName: true, serialNo: true } } },
   });
   if (busy.length) {
     const units = busy.map(({ asset }) => `${asset.deviceName} (SN ${asset.serialNo})`).join(", ");
-    throw new ServiceError(`Unit sudah diajukan atau sedang dipinjam di peminjaman lain: ${units}. Hapus dari pilihan lalu coba lagi.`, "assetIds");
+    throw new ServiceError(
+      `Unit sudah diajukan, sedang dipinjam, atau masih ditindaklanjuti di peminjaman lain: ${units}. Hapus dari pilihan lalu coba lagi.`,
+      "assetIds",
+    );
   }
   const byId = new Map(assets.map((asset) => [asset.id, asset]));
   return assetIds.map((id) => byId.get(id)!);
@@ -75,11 +102,14 @@ const itemData = (unit: Unit) => ({
   rackPosition: unit.rackId ? unit.rackPosition : null,
 });
 
-async function assertSalesPerson(tx: Tx, employeeId: string) {
-  const employee = await tx.employee.findUnique({ where: { id: employeeId }, select: { status: true, division: true } });
-  if (employee?.status !== "ACTIVE" || employee.division !== LOAN_SALES_DIVISION) {
-    throw new ServiceError("Sales Person harus karyawan aktif divisi Sales", "salesPersonId");
-  }
+/** PIC dari AMI (2026-11-19, dulu Sales Person): karyawan aktif divisi Engineer / Sales. */
+const assertPic = (tx: Tx, employeeId: string) => assertInventoryPic(tx, employeeId);
+
+/** Pemilik unit untuk nomor form (2026-11-19): semua unit dalam satu form harus satu pemilik. */
+function loanOwner(units: Unit[]): string {
+  const owners = loanUnitOwners(units);
+  if (owners.length !== 1) throw new ServiceError(mixedOwnerMessage(owners), "assetIds");
+  return owners[0];
 }
 
 function assertStartDate(startDate: string, today: string) {
@@ -99,9 +129,9 @@ async function loanData(tx: Tx, input: DemoLoanInput) {
     ...(await resolveBorrower(tx, input.borrowerName)),
     purpose: input.purpose,
     purposeDetail: input.purpose === "OTHER" ? input.purposeDetail : null,
-    picName: input.picName,
-    picEmail: input.picEmail,
-    salesPersonId: input.salesPersonId,
+    contactName: input.contactName,
+    contactEmail: input.contactEmail,
+    picId: input.picId,
     startDate: fromIsoDate(input.startDate),
     dueDate: fromIsoDate(input.dueDate),
     remarks: input.remarks,
@@ -124,12 +154,13 @@ export async function submitDemoLoan(db: PrismaClient, actor: LoanActor, input: 
   return db.$transaction(async (tx) => {
     await assertCanView(tx, actor);
     assertStartDate(input.startDate, today);
-    await assertSalesPerson(tx, input.salesPersonId);
+    await assertPic(tx, input.picId);
     const units = await loadAvailableUnits(tx, input.assetIds);
-    // Bulan & tahun nomor = tanggal pengajuan (Jakarta).
-    const number = await nextTrialFormNumber(tx, fromIsoDate(today));
+    const unitOwner = loanOwner(units);
+    // Tahun nomor = tanggal pengajuan (Jakarta); segmen ketiga = pemilik unit.
+    const number = await nextTrialFormNumber(tx, unitOwner, fromIsoDate(today));
     const loan = await tx.demoLoan.create({
-      data: { ...(await loanData(tx, input)), number, requesterId: actor.id, submittedAt: new Date(), items: { create: units.map(itemData) } },
+      data: { ...(await loanData(tx, input)), number, unitOwner, requesterId: actor.id, submittedAt: new Date(), items: { create: units.map(itemData) } },
       include: { items: true },
     });
     await logAudit(tx, { actorId: actor.id, action: "CREATE", entity: "DemoLoan", entityId: loan.id, after: loan });
@@ -140,7 +171,8 @@ export async function submitDemoLoan(db: PrismaClient, actor: LoanActor, input: 
 
 /**
  * Ubah pengajuan yang belum disetujui (pemohon). Yang ditolak diajukan ulang: approval dimulai lagi dari level 1 dengan
- * nomor yang sama (alasan tolak lama tetap di audit). Yang masih menunggu boleh diubah selama belum ada level yang setuju.
+ * urutan nomor yang sama (alasan tolak lama tetap di audit). Yang masih menunggu boleh diubah selama belum ada level yang
+ * setuju. Pemilik unit berubah → segmen pemilik di nomor ikut berubah (urutan & tahun tetap).
  */
 export async function reviseDemoLoan(db: PrismaClient, actor: LoanActor, loanId: string, input: DemoLoanInput, today = toJakartaIsoDate()) {
   return db.$transaction(async (tx) => {
@@ -152,20 +184,27 @@ export async function reviseDemoLoan(db: PrismaClient, actor: LoanActor, loanId:
     }
     await assertCanView(tx, actor);
     assertStartDate(input.startDate, today);
-    await assertSalesPerson(tx, input.salesPersonId);
+    await assertPic(tx, input.picId);
     const units = await loadAvailableUnits(tx, input.assetIds, loanId);
+    const unitOwner = loanOwner(units);
+    const parsed = parseTrialFormNumber(before.number);
+    const number = parsed ? formatTrialFormNumber(parsed.sequence, unitOwner, parsed.year) : before.number;
     await tx.demoLoanItem.deleteMany({ where: { loanId } });
     const after = await tx.demoLoan.update({
       where: { id: loanId },
-      data: { ...(await loanData(tx, input)), status: "PENDING", submittedAt: new Date(), items: { create: units.map(itemData) } },
+      data: { ...(await loanData(tx, input)), number, unitOwner, status: "PENDING", submittedAt: new Date(), items: { create: units.map(itemData) } },
       include: { items: true },
     });
     await logAudit(tx, { actorId: actor.id, action: "UPDATE", entity: "DemoLoan", entityId: loanId, before, after });
     const resubmitted = before.status === "REJECTED";
+    if (!resubmitted && number !== before.number) {
+      // Approval yang masih berjalan menampilkan nomor terbaru (Approval Center, email keputusan).
+      await tx.approvalRequest.updateMany({ where: { module: "DEMO_LOAN", entityId: loanId }, data: { entityNumber: number } });
+    }
     const notifications = resubmitted
-      ? (await restartApproval(tx, { module: "DEMO_LOAN", entityId: loanId, entityNumber: before.number, requesterId: actor.id })).notifications
+      ? (await restartApproval(tx, { module: "DEMO_LOAN", entityId: loanId, entityNumber: number, requesterId: actor.id })).notifications
       : [];
-    return { loanId, resubmitted, notifications: notifications as ApprovalNotification[] };
+    return { loanId, number, resubmitted, notifications: notifications as ApprovalNotification[] };
   });
 }
 
@@ -193,17 +232,16 @@ export async function cancelDemoLoan(db: PrismaClient, actor: LoanActor, loanId:
   });
 }
 
-async function assertCanManage(tx: Tx, actor: LoanActor) {
-  if (!(await inventoryAccess(tx, actor)).canManage) throw new ServiceError("Hanya Operational & Admin yang bisa menyiapkan peminjaman");
-}
+/** Langkah Operational: hanya user yang ditunjuk di Setting → Inventaris & Rak — Admin tidak otomatis (2026-11-19). */
+const assertOperational = (tx: Tx, actor: LoanActor) => assertOperationalAccess(tx, actor);
 
 /**
- * Operational / Admin menyiapkan barang yang sudah disetujui: pilih pengantar (Item Sender). Yang memilih tercatat sebagai
+ * Operational menyiapkan barang yang sudah disetujui: pilih pengantar (Item Sender). Yang memilih tercatat sebagai
  * "Operational" di form cetak.
  */
 export async function setItemSender(db: PrismaClient, actor: LoanActor, loanId: string, input: ItemSenderInput) {
   return db.$transaction(async (tx) => {
-    await assertCanManage(tx, actor);
+    await assertOperational(tx, actor);
     const before = await lockLoan(tx, loanId);
     if (before.status !== "APPROVED") throw new ServiceError("Item Sender hanya bisa diatur untuk peminjaman yang sudah disetujui dan belum diantar");
     const sender = await tx.employee.findUnique({ where: { id: input.itemSenderId }, select: { status: true } });
@@ -222,12 +260,12 @@ export async function setItemSender(db: PrismaClient, actor: LoanActor, loanId: 
 }
 
 /**
- * Barang sudah diantar (Operational / Admin): status Dipinjam, tanggal antar & nama penerima. Item Sender wajib sudah
- * dipilih (namanya tercetak di form). Audit menyertakan unit supaya tercatat di Riwayat Unit ("Diantar ke peminjam").
+ * Barang sudah diantar (Operational): status Dipinjam, tanggal antar & nama penerima. Item Sender wajib sudah dipilih
+ * (namanya tercetak di form). Audit menyertakan unit supaya tercatat di Riwayat Unit ("Diantar ke peminjam").
  */
 export async function markDemoLoanDelivered(db: PrismaClient, actor: LoanActor, loanId: string, input: DeliverDemoLoanInput, today = toJakartaIsoDate()) {
   return db.$transaction(async (tx) => {
-    await assertCanManage(tx, actor);
+    await assertOperational(tx, actor);
     const before = await lockLoan(tx, loanId);
     if (before.status !== "APPROVED") throw new ServiceError("Hanya peminjaman yang sudah disetujui dan belum diantar yang bisa ditandai diantar");
     if (!before.itemSenderId) throw new ServiceError("Pilih Item Sender (pengantar barang) dulu");
@@ -244,18 +282,78 @@ export async function markDemoLoanDelivered(db: PrismaClient, actor: LoanActor, 
 }
 
 /**
- * Pengembalian (Tahap 16.5, kembali sepenuhnya; Operational / Admin): semua unit dicek (kondisi + catatan) dan ditaruh
- * kembali di rak (posisi bawaan = posisi semula, bisa diganti). Lokasi unit diperbarui (tercatat di Riwayat Unit bila
- * berubah), nomor Hardware Admission Form terbit, status Selesai → unit bisa dipinjam lagi.
+ * Jadwalkan pengambilan (2026-11-19, Operational): barang Dipinjam → Pengambilan. Nomor Hardware Admission Form terbit
+ * (`NNN/AMI-HAF/<pemilik unit>/<tahun>`) dan HAF dicetak untuk dibawa kurir AMI ke peminjam. Dipanggil lagi saat status
+ * Pengambilan = ubah jadwal / kurir (nomor HAF tetap). Perpanjangan yang masih menunggu ditutup. Audit menyertakan unit
+ * supaya tercatat di Riwayat Unit.
+ */
+export async function scheduleLoanPickup(db: PrismaClient, actor: LoanActor, loanId: string, input: LoanPickupInput, today = toJakartaIsoDate()) {
+  return db.$transaction(async (tx) => {
+    await assertOperational(tx, actor);
+    const before = await lockLoan(tx, loanId);
+    if (before.status !== "ON_LOAN" && before.status !== "PICKUP") {
+      throw new ServiceError("Pengambilan hanya bisa dijadwalkan untuk peminjaman yang barangnya sedang dipinjam");
+    }
+    if (before.deliveredAt && input.pickupDate < toJakartaIsoDate(before.deliveredAt)) {
+      throw new ServiceError("Tanggal pengambilan tidak boleh sebelum tanggal diantar", "pickupDate");
+    }
+    if (input.pickupDate > addDaysIso(today, MAX_PICKUP_AHEAD_DAYS)) {
+      throw new ServiceError(`Tanggal pengambilan paling lambat ${MAX_PICKUP_AHEAD_DAYS} hari dari hari ini`, "pickupDate");
+    }
+    const courier = await tx.employee.findUnique({ where: { id: input.courierId }, select: { status: true } });
+    if (courier?.status !== "ACTIVE") throw new ServiceError("Kurir harus karyawan aktif", "courierId");
+    if (before.status === "ON_LOAN") await closePendingExtensions(tx, loanId, actor.id);
+    // Nomor HAF yang sudah pernah terbit (pengambilan dibatalkan lalu dijadwalkan lagi) dipakai lagi.
+    const hafNumber = before.hafNumber ?? (await nextHafNumber(tx, before.unitOwner, fromIsoDate(today)));
+    const after = await tx.demoLoan.update({
+      where: { id: loanId },
+      data: { status: "PICKUP", pickupDate: fromIsoDate(input.pickupDate), courierId: input.courierId, hafPreparedById: actor.id, hafNumber },
+      include: { items: true },
+    });
+    await logAudit(tx, { actorId: actor.id, action: "UPDATE", entity: "DemoLoan", entityId: loanId, before, after });
+    return after;
+  });
+}
+
+/**
+ * Batalkan pengambilan (Operational), mis. peminjam belum siap: kembali Dipinjam, jatuh tempo & pengingat berlaku lagi.
+ * Nomor HAF tetap melekat (dipakai lagi saat dijadwalkan ulang), jadi tidak ada nomor yang terbuang.
+ */
+export async function cancelLoanPickup(db: PrismaClient, actor: LoanActor, loanId: string) {
+  return db.$transaction(async (tx) => {
+    await assertOperational(tx, actor);
+    const before = await lockLoan(tx, loanId);
+    if (before.status !== "PICKUP") throw new ServiceError("Hanya pengambilan yang belum dicek yang bisa dibatalkan");
+    const after = await tx.demoLoan.update({
+      where: { id: loanId },
+      data: { status: "ON_LOAN", pickupDate: null, courierId: null, hafPreparedById: null },
+      include: { items: true },
+    });
+    await logAudit(tx, { actorId: actor.id, action: "UPDATE", entity: "DemoLoan", entityId: loanId, before, after });
+    return after;
+  });
+}
+
+/**
+ * Pengecekan Unit (Tahap 16.5; sejak 2026-11-19 setelah barang diambil kurir & tiba di AMI, kembali sepenuhnya;
+ * Operational): semua unit dicek (kondisi + catatan) dan ditaruh kembali di rak (posisi bawaan = posisi semula, bisa
+ * diganti). Lokasi unit diperbarui (tercatat di Riwayat Unit bila berubah). Sejak 2026-11-20 status menjadi Menunggu
+ * verifikasi & approval engineer dimulai; kirim `notifications` (email approval) setelah commit. Nomor HAF sudah terbit
+ * saat pengambilan dijadwalkan.
  */
 export async function returnDemoLoan(db: PrismaClient, actor: LoanActor, loanId: string, input: ReturnDemoLoanInput, today = toJakartaIsoDate()) {
   return db.$transaction(async (tx) => {
-    await assertCanManage(tx, actor);
+    await assertOperational(tx, actor);
     const before = await lockLoan(tx, loanId);
-    if (before.status !== "ON_LOAN") throw new ServiceError("Hanya peminjaman yang sedang dipinjam yang bisa diterima kembali");
-    if (input.returnedAt > today) throw new ServiceError("Tanggal kembali tidak boleh di masa depan", "returnedAt");
-    if (before.deliveredAt && input.returnedAt < toJakartaIsoDate(before.deliveredAt)) {
-      throw new ServiceError("Tanggal kembali tidak boleh sebelum tanggal diantar", "returnedAt");
+    if (before.status !== "PICKUP") {
+      throw new ServiceError("Pengecekan Unit hanya untuk peminjaman yang pengambilannya sudah dijadwalkan (HAF sudah terbit)");
+    }
+    if (input.returnedAt > today) throw new ServiceError("Tanggal tiba tidak boleh di masa depan", "returnedAt");
+    if (before.pickupDate && input.returnedAt < toJakartaIsoDate(before.pickupDate)) {
+      throw new ServiceError(
+        `Tanggal tiba tidak boleh sebelum tanggal pengambilan di HAF (${toJakartaIsoDate(before.pickupDate)}). Ubah jadwal pengambilan dulu bila barang diambil lebih awal.`,
+        "returnedAt",
+      );
     }
     // Kembali sepenuhnya: setiap unit di peminjaman ini dicek tepat sekali.
     const checks = new Map(input.items.map((item) => [item.itemId, item]));
@@ -286,18 +384,54 @@ export async function returnDemoLoan(db: PrismaClient, actor: LoanActor, loanId:
       }
     }
 
-    // Perpanjangan yang masih menunggu approval tidak berlaku lagi (Tahap 16.4).
-    await closePendingExtensions(tx, loanId, actor.id);
+    // Hasil pengecekan diverifikasi engineer dulu (2026-11-20, approval DEMO_LOAN_RETURN, default Ko Yosep): disetujui →
+    // Selesai, atau Perlu Tindak Lanjut bila ada unit Rusak / Tidak lengkap (demo-loan-return-effects.ts); ditolak →
+    // kembali Pengambilan untuk dicek ulang. Pengecekan ulang setelah ditolak = approval dimulai lagi dari level 1.
     const after = await tx.demoLoan.update({
       where: { id: loanId },
       data: {
-        status: "RETURNED",
+        status: "RETURN_REVIEW",
         returnedAt: fromIsoDate(input.returnedAt),
         returnedByName: input.returnedByName,
         returnNote: input.note,
         receivedById: actor.id,
-        hafNumber: await nextHafNumber(tx, fromIsoDate(today)),
+        followUpRemindedAt: null,
       },
+      include: { items: true },
+    });
+    await logAudit(tx, { actorId: actor.id, action: "UPDATE", entity: "DemoLoan", entityId: loanId, before, after });
+    // Flow tanpa level / semua level terlewati → langsung disetujui (efek final berjalan di transaksi ini).
+    const approval = await restartApproval(tx, { module: "DEMO_LOAN_RETURN", entityId: loanId, entityNumber: before.number, requesterId: actor.id });
+    const loan = await tx.demoLoan.findUniqueOrThrow({ where: { id: loanId }, select: { id: true, status: true } });
+    return { loanId: loan.id, status: loan.status, notifications: approval.notifications as ApprovalNotification[] };
+  });
+}
+
+/**
+ * Selesaikan tindak lanjut (2026-11-20, Operational): setiap unit yang kembali Rusak / Tidak lengkap diisi hasilnya —
+ * sudah lengkap / diperbaiki (kondisi akhir Baik) atau tetap rusak / tidak lengkap (kondisi akhir sama, unit tetap
+ * ditandai di Daftar Unit) — dengan catatan penyelesaian. Status Selesai, unit bebas lagi. Audit memuat unit (Riwayat
+ * Unit: "Tindak lanjut selesai").
+ */
+export async function resolveLoanFollowUp(db: PrismaClient, actor: LoanActor, loanId: string, input: ResolveFollowUpInput) {
+  return db.$transaction(async (tx) => {
+    await assertOperational(tx, actor);
+    const before = await lockLoan(tx, loanId);
+    if (before.status !== "FOLLOW_UP") throw new ServiceError("Peminjaman ini tidak sedang menunggu tindak lanjut");
+    const problems = before.items.filter((item) => isProblemCondition(item.returnCondition) && !item.resolvedCondition);
+    const results = new Map(input.items.map((item) => [item.itemId, item.result]));
+    if (results.size !== input.items.length || results.size !== problems.length || problems.some((item) => !results.has(item.id))) {
+      throw new ServiceError("Isi hasil tindak lanjut untuk setiap unit yang rusak / tidak lengkap", "items");
+    }
+    for (const item of problems) {
+      await tx.demoLoanItem.update({
+        where: { id: item.id },
+        data: { resolvedCondition: results.get(item.id) === "RESOLVED" ? "GOOD" : item.returnCondition },
+      });
+    }
+    const after = await tx.demoLoan.update({
+      where: { id: loanId },
+      data: { status: "RETURNED", followUpNote: input.note, followUpResolvedAt: new Date(), followUpResolvedById: actor.id },
       include: { items: true },
     });
     await logAudit(tx, { actorId: actor.id, action: "UPDATE", entity: "DemoLoan", entityId: loanId, before, after });
@@ -309,19 +443,20 @@ export async function returnDemoLoan(db: PrismaClient, actor: LoanActor, loanId:
 // Nomor Product Trial Form & Hardware Admission Form (Setting → Inventaris & Rak, Admin)
 // ---------------------------------------------------------------------
 
-/** PTF = Product Trial Form (terbit saat diajukan); HAF = Hardware Admission Form (terbit saat barang kembali). */
+/** PTF = Product Trial Form (terbit saat diajukan); HAF = Hardware Admission Form (terbit saat pengambilan dijadwalkan). */
 export type FormKind = "PTF" | "HAF";
 
 const FORM_PREFIX: Record<FormKind, string> = { PTF: TRIAL_FORM_PREFIX, HAF: HAF_PREFIX };
 
 const counterWhere = (kind: FormKind, year: number) => ({ prefix_year_month: { prefix: FORM_PREFIX[kind], year, month: 0 } });
 
-/** Nomor terakhir yang terpakai tahun ini & pratinjau nomor berikutnya. */
+/** Nomor terakhir yang terpakai tahun ini & pratinjau nomor berikutnya (segmen pemilik = contoh, terisi saat terbit). */
 export async function getFormCounter(db: PrismaClient, kind: FormKind, at: Date = new Date()) {
-  const [year, month] = toJakartaIsoDate(at).split("-").map(Number);
+  const [year] = toJakartaIsoDate(at).split("-").map(Number);
   const row = await db.numberSequence.findUnique({ where: counterWhere(kind, year) });
   const lastValue = row?.lastValue ?? 0;
-  return { year, lastValue, nextNumber: kind === "PTF" ? formatTrialFormNumber(lastValue + 1, month, year) : formatHafNumber(lastValue + 1, year) };
+  const format = kind === "PTF" ? formatTrialFormNumber : formatHafNumber;
+  return { year, lastValue, nextNumber: format(lastValue + 1, OWNER_PLACEHOLDER, year) };
 }
 
 export const getTrialFormCounter = (db: PrismaClient, at: Date = new Date()) => getFormCounter(db, "PTF", at);
@@ -332,8 +467,12 @@ async function highestUsedSequence(tx: Tx, kind: FormKind, year: number): Promis
     const loans = await tx.demoLoan.findMany({ where: { number: { endsWith: `/${year}` } }, select: { number: true } });
     return Math.max(0, ...loans.map((loan) => parseTrialFormNumber(loan.number)?.sequence ?? 0));
   }
-  const loans = await tx.demoLoan.findMany({ where: { hafNumber: { endsWith: `/${year}` } }, select: { hafNumber: true } });
-  return Math.max(0, ...loans.map((loan) => (loan.hafNumber ? (parseHafNumber(loan.hafNumber)?.sequence ?? 0) : 0)));
+  // HAF dipakai pengambilan peminjaman & penerimaan barang principal / distributor (2026-11-20) — satu counter.
+  const [loans, receipts] = await Promise.all([
+    tx.demoLoan.findMany({ where: { hafNumber: { endsWith: `/${year}` } }, select: { hafNumber: true } }),
+    tx.goodsReceipt.findMany({ where: { hafNumber: { endsWith: `/${year}` } }, select: { hafNumber: true } }),
+  ]);
+  return Math.max(0, ...[...loans, ...receipts].map((row) => (row.hafNumber ? (parseHafNumber(row.hafNumber)?.sequence ?? 0) : 0)));
 }
 
 /**

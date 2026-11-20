@@ -206,19 +206,38 @@ Modul dinyalakan (`FEATURES.inventory = true`) untuk peminjaman unit demo ke per
 bertahap (docs/05-TAHAPAN.md Fase 16); Tahap 1 = data, akses, rak; Tahap 2 = pengajuan, approval Ko Yosep, antrian Operational, riwayat unit.
 - **Akses** (`services/inventory-access.ts`, dicek di server per halaman & aksi; `lib/auth/inventory.ts#requireInventory`):
   - lihat (stok, lokasi, riwayat): Admin, **Operational**, karyawan aktif divisi `ENGINEER` / `SALES` (kode persis);
-  - kelola (daftar/ubah/hapus unit, rak & posisi): Admin & Operational.
+  - kelola (daftar/ubah/hapus unit, rak & posisi): Admin & Operational;
+  - **langkah Operational di peminjaman** (Item Sender, Sudah Diantar, jadwalkan / ubah / batalkan pengambilan, Pengecekan
+    Unit, perpanjangan atas nama pemohon, antrian & pengingat): **hanya** user yang ditunjuk Operational
+    (`InventoryAccess.isOperational`, `requireInventory("operate")`) — Admin tidak otomatis (keputusan user 2026-11-19).
+    Admin yang juga ditunjuk Operational boleh karena Operational-nya.
 - **Serah terima ke karyawan tidak dipakai** (2026-11-17): unit dipinjamkan ke perusahaan lain, bukan dipegang karyawan.
   Tombol, aksi, kolom Pemegang & riwayatnya dihapus dari Inventaris; data lama `AssetAssignment` dibiarkan (masih tampil
   sebagai riwayat di Asset Kantor) dan unit yang punya riwayat itu tetap tidak bisa dihapus.
 - **Operational** = user aktif (role apa pun) yang dipilih Admin di Setting → Inventaris & Rak (`AppSetting
   inventory.operationalUserIds`, tercatat di audit). Mereka menyiapkan peminjaman yang sudah disetujui (Item Sender, cetak form),
-  mengecek barang yang kembali, dan menerima peringatan jatuh tempo.
+  menjadwalkan pengambilan (HAF), mengisi Pengecekan Unit, dan menerima peringatan jatuh tempo. **Belum ada Operational
+  aktif** → tidak ada yang bisa memproses; Admin hanya diberi peringatan (email "Belum ada Operational" saat disetujui,
+  lonceng `loannoops` selama ada peminjaman `APPROVED` / `ON_LOAN` / `PICKUP`), pengingat jatuh tempo hanya ke pemohon.
 - **Rak** (`StorageRack`): nama unik (tanpa beda huruf besar/kecil), kolom 1–26 (huruf A–Z) × baris 1–50. Posisi = huruf
   kolom + nomor baris (`A1`); satu posisi boleh banyak unit. Rak tidak bisa dihapus selama berisi unit dan tidak bisa
   diperkecil bila ada unit di posisi yang hilang. Hapus = soft delete; nama yang dihapus dipulihkan bila ditambah lagi.
-- **Kepemilikan unit** (2026-11-17): `Asset.ownership` = `AMI` (bawaan) / `PRINCIPAL` / `DISTRIBUTOR`, `ownerName` wajib
-  bila bukan AMI (dikosongkan bila diganti ke AMI). Unit titipan bisa disimpan di rak & dipinjamkan seperti unit AMI;
-  dipisahkan lewat filter & label (`lib/inventory.ts#ownershipText`).
+- **Kepemilikan unit** (2026-11-17): `Asset.ownership` = `AMI` (bawaan) / `PRINCIPAL` / `DISTRIBUTOR` + `ownerName`.
+  Unit titipan bisa disimpan di rak & dipinjamkan seperti unit AMI; dipisahkan lewat filter & label
+  (`lib/inventory.ts#ownershipText`). Sejak 2026-11-20 kepemilikan **tidak** ada di form Tambah / Ubah Unit
+  (`assetSchema` tanpa ownership; `createAsset` selalu AMI, `updateAsset` tidak mengubahnya). Support & warranty juga
+  dihapus dari form (keputusan user 2026-11-20); kolomnya tetap di database dan nilai lama tidak diubah.
+- **Penerimaan Barang** (2026-11-20, `GoodsReceipt`, `services/goods-receipt.ts#receiveGoods`, halaman
+  `/inventory/penerimaan`): barang yang dipinjam AMI dari principal / distributor wajib dicatat di sini — **hanya
+  Operational**; satu kedatangan = **satu HAF**, banyak unit. Isian: principal / distributor + nama, kontak (wajib),
+  tanggal terima (≤ hari ini), PIC (Engineer / Sales aktif, `assertInventoryPic`), penerima (karyawan aktif), pengirim
+  (opsional), keperluan, unit (part number, S/N unik — dobel di form & dengan unit terdaftar ditolak per baris
+  `units.<i>.serialNo` —, kategori, rak & posisi, catatan). Simpan → nomor HAF `NNN/AMI-HAF/<nama pemilik>/<tahun>` dari
+  counter HAF yang sama dengan pengambilan peminjaman (`highestUsedSequence` memeriksa keduanya), unit dibuat dengan
+  kepemilikan itu + `Asset.receiptId`, audit `Asset` CREATE (Riwayat Unit "Diterima dari Principal Cisco · HAF …") &
+  `GoodsReceipt` CREATE. Cetak `/cetak/penerimaan/[id]` (lembar HAF bersama `components/print/haf-sheet.tsx`, asli +
+  COPY): From = pemilik, up = kontak, Date = tanggal terima, Prepared By = Operational pencatat, Returned By = pengirim,
+  Received By = penerima. Unit titipan lama tanpa penerimaan dibiarkan.
 - **Lokasi unit:** `Asset.rackId` + `rackPosition` opsional tapi berpasangan, posisi harus di dalam rak (dicek service).
   Nama perangkat tampil sebagai "Part number / deskripsi" (sesuai kolom Product Trial Form). Posisi rak tetap melekat
   selama unit dipinjam = tempat kembalinya.
@@ -231,29 +250,65 @@ bertahap (docs/05-TAHAPAN.md Fase 16); Tahap 1 = data, akses, rak; Tahap 2 = pen
     disetujui final → `APPROVED` + `approvedAt`; ditolak → `REJECTED`; persetujuan dibatalkan → kembali `PENDING`
     (ditolak bila barang sudah diantar).
   - Status `PENDING` (menunggu approval) → `APPROVED` (disiapkan = antrian Operational) / `REJECTED` / `CANCELLED`;
-    `ON_LOAN` (diantar) & `RETURNED` (kembali) untuk tahap berikutnya. Pemohon boleh mengubah selama `REJECTED`, atau
+    `ON_LOAN` (diantar) → `PICKUP` (pengambilan, HAF terbit; 2026-11-19) → `RETURNED` (sudah dicek) atau `FOLLOW_UP`
+    (ada unit rusak / tidak lengkap, 2026-11-20) → `RETURNED`. Pemohon boleh mengubah selama `REJECTED`, atau
     `PENDING` yang belum disetujui level mana pun; revisi pengajuan yang ditolak = `restartApproval` (nomor sama, dari
     level 1). Batal (pemohon, `PENDING` / `REJECTED`): approval yang menunggu ditutup seperti sertifikat yang dihapus
     (level → `REJECTED` "Dibatalkan pemohon"; tidak muncul sebagai "ditolak" di lonceng).
-  - Operational / Admin memilih **Item Sender** (karyawan aktif) setelah `APPROVED`; yang memilih tercatat di
+  - Operational memilih **Item Sender** (karyawan aktif) setelah `APPROVED`; yang memilih tercatat di
     `operationalId` (nama di kolom "Operational" form cetak).
-  - **Pengembalian** (Tahap 16.5, `returnDemoLoan`; Operational / Admin, hanya `ON_LOAN`, **kembali sepenuhnya**): setiap
-    `DemoLoanItem` dicek tepat sekali — `returnCondition` (`ReturnCondition`: `GOOD` / `DAMAGED` / `INCOMPLETE`),
-    `returnNote` (wajib bila bukan `GOOD`), `returnRackId` + `returnRackPosition` (berpasangan, dicek
-    `assertRackPosition`; error rak/posisi dikirim ke kolom `items.<i>.<field>`). `returnedAt` ≥ `deliveredAt` & ≤ hari
-    ini, `returnedByName` opsional, `returnNote` umum, `receivedById` = pelaku. Baris `Asset` dikunci `FOR UPDATE`; bila
-    lokasi berubah, `Asset` diperbarui + audit `Asset` UPDATE (Riwayat Unit: perubahan Lokasi). Status `RETURNED`, audit
-    `DemoLoan` memuat `items` beserta kondisinya. Kondisi terakhir per unit (`demo-loan-queries.ts#lastReturnConditions`)
-    menandai unit di Daftar Unit, detail unit & pemilih unit; unit tetap bisa dipinjam.
-  - **Hardware Admission Form** (HAF): nomor `NNN/AMI-HAF/<segmen tengah>/<tahun>` terbit saat pengembalian dicatat;
-    segmen tengah sementara kosong (`HAF_MIDDLE_SEGMENT = ""`, keputusan user 2026-11-18), counter `NumberSequence`
-    prefix `HAF`, `month = 0`, bisa diatur Admin seperti PTF (`getFormCounter` / `setFormCounter`, `FormKind`). Cetak di
-    `/cetak/peminjaman/[id]/haf` (hanya `RETURNED`): From / up, Date / Sales Person / Prepared By, unit per part number +
-    S/N dengan kondisi (bahasa Inggris), Remarks (rujukan nomor PTF, kegunaan, catatan), Returned By / Received By.
-  - **Cetak** (Tahap 16.3): `/cetak/peminjaman/[id]` (layout `(print)`), sejak `APPROVED`, semua user Inventaris. Satu
-    lembar A4 lewat `<style>@page</style>` di halaman itu saja (bukan `@page` bernama — elemen kosong sebelum form
+  - **Pengambilan** (2026-11-19, `scheduleLoanPickup`; Operational, `ON_LOAN` atau `PICKUP` = ubah jadwal): tanggal
+    pengambilan (≥ `deliveredAt`, ≤ hari ini + `MAX_PICKUP_AHEAD_DAYS` 90) & kurir (karyawan aktif) → `PICKUP`,
+    `pickupDate`, `courierId`, `hafPreparedById` = pelaku, nomor HAF terbit (dipakai lagi bila sudah pernah terbit).
+    Perpanjangan `PENDING` ditutup (`closePendingExtensions`, catatan "Barang dijadwalkan diambil kembali"). Pengingat
+    jatuh tempo & perpanjangan hanya untuk `ON_LOAN`, jadi berhenti. `cancelLoanPickup` (Operational, `PICKUP`) →
+    kembali `ON_LOAN`, jadwal & kurir dikosongkan, `hafNumber` tetap melekat. Audit memuat `items` (Riwayat Unit:
+    "Dijadwalkan diambil kembali" / "Jadwal pengambilan diubah" / "Pengambilan dibatalkan").
+  - **Pengecekan Unit** (Tahap 16.5, revisi 2026-11-19, `returnDemoLoan`; Operational, hanya `PICKUP`, **kembali
+    sepenuhnya**): setiap `DemoLoanItem` dicek tepat sekali — `returnCondition` (`ReturnCondition`: `GOOD` / `DAMAGED` /
+    `INCOMPLETE`), `returnNote` (wajib bila bukan `GOOD`), `returnRackId` + `returnRackPosition` (berpasangan, dicek
+    `assertRackPosition`; error rak/posisi dikirim ke kolom `items.<i>.<field>`). `returnedAt` (tanggal tiba) ≥
+    `pickupDate` & ≤ hari ini, `returnedByName` opsional (yang menyerahkan, sesuai HAF), `returnNote` umum,
+    `receivedById` = pelaku. Baris `Asset` dikunci `FOR UPDATE`; bila lokasi berubah, `Asset` diperbarui + audit `Asset`
+    UPDATE (Riwayat Unit: perubahan Lokasi). Semua `GOOD` → `RETURNED`; ada `DAMAGED` / `INCOMPLETE` → **`FOLLOW_UP`**
+    (lihat Tindak lanjut) — sejak 2026-11-20 setelah diverifikasi engineer (lihat Verifikasi Pengecekan Unit). Audit `DemoLoan` memuat `items` beserta kondisinya. Kondisi terakhir per unit
+    (`demo-loan-queries.ts#lastReturnConditions`, memakai `finalCondition` = hasil tindak lanjut bila ada) menandai unit di
+    Daftar Unit, detail unit & pemilih unit.
+  - **Verifikasi Pengecekan Unit** (2026-11-20, keputusan user): setelah Operational menyimpan Pengecekan Unit, status
+    **`RETURN_REVIEW`** (Menunggu verifikasi; semua unit tertahan) dan approval engine modul **`DEMO_LOAN_RETURN`**
+    ("Verifikasi Pengembalian Unit", Approval Flow sendiri — bawaan & migrasi `…_demo_loan_return_flow` menyalin flow
+    DEMO_LOAN = Ko Yosep) dimulai (`restartApproval`, jadi cek ulang = approval baru dari level 1). Engineer mencocokkan
+    fisik unit dengan hasil cek (ringkasan per unit di Approval Center, email, detail). Efek (`demo-loan-return-effects.ts`):
+    disetujui final → `RETURNED`, atau `FOLLOW_UP` bila ada unit bermasalah (email tindak lanjut dikirim setelah
+    disetujui lewat `enqueueApprovalNotifications`); ditolak (alasan wajib) → kembali `PICKUP`, Operational membuka
+    Pengecekan Unit lagi (alasan tampil, isian sebelumnya jadi isian awal). Tanpa REVERT_EFFECTS (tidak bisa dibatalkan
+    setelah final). `RejectEffect` kini menerima `options.actorId` untuk audit. Riwayat Unit: "Pengecekan diverifikasi" /
+    "Verifikasi pengecekan ditolak".
+  - **Tindak lanjut** (2026-11-20, keputusan user): status `FOLLOW_UP` = sudah dicek tapi ada unit Rusak / Tidak lengkap,
+    belum Selesai. Unit `GOOD` langsung bebas; unit bermasalah yang belum diselesaikan **tertahan**
+    (`services/demo-loan-hold.ts#heldLoanItemWhere`, dipakai pengajuan, pilihan form, Daftar Unit & detail unit).
+    Pemberitahuan ke **PIC** (akun aktif milik karyawan `picId`) & **Operational** aktif — bukan pemohon: email
+    `loan-follow-up` (`mail/demo-loan-emails.ts#buildLoanFollowUpEmails`: unit + kondisi + catatan per unit, catatan
+    pengembalian, Reply-To silang PIC ↔ Operational) dikirim action setelah commit, lalu diulang tiap 7 hari oleh job
+    `reminder.demo-loan` (`demo-loan-reminder.ts#loanFollowUpReminders`, klaim atomik `updateManyAndReturn` pada
+    `followUpRemindedAt`); lonceng `loanfollowup:<loanId>:<minggu>` (danger) sampai selesai, muncul lagi tiap minggu
+    bila dihapus. Hanya **Operational** yang menutup (`resolveLoanFollowUp`): hasil tiap unit bermasalah `RESOLVED`
+    (→ `resolvedCondition = GOOD`) / `UNRESOLVED` (→ sama dengan `returnCondition`, unit tetap ditandai) + catatan wajib
+    5–500 → `RETURNED`, `followUpNote` / `followUpResolvedAt` / `followUpResolvedById`; audit `items` (Riwayat Unit
+    "Tindak lanjut selesai", hanya untuk unit bermasalah). Migrasi `…_demo_loan_follow_up_data` memindahkan peminjaman
+    `RETURNED` lama yang punya unit bermasalah ke `FOLLOW_UP` (email pertamanya dikirim job harian).
+  - **Hardware Admission Form** (HAF): nomor `NNN/AMI-HAF/<pemilik unit>/<tahun>` terbit saat **pengambilan
+    dijadwalkan** (bukan lagi saat barang kembali), counter `NumberSequence` prefix `HAF`, `month = 0`, bisa diatur Admin
+    seperti PTF (`getFormCounter` / `setFormCounter`, `FormKind`; pratinjau memakai segmen contoh `pemilik`). Cetak di
+    `/cetak/peminjaman/[id]/haf` (`PICKUP` / `RETURNED`) — dibawa kurir AMI, jadi berisi data sebelum dicek: From / up,
+    Date (tanggal pengambilan) / PIC / Prepared By (`hafPreparedBy`), unit per part number + S/N (tanpa kondisi), Remarks
+    (rujukan nomor PTF, kegunaan), Returned By (peminjam, diisi tangan) / Received By (kurir).
+  - **Cetak** (Tahap 16.3; asli + copy 2026-11-19): `/cetak/peminjaman/[id]` (layout `(print)`), sejak `APPROVED`, semua
+    user Inventaris. Sekali cetak = **2 lembar A4**: asli, lalu copy bertanda **COPY** di atas judul
+    (`components/print/form-copy.tsx`); berlaku juga untuk HAF. Lembar pertama `print:break-after-page`, tinggi tetap
+    268 mm. Ukuran A4 lewat `<style>@page</style>` di halaman itu saja (bukan `@page` bernama — elemen kosong sebelum form
     membuat Chrome menyisipkan lembar kosong). Identitas kantor di `lib/company.ts`, logo `src/assets/brand/`.
-  - **Sudah Diantar** (Operational / Admin, `APPROVED` + Item Sender sudah dipilih): `ON_LOAN`, `deliveredAt`
+  - **Sudah Diantar** (Operational, `APPROVED` + Item Sender sudah dipilih): `ON_LOAN`, `deliveredAt`
     (≤ hari ini, ≥ tanggal pengajuan), `receivedByName` opsional; audit memuat `items` (Riwayat Unit). Setelah itu efek
     revert approval ditolak & Item Sender terkunci. Jatuh tempo hanya berubah lewat perpanjangan (16.4).
   - **Peringatan jatuh tempo** (Tahap 16.4, `services/demo-loan-reminder.ts`, job `reminder.demo-loan`): untuk `ON_LOAN`,
@@ -261,20 +316,20 @@ bertahap (docs/05-TAHAPAN.md Fase 16); Tahap 1 = data, akses, rak; Tahap 2 = pen
     (H-1 / hari H), 1, 8, 15, … (terlambat, tiap `OVERDUE_REPEAT_DAYS` = 7). Hanya tahap terbaru → worker mati tidak
     menumpuk email. Klaim lewat `DemoLoanReminder` (unik `loanId + dueDate + stage`, `createManyAndReturn` +
     `skipDuplicates`) — hanya baris baru yang dibuatkan email (`loan-due-soon` / `loan-overdue`,
-    `mail/demo-loan-emails.ts#buildLoanDueEmails`) ke pemohon aktif + Operational (fallback Admin), dengan Reply-To
-    silang (pemohon ↔ Operational). PIC peminjam tidak pernah dikirimi. `Terlambat` dihitung (`LoanRow.overdue`,
-    `daysLeft`), tidak disimpan.
+    `mail/demo-loan-emails.ts#buildLoanDueEmails`) ke pemohon aktif + Operational aktif (tanpa cadangan Admin sejak
+    2026-11-19), dengan Reply-To silang (pemohon ↔ Operational). Kontak peminjam tidak pernah dikirimi. `Terlambat`
+    dihitung (`LoanRow.overdue`, `daysLeft`), tidak disimpan.
   - **Perpanjangan** (Tahap 16.4, `services/demo-loan-extension.ts`): `DemoLoanExtension` (previous/new due date,
-    alasan, status `PENDING/APPROVED/REJECTED/CANCELLED`). Diajukan pemohon / Operational / Admin saat `ON_LOAN`; baris
+    alasan, status `PENDING/APPROVED/REJECTED/CANCELLED`). Diajukan pemohon / Operational saat `ON_LOAN`; baris
     `DemoLoan` dikunci `FOR UPDATE`, maks. satu `PENDING`; tanggal baru > jatuh tempo, ≥ hari ini, ≤ `maxLoanEnd`
     (`extensionDueError`). Approval engine modul `DEMO_LOAN_EXTENSION` dengan `flowModule = DEMO_LOAN`
     (`approval-modules.ts#FLOW_MODULE_OF`; tidak bisa dipilih di Setting → Approval Flow, ditolak validator). Efek
     (`demo-loan-extension-effects.ts`, terpisah supaya tidak ada impor melingkar): final → kunci `DemoLoan`, cek masih
     `ON_LOAN` & jatuh tempo = `previousDueDate`, set `dueDate` + audit `DemoLoan` dengan `items` (Riwayat Unit "Jatuh tempo
-    diperpanjang"); revert → kembali bila belum berubah lagi; reject → `REJECTED`. Batal oleh pengaju / barang kembali
-    (`closePendingExtensions` di `returnDemoLoan`) → `CANCELLED`, approval ditutup seperti pembatalan peminjaman. Final →
+    diperpanjang"); revert → kembali bila belum berubah lagi; reject → `REJECTED`. Batal oleh pengaju / pengambilan
+    dijadwalkan (`closePendingExtensions` di `scheduleLoanPickup`) → `CANCELLED`, approval ditutup seperti pembatalan peminjaman. Final →
     email `loan-extended` ke Operational. Link `/inventory/peminjaman/perpanjangan/[id]` → detail peminjaman.
-  - Unit di peminjaman `PENDING` / `APPROVED` / `ON_LOAN` tidak bisa diajukan lagi; baris `Asset` dikunci `FOR UPDATE`
+  - Unit di peminjaman `PENDING` / `APPROVED` / `ON_LOAN` / `PICKUP`, serta unit bermasalah di `FOLLOW_UP`, tidak bisa diajukan lagi; baris `Asset` dikunci `FOR UPDATE`
     (urut id) saat mengajukan, merevisi, dan menghapus unit. Unit yang pernah diajukan tidak bisa dihapus.
   - `DemoLoanItem` menyalin nama, SN, rak & posisi saat diajukan (form cetak & riwayat tidak berubah walau data unit
     diubah belakangan).
@@ -286,14 +341,21 @@ bertahap (docs/05-TAHAPAN.md Fase 16); Tahap 1 = data, akses, rak; Tahap 2 = pen
     "1 bulan", 17 Nov – 31 Des = "1 bulan 15 hari", 17 Nov 2026 – 21 Jan 2028 = "1 tahun 2 bulan 5 hari". Tanggal mulai:
     hari ini s/d 1 tahun ke depan; tanggal selesai ≥ tanggal mulai, maks. 2 tahun (`maxLoanEnd`). Form cetak:
     "1 Year 2 Months 5 Days (21 January 2028)".
-  - Sales Person = karyawan aktif divisi `SALES`. Email PIC hanya kontak — sistem tidak mengirim email ke peminjam
-    (termasuk pengingat jatuh tempo).
-  - Nomor form `NNN/AMI-PTF/<bulan Romawi>/<tahun>` terbit saat diajukan; counter `NumberSequence` prefix `PTF`,
-    `month = 0` (urut per tahun). Admin mengatur nomor terakhir tahun berjalan (Setting → Inventaris & Rak), minimal
-    nomor tertinggi yang sudah dipakai.
+  - **PIC** (2026-11-19, dulu Sales Person; kolom `picId` → `Employee`) = karyawan aktif divisi `ENGINEER` / `SALES`
+    (`INVENTORY_DIVISIONS`); pemohon Engineer / Sales terpilih otomatis. Tercetak sebagai "PIC" di kotak atas & tanda
+    tangan PTF serta kotak HAF. Kontak di perusahaan peminjam = `contactName` / `contactEmail` ("Kontak Peminjam (up:)",
+    dulu "PIC") — hanya kontak, sistem tidak mengirim email ke peminjam (termasuk pengingat jatuh tempo). Migrasi
+    `20261119090000_demo_loan_pic_pickup` hanya mengganti nama kolom (data lama tetap).
+  - Nomor form `NNN/AMI-PTF/<pemilik unit>/<tahun>` (2026-11-19, dulu bulan Romawi) terbit saat diajukan; segmen pemilik
+    = "AMI" atau nama principal / distributor (`DemoLoan.unitOwner`, `lib/demo-loan.ts#unitOwnerSegment`; "/" diganti
+    "-"). **Satu form = satu pemilik** (`loanUnitOwners`, beda huruf besar/kecil dianggap sama; campur ditolak dengan
+    pesan & ditandai di form). Revisi yang mengganti pemilik mengganti segmennya (urutan & tahun tetap, `entityNumber`
+    approval ikut). Nomor lama tidak diubah; `parseTrialFormNumber` / `parseHafNumber` menerima segmen tengah apa pun.
+    Counter `NumberSequence` prefix `PTF`, `month = 0` (urut per tahun). Admin mengatur nomor terakhir tahun berjalan
+    (Setting → Inventaris & Rak), minimal nomor tertinggi yang sudah dipakai.
 - **Riwayat Unit** (`services/asset-history.ts`, halaman detail unit): disusun dari AuditLog — `Asset` CREATE/UPDATE/DELETE
   (pelaku, waktu, kolom sebelum → sesudah; lokasi memakai nama rak), `DemoLoan` yang memuat unit di `before`/`after.items`
-  (diajukan, diajukan ulang, ditambahkan/dikeluarkan saat revisi, dibatalkan, diantar, kembali), dan keputusan
+  (diajukan, diajukan ulang, ditambahkan/dikeluarkan saat revisi, dibatalkan, diantar, pengambilan, kembali), dan keputusan
   `ApprovalRequest` APPROVE/REJECT peminjaman itu (dicocokkan lewat nomor form; hanya selama unit masih ada di pengajuan).
   Tahap berikutnya wajib mencatat audit `DemoLoan` dengan `items` supaya ikut riwayat.
 ## 7. Notifikasi & Job (pg-boss, `worker/`)

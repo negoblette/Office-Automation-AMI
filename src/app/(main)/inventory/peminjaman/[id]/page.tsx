@@ -1,4 +1,4 @@
-import { CircleAlert, CircleCheck, Clock, Info as InfoIcon } from "lucide-react";
+import { CircleAlert, CircleCheck, Clock, Info as InfoIcon, Truck } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -10,11 +10,14 @@ import { requireInventory } from "@/lib/auth/inventory";
 import { prisma } from "@/lib/db";
 import { StatusBadge } from "@/components/shared/status-badge";
 import {
+  AMI_OWNER,
   DUE_SOON_DAYS,
   dueLabel,
   EXTENSION_STATUS_LABEL,
   EXTENSION_STATUS_VARIANT,
+  finalCondition,
   isEditableLoanStatus,
+  isProblemCondition,
   LOAN_PURPOSE_LABEL,
   loanPurposeDescription,
   loanPurposeText,
@@ -29,13 +32,16 @@ import { cn } from "@/lib/utils";
 import {
   CancelExtensionButton,
   CancelLoanButton,
+  CancelPickupButton,
+  CheckUnitsLink,
   DeliverDialog,
   EditLoanLink,
   ExtendLoanDialog,
   ItemSenderDialog,
+  PickupDialog,
   PrintFormLink,
   PrintHafLink,
-  ReturnLoanLink,
+  ResolveFollowUpDialog,
 } from "../loan-actions";
 import { LoanStatus } from "../loan-table";
 
@@ -45,8 +51,9 @@ const date = (iso: string) => formatDate(`${iso}T00:00:00Z`, "short");
 
 /**
  * Detail peminjaman (Fase 16.2). Semua user Inventaris boleh melihat. Aksi sesuai peran: approver (Ko Yosep) menyetujui /
- * menolak di sini atau di Approval Center; Operational memilih Item Sender setelah disetujui; pemohon mengubah /
- * membatalkan selama belum disetujui.
+ * menolak di sini atau di Approval Center; pemohon mengubah / membatalkan selama belum disetujui; langkah Operational
+ * (Item Sender, Sudah Diantar, jadwalkan pengambilan / HAF, Pengecekan Unit) HANYA untuk user yang ditunjuk Operational —
+ * Admin tidak otomatis (2026-11-19). Pengecekan juga dicek ulang di server.
  */
 export default async function DemoLoanDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { user, access } = await requireInventory("view");
@@ -54,22 +61,34 @@ export default async function DemoLoanDetailPage({ params }: { params: Promise<{
   const loan = await getDemoLoanDetail(prisma, id);
   if (!loan) notFound();
 
+  const isOperational = access.isOperational;
   const isRequester = loan.requesterId === user.id;
   const canEdit = isRequester && isEditableLoanStatus(loan.status) && !loan.approval.partlyApproved;
   const canCancel = isRequester && isEditableLoanStatus(loan.status);
-  const canPrepare = access.canManage && loan.status === "APPROVED";
+  const canPrepare = isOperational && loan.status === "APPROVED";
   // Form bisa dicetak sejak disetujui (dan dicetak ulang setelah diantar).
-  const canPrint = loan.status === "APPROVED" || loan.status === "ON_LOAN" || loan.status === "RETURNED";
-  // Barang kembali (Tahap 16.5): Operational mencatat pengembalian; HAF terbit setelahnya dan bisa dicetak siapa pun.
-  const canReturn = access.canManage && loan.status === "ON_LOAN";
-  const canPrintHaf = loan.status === "RETURNED" && Boolean(loan.hafNumber);
-  const returned = loan.status === "RETURNED";
-  // Perpanjangan (Tahap 16.4): pemohon / Operational / Admin selama dipinjam, satu yang menunggu sekaligus, maks. 2 tahun.
+  const canPrint = ["APPROVED", "ON_LOAN", "PICKUP", "RETURN_REVIEW", "FOLLOW_UP", "RETURNED"].includes(loan.status);
+  // Pengambilan (2026-11-19): Operational menjadwalkan → HAF terbit (siapa pun bisa mencetak), lalu Pengecekan Unit.
+  const canSchedulePickup = isOperational && loan.status === "ON_LOAN";
+  const pickingUp = loan.status === "PICKUP";
+  const canManagePickup = isOperational && pickingUp;
+  // Sudah dicek: menunggu verifikasi engineer, lalu Selesai atau Perlu Tindak Lanjut (2026-11-20).
+  const reviewing = loan.status === "RETURN_REVIEW";
+  const followUp = loan.status === "FOLLOW_UP";
+  const returned = loan.status === "RETURNED" || followUp || reviewing;
+  const canPrintHaf = (pickingUp || returned) && Boolean(loan.hafNumber);
+  const followUpUnits = loan.items
+    .filter((item) => isProblemCondition(item.returnCondition) && !item.resolvedCondition)
+    .map((item) => ({ itemId: item.id, deviceName: item.deviceName, serialNo: item.serialNo, condition: item.returnCondition!, note: item.returnNote }));
+  const canResolve = isOperational && followUp && followUpUnits.length > 0;
+  // Perpanjangan (Tahap 16.4): pemohon / Operational selama dipinjam, satu yang menunggu sekaligus, maks. 2 tahun.
   const pendingExtension = loan.extensions.find((extension) => extension.status === "PENDING") ?? null;
-  const canExtend = loan.status === "ON_LOAN" && !pendingExtension && (isRequester || access.canManage) && maxLoanEnd(loan.startDate) > loan.dueDate;
-  const [approval, senders, extensionApprovals] = await Promise.all([
+  const canExtend = loan.status === "ON_LOAN" && !pendingExtension && (isRequester || isOperational) && maxLoanEnd(loan.startDate) > loan.dueDate;
+  const [approval, returnApprovalRow, senders, extensionApprovals] = await Promise.all([
     user.role !== "STAFF" ? getApprovalForEntity(prisma, "DEMO_LOAN", loan.id, user) : null,
-    canPrepare ? getItemSenderOptions(prisma) : [],
+    // Verifikasi hasil Pengecekan Unit (2026-11-20): Setujui / Tolak untuk approver-nya (Ko Yosep).
+    user.role !== "STAFF" && loan.returnApproval.steps.length ? getApprovalForEntity(prisma, "DEMO_LOAN_RETURN", loan.id, user) : null,
+    canPrepare || canSchedulePickup || canManagePickup ? getItemSenderOptions(prisma) : [],
     // Keputusan perpanjangan (Setujui / Tolak / Batalkan persetujuan) untuk approver & Admin.
     user.role !== "STAFF"
       ? Promise.all(loan.extensions.map((extension) => getApprovalForEntity(prisma, "DEMO_LOAN_EXTENSION", extension.id, user)))
@@ -79,6 +98,7 @@ export default async function DemoLoanDetailPage({ params }: { params: Promise<{
     loan.extensions.map((extension, index) => [extension.id, extensionApprovals[index] ?? null] as const).filter(([, row]) => row && (row.canApprove || row.canRevoke)),
   );
   const showApprovalActions = Boolean(approval && (approval.canApprove || approval.canRevoke));
+  const showReturnActions = Boolean(returnApprovalRow && (returnApprovalRow.canApprove || returnApprovalRow.canRevoke));
 
   return (
     <div className="flex flex-col gap-6">
@@ -101,15 +121,22 @@ export default async function DemoLoanDetailPage({ params }: { params: Promise<{
           </span>
         }
         actions={
-          (showApprovalActions || canPrepare || canPrint || canEdit || canCancel || canExtend) && (
+          (showApprovalActions || showReturnActions || canPrepare || canPrint || canPrintHaf || canSchedulePickup || canManagePickup || canResolve || canEdit || canCancel || canExtend) && (
             <>
               {showApprovalActions && approval && <RowActions row={approval} />}
+              {showReturnActions && returnApprovalRow && <RowActions row={returnApprovalRow} />}
+              {canResolve && <ResolveFollowUpDialog loanId={loan.id} units={followUpUnits} />}
               {canPrepare && <ItemSenderDialog loanId={loan.id} senders={senders} current={loan.itemSenderId} />}
               {canPrint && <PrintFormLink loanId={loan.id} primary={canPrepare && Boolean(loan.itemSenderId)} />}
-              {canPrintHaf && <PrintHafLink loanId={loan.id} primary />}
-              {canReturn && <ReturnLoanLink loanId={loan.id} />}
+              {canPrintHaf && <PrintHafLink loanId={loan.id} primary={pickingUp && !canManagePickup} />}
+              {canManagePickup && <CheckUnitsLink loanId={loan.id} />}
+              {canSchedulePickup && <PickupDialog loanId={loan.id} couriers={senders} deliveredAt={loan.deliveredAt} current={null} />}
+              {canManagePickup && loan.pickupDate && (
+                <PickupDialog loanId={loan.id} couriers={senders} deliveredAt={loan.deliveredAt} current={{ pickupDate: loan.pickupDate, courierId: loan.courierId }} />
+              )}
               {canExtend && <ExtendLoanDialog loanId={loan.id} startDate={loan.startDate} dueDate={loan.dueDate} />}
               {canPrepare && loan.itemSenderId && <DeliverDialog loanId={loan.id} submittedAt={loan.submittedAt} />}
+              {canManagePickup && <CancelPickupButton loanId={loan.id} />}
               {canCancel && <CancelLoanButton loanId={loan.id} borrowerName={loan.borrowerName} />}
               {canEdit && <EditLoanLink loanId={loan.id} rejected={loan.status === "REJECTED"} />}
             </>
@@ -120,7 +147,9 @@ export default async function DemoLoanDetailPage({ params }: { params: Promise<{
       <StatusNote
         loan={loan}
         isRequester={isRequester}
-        canManage={access.canManage}
+        isOperational={isOperational}
+        isPic={Boolean(user.employeeId) && user.employeeId === loan.picId}
+        canVerify={Boolean(returnApprovalRow?.canApprove)}
         canApprove={Boolean(approval?.canApprove)}
         canExtend={canExtend}
         pendingExtension={pendingExtension}
@@ -130,16 +159,17 @@ export default async function DemoLoanDetailPage({ params }: { params: Promise<{
         <Info label="Kegunaan" value={LOAN_PURPOSE_LABEL[loan.purpose]} sub={loanPurposeDescription(loan.purpose, loan.purposeDetail)} />
         <Info label="Lend To" value={loan.borrowerName} sub={loan.customerId ? "Data Customer" : "Perusahaan baru (diketik pemohon)"} />
         <Info
-          label="PIC (up:)"
-          value={loan.picName}
+          label="Kontak peminjam (up:)"
+          value={loan.contactName}
           sub={
-            <a href={`mailto:${loan.picEmail}`} className="underline-offset-4 hover:underline">
-              {loan.picEmail}
+            <a href={`mailto:${loan.contactEmail}`} className="underline-offset-4 hover:underline">
+              {loan.contactEmail}
             </a>
           }
         />
         <Info label="Trial periode" value={`${date(loan.startDate)} – ${date(loan.dueDate)}`} sub={`${loan.durationLabel} · jatuh tempo ${date(loan.dueDate)}`} />
-        <Info label="Sales Person" value={loan.salesPersonName} />
+        <Info label="PIC" value={loan.picName} sub="Penanggung jawab dari AMI" />
+        <Info label="Pemilik unit" value={loan.unitOwner === AMI_OWNER ? "Milik AMI" : loan.unitOwner} sub="Tertulis di nomor form" />
         <Info label="Prepared By (pemohon)" value={loan.requesterName} sub={`Diajukan ${formatDateTime(loan.submittedAt)}`} />
         <Info
           label="Item Sender"
@@ -150,22 +180,45 @@ export default async function DemoLoanDetailPage({ params }: { params: Promise<{
         {loan.deliveredAt && (
           <Info label="Diantar" value={date(loan.deliveredAt)} sub={loan.receivedByName ? `Diterima ${loan.receivedByName}` : "Nama penerima tidak dicatat"} />
         )}
-        {loan.returnedAt && (
+        {loan.pickupDate && (
           <Info
-            label="Dikembalikan"
-            value={date(loan.returnedAt)}
-            sub={[loan.returnedByName && `Oleh ${loan.returnedByName}`, loan.returnReceiverName && `diterima ${loan.returnReceiverName}`].filter(Boolean).join(", ") || undefined}
+            label="Pengambilan"
+            value={date(loan.pickupDate)}
+            sub={[loan.courierName && `Kurir ${loan.courierName}`, loan.hafPreparerName && `HAF diterbitkan ${loan.hafPreparerName}`].filter(Boolean).join(" · ") || undefined}
           />
         )}
         {loan.hafNumber && <Info label="No. HAF" value={<span className="font-mono">{loan.hafNumber}</span>} sub="Hardware Admission Form" />}
+        {loan.returnedAt && (
+          <Info
+            label="Tiba & dicek"
+            value={date(loan.returnedAt)}
+            sub={[loan.returnedByName && `Diserahkan ${loan.returnedByName}`, loan.returnReceiverName && `dicek ${loan.returnReceiverName}`].filter(Boolean).join(", ") || undefined}
+          />
+        )}
         {loan.remarks && <Info label="Keperluan (Remarks)" value={loan.remarks} className="sm:col-span-2" />}
         {loan.returnNote && <Info label="Catatan pengembalian" value={loan.returnNote} className="sm:col-span-2" />}
+        {loan.followUpNote && (
+          <Info
+            label="Tindak lanjut"
+            value={loan.followUpNote}
+            sub={[loan.followUpResolverName && `Diselesaikan ${loan.followUpResolverName}`, loan.followUpResolvedAt && formatDateTime(loan.followUpResolvedAt)].filter(Boolean).join(", ") || undefined}
+            className="sm:col-span-2"
+          />
+        )}
       </section>
 
       {loan.approval.steps.length > 0 && (
         <section className="rounded-2xl bg-card p-5 shadow-card">
           <h2 className="mb-4 text-base font-semibold">Riwayat Approval</h2>
           <ApprovalStepper steps={loan.approval.steps} requestStatus={loan.approval.status ?? "PENDING"} />
+        </section>
+      )}
+
+      {/* Verifikasi hasil Pengecekan Unit oleh engineer (2026-11-20). */}
+      {loan.returnApproval.steps.length > 0 && (
+        <section className="rounded-2xl bg-card p-5 shadow-card">
+          <h2 className="mb-4 text-base font-semibold">Verifikasi Pengecekan Unit</h2>
+          <ApprovalStepper steps={loan.returnApproval.steps} requestStatus={loan.returnApproval.status ?? "PENDING"} />
         </section>
       )}
 
@@ -250,6 +303,15 @@ export default async function DemoLoanDetailPage({ params }: { params: Promise<{
                         <>
                           <StatusBadge variant={RETURN_CONDITION_VARIANT[item.returnCondition]}>{RETURN_CONDITION_LABEL[item.returnCondition]}</StatusBadge>
                           {item.returnNote && <span className="mt-1 block text-xs wrap-anywhere text-muted-foreground">{item.returnNote}</span>}
+                          {/* Hasil tindak lanjut (2026-11-20) / masih ditindaklanjuti. */}
+                          {item.resolvedCondition && (
+                            <span className="mt-1 block text-xs font-semibold">
+                              Setelah tindak lanjut: {item.resolvedCondition === "GOOD" ? "lengkap / sudah diperbaiki" : `tetap ${RETURN_CONDITION_LABEL[item.resolvedCondition].toLowerCase()}`}
+                            </span>
+                          )}
+                          {followUp && isProblemCondition(item.returnCondition) && !item.resolvedCondition && (
+                            <span className="mt-1 block text-xs font-semibold text-red-deep">Ditindaklanjuti · unit tertahan</span>
+                          )}
                         </>
                       ) : (
                         <span className="text-muted-foreground">—</span>
@@ -297,14 +359,19 @@ function Info({
 function StatusNote({
   loan,
   isRequester,
-  canManage,
+  isOperational,
+  isPic,
+  canVerify,
   canApprove,
   canExtend,
   pendingExtension,
 }: {
   loan: LoanDetail;
   isRequester: boolean;
-  canManage: boolean;
+  isOperational: boolean;
+  isPic: boolean;
+  /** Approver verifikasi Pengecekan Unit (2026-11-20). */
+  canVerify: boolean;
   canApprove: boolean;
   canExtend: boolean;
   pendingExtension: LoanExtensionView | null;
@@ -355,7 +422,7 @@ function StatusNote({
             Disetujui{approvedBy ? ` oleh ${approvedBy}` : ""}
             {loan.approvedAt && `, ${formatDateTime(loan.approvedAt)}`}.
           </span>{" "}
-          {canManage
+          {isOperational
             ? loan.itemSenderName
               ? `Item Sender: ${loan.itemSenderName}. Cetak form untuk ditandatangani, antar barang, lalu tekan Sudah Diantar.`
               : "Siapkan barang dari posisi rak yang tertera, lalu pilih Item Sender (pengantar barang) dan cetak form."
@@ -389,25 +456,112 @@ function StatusNote({
               {canExtend ? ". Bila unit masih dipakai, ajukan perpanjangan." : "."}
             </span>
           )}
-          {canManage && <span className="block pt-1">Saat barang kembali, tekan Terima Pengembalian untuk mengecek setiap unit dan menaruhnya kembali di rak.</span>}
+          {isOperational && (
+            <span className="block pt-1">
+              Saat barang akan diambil, tekan Jadwalkan Pengambilan — Hardware Admission Form terbit untuk dibawa kurir.
+            </span>
+          )}
+        </>
+      );
+      break;
+    }
+    case "PICKUP": {
+      // Pengambilan (2026-11-19): HAF dibawa kurir; Operational wajib mengisi Pengecekan Unit setelah barang tiba.
+      // Verifikasi engineer ditolak (2026-11-20) → kembali ke sini untuk dicek ulang.
+      const rejected = loan.returnApproval.status === "REJECTED" ? loan.returnApproval.rejection : null;
+      tone = rejected ? "danger" : "info";
+      icon = rejected ? CircleAlert : Truck;
+      body = rejected ? (
+        <>
+          <span className="font-semibold">
+            Verifikasi pengecekan ditolak {rejected.by}, {formatDateTime(rejected.at)}:
+          </span>{" "}
+          {rejected.reason}
+          <span className="block pt-1">
+            {isOperational
+              ? "Cek ulang unit sesuai catatan, lalu buka Pengecekan Unit dan simpan lagi — verifikasi dimulai ulang."
+              : "Operational mengecek ulang unit, lalu hasilnya diverifikasi lagi."}
+          </span>
+        </>
+      ) : (
+        <>
+          <span className="font-semibold">
+            Pengambilan dijadwalkan {loan.pickupDate ? date(loan.pickupDate) : ""}
+            {loan.courierName && ` oleh kurir ${loan.courierName}`}.
+          </span>{" "}
+          {isOperational
+            ? `Cetak HAF ${loan.hafNumber ?? ""} (asli + copy) untuk dibawa kurir. Setelah barang tiba di AMI, wajib isi Pengecekan Unit: cek setiap unit dan taruh kembali di rak.`
+            : `HAF ${loan.hafNumber ?? ""} dibawa kurir. Setelah barang tiba di AMI, Operational mengecek setiap unit.`}
+        </>
+      );
+      break;
+    }
+    case "RETURN_REVIEW": {
+      // Verifikasi engineer (2026-11-20): hasil Pengecekan Unit menunggu approval (Ko Yosep).
+      const verifier = loan.returnApproval.steps.find((step) => step.status === "PENDING")?.approvers.join(" / ");
+      const problems = loan.items.filter((item) => isProblemCondition(item.returnCondition)).length;
+      tone = "info";
+      icon = Clock;
+      body = (
+        <>
+          <span className="font-semibold">
+            Menunggu verifikasi{verifier ? ` ${verifier}` : " engineer"} — barang tiba {loan.returnedAt ? date(loan.returnedAt) : "—"}
+            {loan.returnReceiverName && `, dicek ${loan.returnReceiverName}`}.
+          </span>{" "}
+          {problems ? `${problems} unit dicatat rusak / tidak lengkap. ` : "Semua unit dicatat Baik. "}
+          {canVerify
+            ? "Cek ulang fisik setiap unit di tabel bawah; Setujui bila sesuai, atau Tolak dengan alasan supaya Operational mengecek ulang."
+            : "Unit tertahan sampai hasil pengecekan disetujui; setelah itu peminjaman Selesai atau Perlu Tindak Lanjut."}
+        </>
+      );
+      break;
+    }
+    case "FOLLOW_UP": {
+      // Tindak lanjut (2026-11-20): unit Rusak / Tidak lengkap belum diselesaikan — belum Selesai.
+      const problems = loan.items.filter((item) => isProblemCondition(item.returnCondition) && !item.resolvedCondition);
+      tone = "danger";
+      icon = CircleAlert;
+      body = (
+        <>
+          <span className="font-semibold">
+            Perlu tindak lanjut — {problems.length} unit kembali rusak / tidak lengkap (tiba {loan.returnedAt ? date(loan.returnedAt) : "—"}
+            {loan.returnReceiverName && `, dicek ${loan.returnReceiverName}`}).
+          </span>
+          <span className="mt-1 block">
+            {problems.map((item) => (
+              <span key={item.id} className="block">
+                {item.deviceName} (SN {item.serialNo}) — {item.returnCondition ? RETURN_CONDITION_LABEL[item.returnCondition] : ""}
+                {item.returnNote && `: ${item.returnNote}`}
+              </span>
+            ))}
+          </span>
+          <span className="block pt-1">
+            {isOperational
+              ? "Tindak lanjuti bersama PIC; setelah beres, tekan Selesaikan Tindak Lanjut. Unit di atas tertahan sampai itu, unit lain sudah bisa dipinjam."
+              : isPic
+                ? "Anda PIC peminjaman ini — bantu tindak lanjuti dengan peminjam. Operational menutup tindak lanjut setelah beres."
+                : "PIC & Operational sedang menindaklanjuti; unit di atas tertahan sampai selesai."}
+          </span>
         </>
       );
       break;
     }
     case "RETURNED": {
-      const flagged = loan.items.filter((item) => item.returnCondition && item.returnCondition !== "GOOD").length;
-      tone = flagged ? "danger" : "success";
+      // Kondisi akhir (setelah tindak lanjut bila ada): yang tetap rusak / tidak lengkap tetap disebut.
+      const flagged = loan.items.filter((item) => isProblemCondition(finalCondition(item))).length;
+      tone = flagged ? "warning" : "success";
       icon = flagged ? CircleAlert : CircleCheck;
       body = (
         <>
           <span className="font-semibold">
-            Selesai — barang kembali {loan.returnedAt ? date(loan.returnedAt) : ""}
+            Selesai — barang tiba di AMI {loan.returnedAt ? date(loan.returnedAt) : ""}
             {loan.returnReceiverName && `, dicek ${loan.returnReceiverName}`}.
           </span>{" "}
           {flagged
-            ? `${flagged} unit kembali dengan catatan (rusak / tidak lengkap) — lihat kolom Kondisi kembali.`
-            : "Semua unit kembali dalam kondisi baik dan sudah ditaruh di rak."}
-          {loan.hafNumber && ` Hardware Admission Form ${loan.hafNumber} siap dicetak.`}
+            ? `${flagged} unit tetap rusak / tidak lengkap setelah tindak lanjut — lihat kolom Kondisi kembali.`
+            : loan.followUpNote
+              ? "Tindak lanjut selesai; semua unit sudah lengkap / diperbaiki dan bisa dipinjam lagi."
+              : "Semua unit kembali dalam kondisi baik dan sudah ditaruh di rak."}
         </>
       );
       break;

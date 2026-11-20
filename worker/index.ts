@@ -1,7 +1,8 @@
 // Worker pg-boss (`npm run worker`) — Tech Spec §7. Proses terpisah dari aplikasi web.
 // Job: `email.send` (on-demand), `leave.rollover` (harian 00:30 WIB),
 // `reminder.certificate`, `reminder.document` & `reminder.asset` (harian 07:00 WIB, H-30), `reminder.demo-loan` (harian
-// 07:00 WIB, jatuh tempo peminjaman unit — Tahap 16.4), `attendance.deduct` (harian 01:00 WIB),
+// 07:00 WIB, jatuh tempo peminjaman unit — Tahap 16.4 — & tindak lanjut unit rusak / tidak lengkap — 2026-11-20),
+// `attendance.deduct` (harian 01:00 WIB),
 // `storage.orphan-purge` (harian 03:00 WIB, hardening Tahap 7), `attendance.auto-clock-out` (tiap 5 menit, 2026-10-30),
 // `holiday.sync` (harian 06:00 WIB + tombol Admin, libur nasional dari kalender publik Google — 2026-11-18).
 import "dotenv/config";
@@ -9,7 +10,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PgBoss } from "pg-boss";
 import { PrismaClient } from "@/generated/prisma/client";
 import { EMAIL_QUEUE, EMAIL_QUEUE_OPTIONS, type EmailJobData, enqueueEmails, type OutgoingEmail } from "@/lib/mail/queue";
-import { loanDueReminders } from "@/lib/services/demo-loan-reminder";
+import { loanDueReminders, loanFollowUpReminders } from "@/lib/services/demo-loan-reminder";
 import { safeSubject } from "@/lib/mail/headers";
 import { createSmtpTransport, processEmailJob } from "@/lib/mail/send-email";
 import { rolloverLeaveBalances } from "@/lib/services/leave-balance";
@@ -28,7 +29,13 @@ const REMINDER_JOBS: Record<string, (db: PrismaClient) => Promise<OutgoingEmail[
   "reminder.certificate": certificateReminders,
   "reminder.document": documentReminders,
   // Tahap 16.4: jatuh tempo peminjaman unit (H-7, H-1, terlambat tiap 7 hari) → pemohon & Operational.
-  ...(FEATURES.inventory ? { "reminder.asset": assetReminders, "reminder.demo-loan": (db: PrismaClient) => loanDueReminders(db) } : {}),
+  // 2026-11-20: tindak lanjut unit rusak / tidak lengkap (tiap 7 hari selama belum selesai) → PIC & Operational.
+  ...(FEATURES.inventory
+    ? {
+        "reminder.asset": assetReminders,
+        "reminder.demo-loan": async (db: PrismaClient) => [...(await loanDueReminders(db)), ...(await loanFollowUpReminders(db))],
+      }
+    : {}),
 };
 
 async function main() {
