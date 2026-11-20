@@ -371,12 +371,14 @@ bertahap (docs/05-TAHAPAN.md Fase 16); Tahap 1 = data, akses, rak; Tahap 2 = pen
 
 **Sinkronisasi libur nasional** (2026-11-18; `lib/holidays/google-calendar.ts` + `services/holiday-sync.ts`;
 menggantikan API apipedia yang baru punya data tahun berjalan):
-- **Sumber:** dua feed `.ics` publik Google "Hari Libur di Indonesia" (tanpa token): `en.indonesian` → jenis (DESCRIPTION
-  "Public holiday" / "Observance"; cuti bersama = nama memuat "Joint Holiday"), `id.indonesian` → nama ("(belum pasti)" =
-  tentatif). Unduh: alamat tetap HTTPS, pengalihan manual hanya ke `*.google.com` (maks. 3), timeout 15 detik, wajib
+- **Sumber:** dua feed `.ics` publik Google "Hari Libur di Indonesia" (tanpa token): `en.indonesian` → tanggal & jenis libur
+  (DESCRIPTION "Public holiday" / "Observance"; cuti bersama = nama memuat "Joint Holiday"), `id.indonesian` → nama
+  ("(belum pasti)" = tentatif), dicocokkan per tanggal. Penanda feed Indonesia tidak menentukan libur: sejak 2026-11-18
+  Google menandai semua acaranya "Perayaan" (perbaikan 2026-11-20). Tanggal yang berisi libur & perayaan sekaligus →
+  nama perayaan yang dikenal (nama Indonesia di tanggal yang di feed Inggris hanya perayaan) dibuang. Unduh: alamat tetap HTTPS, pengalihan manual hanya ke `*.google.com` (maks. 3), timeout 15 detik, wajib
   `text/calendar`, dibaca bertahap maks. 1 juta karakter. Parser: unfold baris, hanya DTSTART/DTEND (VALUE=DATE)/SUMMARY/
   DESCRIPTION, tanggal nyata, acara maks. 14 hari & 2.000 acara, nama ≤ 150 tanpa karakter kontrol; penanda tak dikenal
-  atau tanggal libur kedua feed berbeda → seluruh feed ditolak (`HolidaySourceError`, pesan aman untuk Admin).
+  atau jumlah acara di tanggal libur kedua feed berbeda → seluruh feed ditolak (`HolidaySourceError`, pesan aman untuk Admin).
 - **Model:** `Holiday.source` (MANUAL diisi Admin / SYNC), `Holiday.removedBySync`; `HolidayPendingChange` (unik
   kind+date); `HolidayChange` (riwayat per `runId`, `affectedLeaveIds`). `addHolidays` (Admin) selalu menulis MANUAL.
 - **Aturan:** jangkauan besok s/d 31 Des tahun depan; tahun tanpa baris SYNC → ADD langsung (impor awal); selebihnya

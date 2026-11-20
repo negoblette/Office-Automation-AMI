@@ -343,11 +343,44 @@ export async function getApprovalForEntity(db: PrismaClient, module: ApprovalMod
   return request ? getApprovalDetail(db, request.id, viewer) : null;
 }
 
+export type ApprovalTimeline = { currentLevel: number | null; steps: ApprovalStepView[]; corrections: CorrectionView[] };
+
+/**
+ * Riwayat approval satu entitas (langkah + koreksi approver) untuk halaman detail modul. TANPA cek hak akses — halaman
+ * pemanggil yang mengecek (pemilik / Admin / approver yang ditugaskan). Belum ada approval → kosong.
+ */
+export async function getApprovalTimeline(db: PrismaClient, module: ApprovalModule, entityId: string): Promise<ApprovalTimeline> {
+  const request = await db.approvalRequest.findUnique({
+    where: { module_entityId: { module, entityId } },
+    include: { steps: { orderBy: { level: "asc" } } },
+  });
+  if (!request) return { currentLevel: null, steps: [], corrections: [] };
+  const userIds = request.steps.flatMap((step) => [...step.approverIds, ...(step.actedById ? [step.actedById] : [])]);
+  const users = await db.user.findMany({
+    where: { id: { in: userIds } },
+    select: { id: true, email: true, role: true, employee: { select: { fullName: true } } },
+  });
+  const nameOf = new Map(users.map((user) => [user.id, user.employee?.fullName ?? user.email]));
+  const roleOf = new Map(users.map((user) => [user.id, user.role]));
+  const steps = request.steps.map<ApprovalStepView>((step) => ({
+    level: step.level,
+    approvers: step.approverIds.map((id) => nameOf.get(id) ?? "—"),
+    approverLabel: approverRoleLabel(step.approverIds.map((id) => roleOf.get(id))),
+    status: step.status,
+    actedBy: step.actedById ? (nameOf.get(step.actedById) ?? null) : null,
+    actedAt: step.actedAt?.toISOString() ?? null,
+    note: step.status === "REJECTED" ? step.note : null,
+  }));
+  const corrections = (await listCorrections(db, [request.id])).get(request.id) ?? [];
+  return { currentLevel: request.currentLevel, steps, corrections };
+}
+
 /** Antrian milik user yang login: pengajuan dengan step PENDING yang mencantumkan dia (super admin: semua). */
 export async function listMyApprovalQueue(db: PrismaClient, userId: string): Promise<ApprovalRow[]> {
   const requests = await db.approvalRequest.findMany({
     where: await pendingQueueWhere(db, userId),
-    orderBy: { createdAt: "asc" },
+    // Terbaru di atas (2026-11-20, permintaan user: semua daftar pengajuan urut paling baru).
+    orderBy: { createdAt: "desc" },
     include,
   });
   return toRows(db, requests, userId);

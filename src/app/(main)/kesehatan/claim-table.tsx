@@ -1,7 +1,10 @@
 "use client";
 
+import { ChevronRight } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { requestStatusBadge } from "@/components/shared/approval-status";
+import { buttonVariants } from "@/components/ui/button";
 import { PersonCell } from "@/components/shared/person-cell";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { DataTable, type DataTableColumn, dataTableColumnHelper } from "@/components/table/data-table";
@@ -14,13 +17,14 @@ import { HealthClaimDialog } from "./claim-form";
 const col = dataTableColumnHelper<HealthClaimRow>();
 const monthLabel = (yearMonth: string) => formatDate(`${yearMonth}-01T00:00:00Z`, "short").replace(/^1 /, "");
 
+// Klik nomor → halaman detail klaim (2026-11-20, seperti reimburse).
 const numberColumn = col.accessor("number", {
   header: "Nomor & Tanggal",
   cell: ({ row }) => (
-    <div>
+    <Link href={`/kesehatan/${row.original.id}`} className="block hover:underline">
       <p className="font-semibold whitespace-nowrap">{row.original.number}</p>
       <p className="text-xs whitespace-nowrap text-muted-foreground">{formatDate(`${row.original.claimDate}T00:00:00Z`, "short")}</p>
-    </div>
+    </Link>
   ),
 });
 const requesterColumn = col.accessor("employeeName", {
@@ -133,6 +137,9 @@ export function HealthClaimTable({ rows, showRequester, revise }: { rows: Health
                   }}
                 />
               )}
+              <Link href={`/kesehatan/${row.original.id}`} className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label="Buka detail">
+                <ChevronRight />
+              </Link>
             </div>
           ),
         }),

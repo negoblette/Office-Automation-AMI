@@ -76,9 +76,10 @@ describe("overtime engineer (2026-10-30)", () => {
     await session("2026-10-20T21:00", "2026-10-20T23:30");
 
     const rows = await listOvertimes(testDb, actors.andi.employeeId, "2026-10");
+    // Paling baru di atas (2026-11-20).
     expect(rows.map((r) => [r.date, r.clockIn, r.clockOut, r.minutes, r.status, r.projectName])).toEqual([
-      ["2026-10-20", "18:00", "20:00", 120, "PENDING", "PRJ-01 - Core Network"],
       ["2026-10-20", "21:00", "23:30", 150, "PENDING", "PRJ-01 - Core Network"],
+      ["2026-10-20", "18:00", "20:00", 120, "PENDING", "PRJ-01 - Core Network"],
     ]);
     const [queued] = await listMyApprovalQueue(testDb, u.yosep);
     expect(queued).toMatchObject({ module: "OVERTIME", entityNumber: "OVT/2026/10/0001", canApprove: true });

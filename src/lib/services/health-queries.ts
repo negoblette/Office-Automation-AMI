@@ -5,6 +5,7 @@ import { fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { remainingPlafond } from "@/lib/health";
 import { EXPORTABLE_STATUSES, exportOwnerFilter } from "@/lib/export-ids";
 import { rejectionsOf } from "./approval";
+import { getApprovalTimeline } from "./approval-queries";
 
 const yearRange = (year: number) => ({ gte: fromIsoDate(`${year}-01-01`), lte: fromIsoDate(`${year}-12-31`) });
 
@@ -120,6 +121,50 @@ export async function listHealthClaims(db: PrismaClient, viewer: { role: Role; e
     own: claim.employeeId === viewer.employeeId,
     rejection: rejections.get(claim.id) ?? null,
   }));
+}
+
+/** Detail satu klaim (halaman /kesehatan/[id], 2026-11-20) — tanpa cek hak akses; halaman yang mengecek. */
+export async function getHealthClaimDetail(db: PrismaClient, claimId: string) {
+  const claim = await db.healthClaim.findUnique({
+    where: { id: claimId },
+    include: {
+      employee: { select: { fullName: true, position: true, division: true } },
+      category: { select: { name: true } },
+      items: claimItems,
+      payouts: { orderBy: { periodMonth: "asc" } },
+    },
+  });
+  if (!claim) return null;
+  const { currentLevel, steps, corrections } = await getApprovalTimeline(db, "HEALTH", claim.id);
+  return {
+    id: claim.id,
+    number: claim.number,
+    status: claim.status,
+    currentLevel,
+    employeeId: claim.employeeId,
+    employeeName: claim.employee.fullName,
+    employeePosition: claim.employee.position,
+    division: claim.employee.division,
+    categoryName: categoryLabel(claim),
+    claimDate: toJakartaIsoDate(claim.claimDate),
+    amount: Number(claim.amount),
+    approvedAmount: claim.approvedAmount === null ? null : Number(claim.approvedAmount),
+    note: claim.note,
+    createdAt: claim.createdAt.toISOString(),
+    submittedAt: claim.submittedAt?.toISOString() ?? null,
+    approvedAt: claim.approvedAt?.toISOString() ?? null,
+    items: claim.items.map((item) => ({
+      id: item.id,
+      categoryId: item.categoryId,
+      categoryName: item.category.name,
+      date: toJakartaIsoDate(item.date),
+      amount: Number(item.amount),
+      note: item.note,
+    })),
+    payouts: claim.payouts.map((p) => ({ month: toJakartaIsoDate(p.periodMonth).slice(0, 7), amount: Number(p.amount), paid: p.paidAt !== null })),
+    steps,
+    corrections,
+  };
 }
 
 export type PayoutRow = {

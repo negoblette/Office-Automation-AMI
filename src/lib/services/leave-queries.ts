@@ -102,7 +102,8 @@ export async function listLeaveRequests(db: PrismaClient, viewer: { role: Role; 
     : {};
   const requests = await db.leaveRequest.findMany({
     where: { ...(viewer.role === "ADMIN" ? {} : { employeeId: viewer.employeeId ?? "__none__" }), ...month },
-    orderBy: { startDate: "desc" },
+    // Pengajuan terbaru di atas (2026-11-20, permintaan user), bukan tanggal cutinya.
+    orderBy: [{ createdAt: "desc" }, { number: "desc" }],
     include: { employee: { select: { fullName: true, position: true } } },
   });
   const approvals = await db.approvalRequest.findMany({

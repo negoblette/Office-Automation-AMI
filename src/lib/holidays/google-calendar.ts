@@ -4,7 +4,8 @@
 // Dua feed .ics dibaca (format diverifikasi 2026-11-18: 2021–2027, ±28 acara/tahun):
 //  - bahasa Inggris → JENIS: penanda DESCRIPTION "Public holiday" / "Observance"; cuti bersama selalu bernama "… Joint
 //    Holiday …" (feed bahasa Indonesia tidak konsisten, mis. 18 Mei 2027 cuti bersama hanya bernama "Idul Adha");
-//  - bahasa Indonesia → NAMA yang ditampilkan ("… (belum pasti)" = tanggal belum final).
+//  - bahasa Indonesia → NAMA yang ditampilkan ("… (belum pasti)" = tanggal belum final). Penandanya TIDAK dipakai untuk
+//    menentukan libur: sejak 2026-11-18 Google menandai semua acaranya "Perayaan" (sebelumnya "Hari libur nasional").
 // Isi feed = data luar yang tidak dipercaya: alamat tetap (HTTPS), pengalihan hanya ke *.google.com, batas waktu & ukuran,
 // format & penanda wajib dikenali, tanggal & nama divalidasi. Ada yang aneh → seluruh feed ditolak (tidak ada yang
 // berubah, Admin melihat pesannya), bukan diambil sebagian.
@@ -90,36 +91,59 @@ export function parseIcsEvents(text: string): FeedEvent[] {
   return events;
 }
 
-function holidaysByDate(events: FeedEvent[], lang: Lang): Map<string, FeedEvent[]> {
+/** Semua acara per tanggal. Penanda wajib dikenali: kalau Google mengganti katanya, lebih baik berhenti (terlihat Admin). */
+function eventsByDate(events: FeedEvent[], lang: Lang): Map<string, FeedEvent[]> {
   const { holiday, observance } = MARKERS[lang];
-  // Penanda wajib dikenali: kalau Google mengganti katanya, lebih baik berhenti (terlihat Admin) daripada salah ambil.
   if (events.some((event) => event.marker !== holiday && event.marker !== observance)) {
     throw new HolidaySourceError("Format penanda kalender Google berubah — sinkronisasi dihentikan, perlu diperiksa");
   }
   const byDate = new Map<string, FeedEvent[]>();
-  for (const event of events) {
-    if (event.marker !== holiday) continue;
-    byDate.set(event.date, [...(byDate.get(event.date) ?? []), event]);
-  }
+  for (const event of events) byDate.set(event.date, [...(byDate.get(event.date) ?? []), event]);
   return byDate;
 }
 
-/** Gabungkan feed Indonesia (nama) & Inggris (jenis). Tanggal libur keduanya wajib sama. */
+const isEnHoliday = (event: FeedEvent) => event.marker === MARKERS.en.holiday;
+
+/**
+ * Acara feed Indonesia yang merupakan libur di satu tanggal (untuk nama). Sejak 2026-11-18 feed Indonesia menandai SEMUA
+ * acara "Perayaan" (termasuk Natal), jadi penandanya tidak bisa diandalkan — jenis selalu dari feed Inggris. Tanggal yang
+ * berisi libur & perayaan sekaligus (jarang, mis. 1 Ramadan + cuti bersama Nyepi 2023): pakai penanda Indonesia bila masih
+ * membedakan, selain itu buang nama yang dikenal sebagai perayaan; tetap tidak bisa dipisah → semua nama hari itu.
+ */
+function idHolidayEvents(idEvents: FeedEvent[], enEvents: FeedEvent[], idObservanceNames: Set<string>): FeedEvent[] {
+  const holidays = enEvents.filter(isEnHoliday).length;
+  if (holidays === enEvents.length) return idEvents;
+  const marked = idEvents.filter((event) => event.marker === MARKERS.id.holiday);
+  if (marked.length === holidays) return marked;
+  const unknown = idEvents.filter((event) => !idObservanceNames.has(event.summary));
+  return unknown.length === holidays ? unknown : idEvents;
+}
+
+/**
+ * Gabungkan feed Inggris (tanggal & jenis libur) dengan feed Indonesia (nama). Kedua feed wajib memuat acara yang sama:
+ * di setiap tanggal libur, jumlah acaranya harus sama — selain itu seluruh feed ditolak.
+ */
 export function combineHolidayFeeds(idEvents: FeedEvent[], enEvents: FeedEvent[]): ExternalHoliday[] {
-  const id = holidaysByDate(idEvents, "id");
-  const en = holidaysByDate(enEvents, "en");
-  if (id.size !== en.size || [...en.keys()].some((date) => !id.has(date))) {
+  const id = eventsByDate(idEvents, "id");
+  const en = eventsByDate(enEvents, "en");
+  const holidayDates = [...en.keys()].filter((date) => en.get(date)!.some(isEnHoliday)).sort();
+  if (holidayDates.some((date) => id.get(date)?.length !== en.get(date)!.length)) {
     throw new HolidaySourceError("Kalender Google bahasa Indonesia & Inggris sedang tidak sama — dicoba lagi di cek berikutnya");
   }
-  return [...en.keys()].sort().map((date) => {
-    const enEvents = en.get(date)!;
-    const idEvents = id.get(date)!;
-    const kind = enEvents.every((event) => JOINT.test(event.summary)) ? "CUTI_BERSAMA" : "NATIONAL";
+  // Nama perayaan versi Indonesia: acara di tanggal yang di feed Inggris hanya berisi perayaan.
+  const idObservanceNames = new Set<string>();
+  for (const [date, events] of en) {
+    if (!events.some(isEnHoliday)) for (const event of id.get(date) ?? []) idObservanceNames.add(event.summary);
+  }
+  return holidayDates.map((date) => {
+    const enHolidays = en.get(date)!.filter(isEnHoliday);
+    const idHolidays = idHolidayEvents(id.get(date)!, en.get(date)!, idObservanceNames);
+    const kind = enHolidays.every((event) => JOINT.test(event.summary)) ? "CUTI_BERSAMA" : "NATIONAL";
     // Tanggal yang juga punya acara cuti bersama: nama libur nasionalnya saja.
-    const preferred = kind === "NATIONAL" ? idEvents.filter((event) => !JOINT.test(event.summary)) : [];
-    const name = [...new Set((preferred.length ? preferred : idEvents).map((event) => event.summary))].join(" / ");
+    const preferred = kind === "NATIONAL" ? idHolidays.filter((event) => !JOINT.test(event.summary)) : [];
+    const name = [...new Set((preferred.length ? preferred : idHolidays).map((event) => event.summary))].join(" / ");
     if (name.length > MAX_NAME_CHARS) throw invalid();
-    return { date, name, kind, tentative: [...idEvents, ...enEvents].some((event) => TENTATIVE.test(event.summary)) };
+    return { date, name, kind, tentative: [...idHolidays, ...enHolidays].some((event) => TENTATIVE.test(event.summary)) };
   });
 }
 

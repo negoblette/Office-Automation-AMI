@@ -1,13 +1,11 @@
 // Query halaman Reimburse. Nominal BigInt dikonversi ke number (serializeMoney) — aman ke client.
 import type { Role } from "@/generated/prisma/enums";
-import type { ApprovalStepView } from "@/components/shared/approval-stepper";
 import type { Prisma, PrismaClient, RequestStatus } from "@/generated/prisma/client";
 import { serializeMoney, toJakartaIsoDate } from "@/lib/format";
-import { listCorrections } from "./approval-correction";
+import { getApprovalTimeline } from "./approval-queries";
 import { projectLabel } from "@/lib/labels";
 import { nextProjectCode } from "./project-queries";
 import { OVERTIME_REIMBURSE_TYPE } from "./overtime";
-import { approverRoleLabel } from "@/components/shared/approval-status";
 
 const listInclude = {
   employee: { select: { fullName: true, position: true } },
@@ -94,34 +92,13 @@ export async function getReimbursementDetail(db: PrismaClient, reimbursementId: 
   });
   if (!r) return null;
 
-  const request = await db.approvalRequest.findUnique({
-    where: { module_entityId: { module: "REIMBURSE", entityId: r.id } },
-    include: { steps: { orderBy: { level: "asc" } } },
-  });
-  const userIds = request?.steps.flatMap((step) => [...step.approverIds, ...(step.actedById ? [step.actedById] : [])]) ?? [];
-  const users = await db.user.findMany({
-    where: { id: { in: userIds } },
-    select: { id: true, email: true, role: true, employee: { select: { fullName: true } } },
-  });
-  const nameOf = new Map(users.map((user) => [user.id, user.employee?.fullName ?? user.email]));
-  const roleOf = new Map(users.map((user) => [user.id, user.role]));
-  const steps: ApprovalStepView[] =
-    request?.steps.map((step) => ({
-      level: step.level,
-      approvers: step.approverIds.map((id) => nameOf.get(id) ?? "—"),
-      approverLabel: approverRoleLabel(step.approverIds.map((id) => roleOf.get(id))),
-      status: step.status,
-      actedBy: step.actedById ? (nameOf.get(step.actedById) ?? null) : null,
-      actedAt: step.actedAt?.toISOString() ?? null,
-      note: step.status === "REJECTED" ? step.note : null,
-    })) ?? [];
-  const corrections = request ? ((await listCorrections(db, [request.id])).get(request.id) ?? []) : [];
+  const { currentLevel, steps, corrections } = await getApprovalTimeline(db, "REIMBURSE", r.id);
 
   return {
     id: r.id,
     number: r.status === "DRAFT" ? null : r.number,
     status: r.status,
-    currentLevel: request?.currentLevel ?? null,
+    currentLevel,
     employeeId: r.employee.id,
     employeeName: r.employee.fullName,
     employeePosition: r.employee.position,

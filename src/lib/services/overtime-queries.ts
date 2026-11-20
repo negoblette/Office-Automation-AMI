@@ -91,14 +91,14 @@ export async function getOpenOvertime(db: PrismaClient, employeeId: string): Pro
 }
 
 /**
- * Sesi overtime satu bulan (tanggal clock in), urut tanggal lalu jam — beberapa sesi di hari yang sama tampil sebagai
- * baris berurutan. `employeeId` null = semua karyawan (rekap Admin).
+ * Sesi overtime satu bulan (tanggal clock in), paling baru di atas (tanggal lalu jam, 2026-11-20) — beberapa sesi di hari
+ * yang sama tetap tampil sebagai baris berurutan. `employeeId` null = semua karyawan (rekap Admin).
  */
 export async function listOvertimes(db: PrismaClient, employeeId: string | null, yearMonth: string): Promise<OvertimeRow[]> {
   const { start, end } = monthRange(yearMonth);
   const rows = await db.overtime.findMany({
     where: { ...(employeeId ? { employeeId } : {}), date: { gte: fromIsoDate(start), lte: fromIsoDate(end) } },
-    orderBy: [{ date: "desc" }, { clockIn: "asc" }],
+    orderBy: [{ date: "desc" }, { clockIn: "desc" }],
     include,
   });
   return toRows(db, rows);
