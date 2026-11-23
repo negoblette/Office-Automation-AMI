@@ -56,7 +56,6 @@ export function ExportSelector({
   noun,
   pdfPath,
   excelPath,
-  bare = false,
 }: {
   items: ExportItem[];
   /** Admin: bisa memilih karyawan lain atau semua karyawan. */
@@ -66,8 +65,6 @@ export function ExportSelector({
   noun: string;
   pdfPath: string;
   excelPath: string;
-  /** Tanpa kartu sendiri — ditanam di panel lain (panel Ekspor kesehatan, 2026-11-23). */
-  bare?: boolean;
 }) {
   const employees = useMemo(
     () => [...new Map(items.map((item) => [item.employeeId, item.employeeName])).entries()].sort((a, b) => a[1].localeCompare(b[1], "id")),
@@ -94,7 +91,7 @@ export function ExportSelector({
     });
 
   return (
-    <section className={cn("flex flex-wrap items-end gap-3", !bare && "rounded-2xl bg-card p-4 shadow-card")}>
+    <section className="flex flex-wrap items-end gap-3 rounded-2xl bg-card p-4 shadow-card">
       {allowAllEmployees && (
         <label className="flex flex-col gap-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
           Karyawan

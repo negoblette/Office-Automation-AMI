@@ -674,9 +674,9 @@ ikut dikirimi; perpanjangan lewat approval Ko Yosep.
       ringkasan (jumlah klaim, menunggu, diajukan, disetujui per karyawan + total). Query `healthMonthlyGroups`: selain
       Admin selalu hanya miliknya sendiri (parameter karyawan diabaikan); bulan & id divalidasi. Mode `?ids=` tetap
       — **Revisi 2026-11-23 (user):** PDF kesehatan tanpa kartu plafon / menunggu approval & tanpa kolom Menunggu di
-      ringkasan; "Total disetujui" hanya di rekap bulanan; Rekap bulanan & Pilih & Ekspor digabung jadi satu panel
-      **Ekspor klaim** (`kesehatan/health-export-panel.tsx`): **Per bulan** (PDF rekap / Excel klaim bulan itu) atau
-      **Pilih klaim** (`ExportSelector bare`). PDF Rekap Reimburse kembali A4 tegak (6 kolom, tanpa Status)
+      ringkasan; "Total disetujui" hanya di rekap bulanan. Panel **Rekap bulanan (PDF)** dihapus dari halaman Kesehatan
+      (user: filter bulan / semua di **Pilih & Ekspor** sudah cukup); mode `?bulan=` di halaman cetak tetap ada tapi tidak
+      ditautkan. PDF Rekap Reimburse kembali A4 tegak (6 kolom, tanpa Status)
 - [x] **Riwayat Unit** (detail unit): 10 per halaman lewat `?riwayat=<n>#riwayat` (server, bisa dibagikan, tanpa
       JavaScript); nomor di luar jangkauan → halaman terdekat
 - [x] **Daftar Unit**: 25 per halaman (satu rak umumnya muat satu halaman) + pilihan **Per halaman** 10 / 25 / 50

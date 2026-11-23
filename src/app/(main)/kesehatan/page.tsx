@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import type { ExportItem } from "@/components/shared/export-selector";
+import { type ExportItem, ExportSelector } from "@/components/shared/export-selector";
 import { PageHeader } from "@/components/shared/page-header";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
@@ -7,7 +7,6 @@ import { formatDate } from "@/lib/format";
 import { getHealthSummary, listHealthCategories, listHealthClaims } from "@/lib/services/health-queries";
 import { HealthClaimDialog } from "./claim-form";
 import { HealthClaimTable } from "./claim-table";
-import { HealthExportPanel } from "./health-export-panel";
 import { HealthSummaryCard, KesehatanTabs } from "./health-ui";
 
 export const metadata: Metadata = { title: "Kesehatan" };
@@ -46,8 +45,16 @@ export default async function KesehatanPage() {
       <KesehatanTabs active="klaim" isAdmin={isAdmin} />
       {summary && <HealthSummaryCard summary={summary} />}
 
-      {/* Satu panel Ekspor (2026-11-23): Per bulan (rekap PDF / Excel) atau Pilih klaim (PDF / Excel). */}
-      <HealthExportPanel items={exportItems} allowAllEmployees={isAdmin} defaultEmployeeId={user.employeeId} />
+      {/* Ekspor (2026-11-09): pilih karyawan → pilih klaim (filter bulan / semua) → PDF / Excel. Rekap bulanan & panel
+          gabungan dihapus 2026-11-23 (permintaan user: filter bulan di sini sudah cukup). */}
+      <ExportSelector
+        items={exportItems}
+        allowAllEmployees={isAdmin}
+        defaultEmployeeId={user.employeeId}
+        noun="klaim"
+        pdfPath="/cetak/kesehatan"
+        excelPath="/api/export/kesehatan"
+      />
       <HealthClaimTable rows={rows} showRequester={isAdmin} revise={summary?.annual != null ? { categories, remaining: summary.remaining } : undefined} />
     </div>
   );
