@@ -143,7 +143,8 @@ describe("klaim beberapa baris (2026-11-06)", () => {
     const { claimId } = await submitHealthClaim(testDb, actors.andi, input);
     const claim = await testDb.healthClaim.findUniqueOrThrow({ where: { id: claimId }, include: { items: { orderBy: { id: "asc" } } } });
     expect(claim).toMatchObject({ amount: 500_000n, categoryId: first.id, note: "Kontrol" });
-    expect(claim.claimDate.toISOString().slice(0, 10)).toBe("2026-09-08");
+    // claimDate boleh null sejak draft klaim (2026-11-23); klaim yang diajukan selalu bertanggal.
+    expect(claim.claimDate?.toISOString().slice(0, 10)).toBe("2026-09-08");
     expect(claim.items.map((item) => item.amount)).toEqual([300_000n, 200_000n]);
 
     const [row] = await listHealthClaims(testDb, actors.andi);
