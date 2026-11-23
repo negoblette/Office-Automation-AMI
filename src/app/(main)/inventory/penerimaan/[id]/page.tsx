@@ -98,6 +98,11 @@ export default async function GoodsReceiptDetailPage({ params }: { params: Promi
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">Unit ({receipt.unitCount})</h2>
+        {receipt.deletedCount > 0 && (
+          <p className="-mt-1 text-sm text-muted-foreground">
+            {receipt.deletedCount} unit dari penerimaan ini sudah dihapus di Daftar Unit dan tidak ditampilkan lagi.
+          </p>
+        )}
         <TableScroll as="div" label="Unit yang diterima" className="rounded-2xl bg-card shadow-card">
           <table className="w-full min-w-[760px] text-sm">
             <thead className="bg-muted/60 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
@@ -191,7 +196,5 @@ function UnitStatus({ unit }: { unit: GoodsReceiptUnit }) {
           </span>
         </span>
       );
-    case "DELETED":
-      return <StatusBadge variant="neutral">Dihapus</StatusBadge>;
   }
 }

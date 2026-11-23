@@ -240,7 +240,9 @@ bertahap (docs/05-TAHAPAN.md Fase 16); Tahap 1 = data, akses, rak; Tahap 2 = pen
   kepemilikan itu + `Asset.receiptId`, audit `Asset` CREATE (Riwayat Unit "Diterima dari Principal Cisco · HAF …") &
   `GoodsReceipt` CREATE. Cetak `/cetak/penerimaan/[id]` (lembar HAF bersama `components/print/haf-sheet.tsx`, asli +
   COPY): From = pemilik, up = kontak, Date = tanggal terima, Prepared By = Operational pencatat, Returned By = pengirim,
-  Received By = penerima. Unit titipan lama tanpa penerimaan dibiarkan. Serial yang pernah **dikembalikan** lalu dipinjam
+  Received By = penerima. Unit titipan lama tanpa penerimaan dibiarkan. Unit yang **dihapus** di Daftar Unit (soft delete,
+  bukan dikembalikan) tidak dihitung / ditampilkan lagi di daftar, detail & cetak penerimaan (detail menyebut jumlahnya);
+  penerimaan yang semua unitnya dihapus hilang dari daftar (2026-11-23). Serial yang pernah **dikembalikan** lalu dipinjam
   AMI lagi → baris `Asset` yang sama diaktifkan lagi (`deletedAt` & `returnedToOwnerAt` dikosongkan, `receiptId` baru;
   audit `Asset` UPDATE, Riwayat Unit "Diterima lagi dari …"); serial unit aktif tetap ditolak.
 - **Pengembalian ke principal / distributor** (2026-11-20, keputusan user; `GoodsReturn` + `GoodsReturnItem`,

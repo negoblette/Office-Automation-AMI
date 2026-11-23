@@ -3,7 +3,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { addDaysIso } from "@/lib/demo-loan";
 import { toJakartaIsoDate } from "@/lib/format";
-import { createAsset } from "@/lib/services/asset";
+import { createAsset, deleteAsset } from "@/lib/services/asset";
 import { assetHistory } from "@/lib/services/asset-history";
 import { listAssets } from "@/lib/services/asset-queries";
 import { submitDemoLoan } from "@/lib/services/demo-loan";
@@ -146,6 +146,19 @@ describe("pengembalian ke principal / distributor (2026-11-20)", () => {
     await returnGoods(testDb, devi, receipt.id, returnInput([first]), TODAY);
     await expect(returnGoods(testDb, devi, receipt.id, returnInput([first]), TODAY)).rejects.toThrow("sudah dikembalikan");
     expect(other.id).toBeTruthy();
+  });
+
+  it("unit yang dihapus di Daftar Unit tidak dihitung lagi; semua dihapus → penerimaan hilang dari daftar (2026-11-23)", async () => {
+    const receipt = await receive(["CS001", "CS002"]);
+    await deleteAsset(testDb, u.ika, await assetIdOf("CS001"));
+    expect((await listGoodsReceipts(testDb))[0]).toMatchObject({ id: receipt.id, unitCount: 1, returnedCount: 0, unitSummary: "Cisco CS002" });
+    const detail = (await getGoodsReceipt(testDb, receipt.id))!;
+    expect(detail).toMatchObject({ unitCount: 1, deletedCount: 1 });
+    expect(detail.units.map((unit) => unit.serialNo)).toEqual(["CS002"]);
+
+    await deleteAsset(testDb, u.ika, await assetIdOf("CS002"));
+    expect(await listGoodsReceipts(testDb)).toEqual([]);
+    expect(await getGoodsReceipt(testDb, receipt.id)).toMatchObject({ unitCount: 0, deletedCount: 2, units: [] });
   });
 
   it("serial yang sudah dikembalikan lalu dipinjam AMI lagi: unit yang sama aktif lagi, riwayat menyambung", async () => {

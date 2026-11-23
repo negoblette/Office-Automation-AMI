@@ -38,19 +38,29 @@ const summarize = (assets: { deviceName: string }[]) => {
 
 const userSelect = { select: { email: true, employee: { select: { fullName: true } } } } as const;
 
-/** Semua penerimaan, terbaru dulu. Semua user Inventaris boleh melihat. */
+/**
+ * Unit yang masih dihitung di penerimaan: belum dihapus, atau keluar karena dikembalikan ke principal. Unit yang DIHAPUS di
+ * Daftar Unit (soft delete, bukan dikembalikan) tidak dihitung lagi (2026-11-23, permintaan user).
+ */
+const countedAsset = { OR: [{ deletedAt: null }, { returnedToOwnerAt: { not: null } }] } satisfies Prisma.AssetWhereInput;
+
+/**
+ * Semua penerimaan, terbaru dulu. Semua user Inventaris boleh melihat. Penerimaan yang semua unitnya sudah dihapus tidak
+ * ditampilkan (detailnya masih bisa dibuka lewat tautan langsung; nomor HAF-nya tetap terpakai).
+ */
 export async function listGoodsReceipts(db: PrismaClient): Promise<GoodsReceiptRow[]> {
   const receipts = await db.goodsReceipt.findMany({
     orderBy: [{ receivedDate: "desc" }, { createdAt: "desc" }],
     include: {
       pic: { select: { fullName: true } },
       preparedBy: userSelect,
-      assets: { select: { id: true, deviceName: true }, orderBy: { serialNo: "asc" } },
+      assets: { where: countedAsset, select: { id: true, deviceName: true }, orderBy: { serialNo: "asc" } },
       returns: { select: { items: { select: { assetId: true, deviceName: true } } } },
     },
   });
-  return receipts.map((receipt) => {
+  return receipts.flatMap((receipt) => {
     const counts = receiptUnitIds(receipt);
+    if (counts.total === 0) return [];
     const linked = new Set(receipt.assets.map((asset) => asset.id));
     const moved = receipt.returns.flatMap((goodsReturn) => goodsReturn.items).filter((item) => !linked.has(item.assetId));
     return {
@@ -71,13 +81,13 @@ export async function listGoodsReceipts(db: PrismaClient): Promise<GoodsReceiptR
 
 /**
  * Status unit penerimaan (2026-11-20): AVAILABLE = di AMI & bisa dikembalikan; BUSY = sedang diajukan / dipinjam /
- * ditindaklanjuti / diserahkan ke karyawan (belum bisa dikembalikan); RETURNED = sudah dikembalikan; DELETED = dihapus.
+ * ditindaklanjuti / diserahkan ke karyawan (belum bisa dikembalikan); RETURNED = sudah dikembalikan. Unit yang dihapus
+ * tidak masuk daftar sama sekali (`deletedCount`).
  */
 export type GoodsReceiptUnitStatus =
   | { kind: "AVAILABLE" }
   | { kind: "BUSY"; label: string }
-  | { kind: "RETURNED"; date: string; hafNumber: string; returnId: string }
-  | { kind: "DELETED" };
+  | { kind: "RETURNED"; date: string; hafNumber: string; returnId: string };
 
 export type GoodsReceiptUnit = {
   id: string;
@@ -108,6 +118,8 @@ export type GoodsReceiptDetail = Omit<GoodsReceiptRow, "unitSummary"> & {
   purpose: string | null;
   createdAt: string;
   units: GoodsReceiptUnit[];
+  /** Unit penerimaan ini yang sudah dihapus di Daftar Unit (tidak ada di `units`, 2026-11-23). */
+  deletedCount: number;
   /** Pengembalian ke principal / distributor, terbaru dulu. */
   returns: GoodsReturnView[];
 };
@@ -141,20 +153,21 @@ export async function getGoodsReceipt(db: PrismaClient, id: string): Promise<Goo
   const returns = receipt.returns.map(toReturnView);
   const returnOf = new Map(returns.flatMap((goodsReturn) => goodsReturn.units.map((unit) => [unit.assetId, goodsReturn] as const)));
   const linked = new Set(receipt.assets.map((asset) => asset.id));
-  const units: GoodsReceiptUnit[] = receipt.assets.map((asset) => {
+  // Unit yang dihapus di Daftar Unit (bukan dikembalikan) tidak ditampilkan & tidak dihitung lagi (2026-11-23).
+  const isDeleted = (asset: { deletedAt: Date | null; returnedToOwnerAt: Date | null }) => Boolean(asset.deletedAt && !asset.returnedToOwnerAt);
+  const deletedCount = receipt.assets.filter(isDeleted).length;
+  const units: GoodsReceiptUnit[] = receipt.assets.filter((asset) => !isDeleted(asset)).map((asset) => {
     const busyLoan = asset.loanItems[0]?.loan;
     const assignee = asset.assignments[0]?.employee.fullName;
     const goodsReturn = returnOf.get(asset.id);
     const status: GoodsReceiptUnitStatus =
       asset.returnedToOwnerAt && goodsReturn
         ? { kind: "RETURNED", date: goodsReturn.returnedDate, hafNumber: goodsReturn.hafNumber, returnId: goodsReturn.id }
-        : asset.deletedAt
-          ? { kind: "DELETED" }
-          : busyLoan
-            ? { kind: "BUSY", label: `${DEMO_LOAN_STATUS_LABEL[busyLoan.status]} · ${busyLoan.borrowerName}` }
-            : assignee
-              ? { kind: "BUSY", label: `Diserahkan ke ${assignee}` }
-              : { kind: "AVAILABLE" };
+        : busyLoan
+          ? { kind: "BUSY", label: `${DEMO_LOAN_STATUS_LABEL[busyLoan.status]} · ${busyLoan.borrowerName}` }
+          : assignee
+            ? { kind: "BUSY", label: `Diserahkan ke ${assignee}` }
+            : { kind: "AVAILABLE" };
     return {
       id: asset.id,
       deviceName: asset.deviceName,
@@ -190,6 +203,7 @@ export async function getGoodsReceipt(db: PrismaClient, id: string): Promise<Goo
     preparedByName: personName(receipt.preparedBy),
     unitCount: units.length,
     returnedCount: units.filter((unit) => unit.status.kind === "RETURNED").length,
+    deletedCount,
     senderName: receipt.senderName,
     receiverName: receipt.receiver.fullName,
     purpose: receipt.purpose,
