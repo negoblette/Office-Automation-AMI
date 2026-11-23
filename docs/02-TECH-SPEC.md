@@ -34,6 +34,7 @@ Skema lengkap ada di `prisma/schema.prisma`. Ringkasan:
 | Kesehatan | `HealthCategory`, `HealthPlafond`, `HealthClaim`, `HealthPayout` |
 | Kandidat | `Candidate` (+ `Document`) |
 | Approval | `ApprovalFlow`, `ApprovalFlowStep`, `ApprovalStepApprover`, `ApprovalRequest`, `ApprovalRequestStep` |
+| Ruang meeting | `MeetingRoom`, `MeetingBooking` (Fase 17, §6.7) |
 | Sistem | `NumberSequence`, `AppSetting`, `AuditLog`, `EmailLog`, `NotificationDismissal` |
 
 Keputusan desain:
@@ -175,6 +176,14 @@ semua direktur auto-approve; bila flow REGULAR tidak ditemukan, engine melempar 
 - **Baris klaim (2026-11-06):** satu klaim = beberapa `HealthClaimItem` (kategori, tanggal, nominal, keterangan), tanpa kunjungan.
   Kolom klaim: `amount` = total baris, `claimDate` = tanggal terawal (menentukan tahun plafon), `categoryId` = baris pertama. Semua
   baris wajib di tahun yang sama. Plafon dicek terhadap total; approver mengisi satu nominal disetujui untuk seluruh klaim.
+- **Draft klaim (2026-11-23, sama dengan draft reimburse):** dialog klaim punya **Simpan Draft** tanpa cek kelengkapan. Isian lengkap →
+  draft biasa (`DRAFT`, nomor sementara `DRAFT-<uuid>`, baris tersimpan, kategori harus aktif, plafon BELUM dicek); belum lengkap →
+  disimpan apa adanya di `HealthClaim.draftForm` tanpa baris, `categoryId` & `claimDate` null (`saveIncompleteHealthClaimDraft`,
+  `healthClaimDraftFormSchema`). Ajukan (dari dialog / tombol di detail) = cek isian + kategori + plafon + nomor `HC/…` + approval
+  dalam satu transaksi (`submitHealthClaim` / `submitHealthClaimDraft`); baris klaim dikunci (`FOR UPDATE`) agar tidak terbit
+  dua nomor. Draft tidak mengurangi plafon, hanya terlihat pemiliknya (Admin pun tidak melihat draft orang lain), dan dihapus
+  dengan soft delete (`HealthClaim.deletedAt`, hanya status DRAFT). Revisi klaim ditolak boleh disimpan tanpa diajukan
+  (harus lengkap; status tetap REJECTED). Ekspor / cetak / rekap tetap tanpa draft.
 
 ### 6.4 Reimburse
 - Dropdown tipe difilter `ReimburseType.divisions has divisi pemohon`. Seed: Sales → 4 tipe Sales;
@@ -382,6 +391,32 @@ bertahap (docs/05-TAHAPAN.md Fase 16); Tahap 1 = data, akses, rak; Tahap 2 = pen
   (diajukan, diajukan ulang, ditambahkan/dikeluarkan saat revisi, dibatalkan, diantar, pengambilan, kembali), dan keputusan
   `ApprovalRequest` APPROVE/REJECT peminjaman itu (dicocokkan lewat nomor form; hanya selama unit masih ada di pengajuan).
   Tahap berikutnya wajib mencatat audit `DemoLoan` dengan `items` supaya ikut riwayat.
+
+### 6.7 Booking ruang meeting (Fase 17, 2026-11-23; URD MTG-01…09)
+File: `lib/meeting-room.ts` (aturan murni), `validators/meeting-room.ts`, `services/meeting-room.ts` (mutasi),
+`services/meeting-room-queries.ts` (kalender, Booking Saya), `mail/meeting-booking-emails.ts`, halaman `/ruang-meeting`,
+`/ruang-meeting/saya`, `/setting/ruang-meeting`.
+- **Data:** `MeetingRoom` (`number` unik, `name`, `isActive`; Ruang Meeting 1 aktif & 2 nonaktif dibuat migrasi
+  `20261123100000_meeting_room_booking` + `seedMeetingRooms`). `MeetingBooking` (`roomId`, `userId` pemesan = User,
+  `agenda`, `startAt`/`endAt` timestamp UTC, `status` ACTIVE/CANCELLED, `editedAt` = jatah ubah 1× terpakai,
+  `cancelledAt`/`cancelledById`/`cancelReason`). Batal = status CANCELLED (bukan dihapus). Tanpa approval & tanpa nomor dokumen.
+- **Anti bentrok (race condition):** exclusion constraint `MeetingBooking_no_overlap` —
+  `EXCLUDE USING gist ("roomId" WITH =, tsrange("startAt","endAt",'[)') WITH &&) WHERE (status = 'ACTIVE')` (extension
+  `btree_gist`) + CHECK `endAt > startAt`. Dibuat manual di migrasi; Prisma tidak mengenalnya tapi tidak menghapusnya
+  (`migrate diff` kosong). Booking = satu INSERT tanpa cek-lalu-simpan; permintaan bersamaan → yang kedua gagal `23P01`
+  (Prisma: `PrismaClientKnownRequestError` P2039/P2010, `meta.driverAdapterError.cause.originalCode`) →
+  `isBookingOverlapError` → `ServiceError` "Ruang … sudah dibooking HH:MM–HH:MM oleh …". `[)` = booking bersambung boleh.
+- **Ubah 1× & batal:** `updateMany` bersyarat (`editedAt: null, startAt > now` / `status: ACTIVE`) → dua tab / klik ganda
+  tidak dobel. **Booking vs saklar ruang:** booking & ubah mengunci baris ruang `SELECT … FOR SHARE` lalu cek `isActive`;
+  nonaktifkan mengunci `FOR UPDATE` lalu menolak bila ada booking ACTIVE dengan `endAt > now`.
+- **Aturan jadwal** (`bookingWindowProblem`): Senin–Jumat, bukan `Holiday` (deletedAt null), di dalam jam operasional
+  `AppSetting meetingRoom.hours` (default 08:30–17:30; perubahan hanya untuk booking baru/diubah), kelipatan 30 menit, satu
+  hari, tanggal ≤ hari ini + 30, jam mulai > sekarang. **Hak** (`bookingRights`): pemilik ubah 1× & batal sebelum mulai;
+  Admin batal siapa pun sebelum selesai (alasan wajib bila bukan miliknya).
+- **Email** (enqueue setelah commit, ke pemesan): `meeting-booked`, `meeting-updated` (jadwal lama → baru),
+  `meeting-cancelled` (oleh siapa + alasan bila Admin). Semua aksi tercatat AuditLog (`MeetingBooking`, `MeetingRoom`,
+  `AppSetting`). Action selalu `revalidatePath("/ruang-meeting")`, juga saat bentrok, supaya kalender langsung terbarui.
+
 ## 7. Notifikasi & Job (pg-boss, `worker/`)
 
 | Job | Jadwal | Isi |

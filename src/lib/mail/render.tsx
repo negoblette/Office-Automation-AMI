@@ -4,6 +4,7 @@ import type { ReactElement } from "react";
 import { ApprovalEmail, type ApprovalEmailProps } from "./templates/approval-email";
 import { DemoLoanEmail, type DemoLoanEmailProps } from "./templates/demo-loan-email";
 import { HolidayEmail, type HolidayEmailProps } from "./templates/holiday-email";
+import { MeetingBookingEmail, type MeetingBookingEmailProps } from "./templates/meeting-booking-email";
 import { ReminderEmail, type ReminderEmailProps } from "./templates/reminder-email";
 import { SecurityEmail, type SecurityEmailProps } from "./templates/security-email";
 
@@ -22,11 +23,15 @@ export type EmailTemplates = {
   "loan-extended": DemoLoanEmailProps;
   "loan-follow-up": DemoLoanEmailProps;
   "holiday-change": HolidayEmailProps;
+  "meeting-booked": MeetingBookingEmailProps;
+  "meeting-updated": MeetingBookingEmailProps;
+  "meeting-cancelled": MeetingBookingEmailProps;
 };
 
 export type EmailTemplateName = keyof EmailTemplates;
 
 const LOAN_TEMPLATES = new Set<EmailTemplateName>(["loan-approved", "loan-due-soon", "loan-overdue", "loan-extended", "loan-follow-up"]);
+const MEETING_TEMPLATES = new Set<EmailTemplateName>(["meeting-booked", "meeting-updated", "meeting-cancelled"]);
 
 function buildElement<T extends EmailTemplateName>(template: T, props: EmailTemplates[T]): ReactElement {
   if (template === "reminder-expiry") return <ReminderEmail {...(props as ReminderEmailProps)} />;
@@ -34,6 +39,7 @@ function buildElement<T extends EmailTemplateName>(template: T, props: EmailTemp
   if (template === "security-notice") return <SecurityEmail {...(props as SecurityEmailProps)} />;
   if (template === "security-alert") return <SecurityEmail {...(props as SecurityEmailProps)} variant="admin" />;
   if (LOAN_TEMPLATES.has(template)) return <DemoLoanEmail {...(props as DemoLoanEmailProps)} />;
+  if (MEETING_TEMPLATES.has(template)) return <MeetingBookingEmail {...(props as MeetingBookingEmailProps)} />;
   return <ApprovalEmail {...(props as ApprovalEmailProps)} template={template as ApprovalEmailProps["template"]} />;
 }
 

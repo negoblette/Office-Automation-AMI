@@ -1,15 +1,117 @@
-// Klaim kesehatan — URD HC-01..08, Tech Spec §6.3. Diajukan langsung ke approval engine (Ika;
-// klaim Ika sendiri → FALLBACK Rudy/Leonard).
-import type { PrismaClient } from "@/generated/prisma/client";
-import { formatRupiah, fromIsoDate } from "@/lib/format";
+// Klaim kesehatan — URD HC-01..08, Tech Spec §6.3. Approval engine: Ika; klaim Ika sendiri → FALLBACK Rudy/Leonard.
+// Draft (2026-11-23, persis seperti reimburse): Simpan Draft (nomor sementara, boleh belum lengkap) → Ajukan (nomor HC +
+// cek plafon + approval dalam satu transaksi). Hanya pemohon yang boleh mengubah DRAFT / REJECTED; hanya DRAFT yang bisa dihapus.
+import { randomUUID } from "node:crypto";
+import { type HealthClaim, Prisma, type PrismaClient } from "@/generated/prisma/client";
+import { formatRupiah, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import { remainingPlafond } from "@/lib/health";
-import type { HealthClaimInput, HealthPlafondInput } from "@/lib/validators/health";
-import { type Actor, } from "./access";
+import { type HealthClaimDraftForm, type HealthClaimInput, type HealthPlafondInput, healthClaimSchema } from "@/lib/validators/health";
+import type { Actor } from "./access";
 import { type ApprovalNotification, restartApproval } from "./approval";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { lockPlafond } from "./health-payout";
 import { nextDocumentNumber } from "./numbering";
+
+type Tx = Prisma.TransactionClient;
+
+/** Nomor sementara draft (sama dengan reimburse); nomor HC baru terbit saat diajukan. */
+const DRAFT_NUMBER_PREFIX = "DRAFT-";
+
+async function getRequester(tx: Tx, actor: Actor) {
+  if (!actor.employeeId) throw new ServiceError("Akun Anda belum terhubung ke data karyawan");
+  const employee = await tx.employee.findUnique({ where: { id: actor.employeeId }, select: { id: true, status: true } });
+  if (employee?.status !== "ACTIVE") throw new ServiceError("Hanya karyawan aktif yang bisa mengajukan klaim");
+  return employee;
+}
+
+/**
+ * Klaim milik sendiri yang masih boleh diubah: DRAFT, atau REJECTED (revisi, 2026-10-12 OI-05). Baris klaim dikunci dulu
+ * supaya dua kali tekan Ajukan tidak menerbitkan dua nomor.
+ */
+async function getOwnEditableClaim(tx: Tx, actor: Actor, claimId: string) {
+  await tx.$queryRaw`SELECT id FROM "HealthClaim" WHERE id = ${claimId} FOR UPDATE`;
+  const claim = await tx.healthClaim.findUnique({ where: { id: claimId, deletedAt: null }, include: { items: { orderBy: { id: "asc" } } } });
+  if (!claim || claim.employeeId !== actor.employeeId) throw new ServiceError("Klaim tidak ditemukan");
+  if (claim.status !== "DRAFT" && claim.status !== "REJECTED") throw new ServiceError("Klaim yang sudah diajukan tidak bisa diubah");
+  return claim;
+}
+
+/** Isian lengkap → kolom klaim (total, tanggal terawal, kategori baris pertama) + baris. Kategori wajib masih aktif. */
+async function buildClaimData(tx: Tx, input: HealthClaimInput) {
+  const categories = await tx.healthCategory.findMany({ where: { id: { in: input.items.map((item) => item.categoryId) }, isActive: true }, select: { id: true } });
+  const activeCategories = new Set(categories.map((c) => c.id));
+  for (const [index, item] of input.items.entries()) {
+    if (!activeCategories.has(item.categoryId)) throw new ServiceError(`Baris ${index + 1}: kategori klaim tidak tersedia`, `items.${index}.categoryId`);
+  }
+  const total = input.items.reduce((sum, item) => sum + item.amount, 0);
+  const claimDate = input.items.map((item) => item.date).sort()[0];
+  return {
+    total,
+    claimDate,
+    data: { categoryId: input.items[0].categoryId, claimDate: fromIsoDate(claimDate), amount: BigInt(total), note: input.note, draftForm: Prisma.DbNull },
+    items: input.items.map((item) => ({ categoryId: item.categoryId, date: fromIsoDate(item.date), amount: BigInt(item.amount), note: item.note })),
+  };
+}
+
+export type SaveHealthDraftResult = { claimId: string };
+
+/**
+ * Simpan draft lengkap: baru (`claimId` null) atau ubah draft / revisi yang ditolak milik sendiri (status tetap).
+ * Baris diganti seluruhnya. Plafon belum dicek — baru saat diajukan.
+ */
+export async function saveHealthClaimDraft(db: PrismaClient, actor: Actor, claimId: string | null, input: HealthClaimInput): Promise<SaveHealthDraftResult> {
+  return db.$transaction(async (tx) => {
+    const employee = await getRequester(tx, actor);
+    const before = claimId ? await getOwnEditableClaim(tx, actor, claimId) : null;
+    const { data, items } = await buildClaimData(tx, input);
+
+    let id: string;
+    if (before) {
+      await tx.healthClaimItem.deleteMany({ where: { claimId: before.id } });
+      await tx.healthClaim.update({ where: { id: before.id }, data: { ...data, items: { create: items } } });
+      id = before.id;
+    } else {
+      const created = await tx.healthClaim.create({
+        data: { ...data, employeeId: employee.id, number: `${DRAFT_NUMBER_PREFIX}${randomUUID()}`, items: { create: items } },
+      });
+      id = created.id;
+    }
+    const after = await tx.healthClaim.findUniqueOrThrow({ where: { id }, include: { items: true } });
+    await logAudit(tx, { actorId: actor.id, action: before ? "UPDATE" : "CREATE", entity: "HealthClaim", entityId: id, before, after });
+    return { claimId: id };
+  });
+}
+
+/**
+ * Simpan draft yang BELUM lengkap (sama dengan reimburse 2026-11-04): isian form disimpan apa adanya tanpa baris; kategori &
+ * tanggal klaim kosong. Bisa dilanjutkan lewat Lanjutkan Mengisi dan baru bisa diajukan setelah lengkap. Bukan untuk revisi.
+ */
+export async function saveIncompleteHealthClaimDraft(
+  db: PrismaClient,
+  actor: Actor,
+  claimId: string | null,
+  form: HealthClaimDraftForm,
+): Promise<SaveHealthDraftResult> {
+  return db.$transaction(async (tx) => {
+    const employee = await getRequester(tx, actor);
+    const before = claimId ? await getOwnEditableClaim(tx, actor, claimId) : null;
+    if (before?.status === "REJECTED") throw new ServiceError("Lengkapi semua isian sebelum menyimpan revisi");
+    const data = { note: form.note.trim() || null, draftForm: form, categoryId: null, claimDate: null, amount: 0n };
+
+    let id: string;
+    if (before) {
+      await tx.healthClaimItem.deleteMany({ where: { claimId: before.id } });
+      await tx.healthClaim.update({ where: { id: before.id }, data });
+      id = before.id;
+    } else {
+      const created = await tx.healthClaim.create({ data: { ...data, employeeId: employee.id, number: `${DRAFT_NUMBER_PREFIX}${randomUUID()}` } });
+      id = created.id;
+    }
+    await logAudit(tx, { actorId: actor.id, action: before ? "UPDATE" : "CREATE", entity: "HealthClaim", entityId: id, before, after: { id, incomplete: true, draftForm: form } });
+    return { claimId: id };
+  });
+}
 
 /**
  * Pemakaian plafon karyawan pada tahun klaim (HC-07): klaim APPROVED dihitung dari nominal
@@ -35,58 +137,71 @@ export type SubmitHealthClaimResult = {
   notifications: ApprovalNotification[];
 };
 
-/** `reviseId` (2026-10-12, OI-05) = revisi klaim milik sendiri yang ditolak: nomor tetap, approval mulai lagi. */
+/**
+ * Ajukan dari form: klaim baru, draft milik sendiri (`claimId` DRAFT → nomor HC baru), atau revisi yang ditolak (`claimId`
+ * REJECTED, 2026-10-12 OI-05 → nomor tetap, approval mulai lagi). Isian, plafon, nomor & approval dalam satu transaksi.
+ */
 export async function submitHealthClaim(
   db: PrismaClient,
   actor: Actor,
   input: HealthClaimInput,
-  reviseId?: string,
+  claimId?: string,
 ): Promise<SubmitHealthClaimResult> {
-  if (!actor.employeeId) throw new ServiceError("Akun Anda belum terhubung ke data karyawan");
-  const employeeId = actor.employeeId;
-
   return db.$transaction(async (tx) => {
-    const employee = await tx.employee.findUnique({ where: { id: employeeId }, select: { status: true } });
-    if (employee?.status !== "ACTIVE") throw new ServiceError("Hanya karyawan aktif yang bisa mengajukan klaim");
-    const revised = reviseId ? await tx.healthClaim.findUnique({ where: { id: reviseId } }) : null;
-    if (reviseId) {
-      if (!revised || revised.employeeId !== employeeId) throw new ServiceError("Klaim tidak ditemukan");
-      if (revised.status !== "REJECTED") throw new ServiceError("Hanya klaim yang ditolak yang bisa direvisi");
-    }
+    const employee = await getRequester(tx, actor);
+    const existing = claimId ? await getOwnEditableClaim(tx, actor, claimId) : null;
+    return submitInTransaction(tx, actor, employee.id, input, existing);
+  });
+}
 
-    const categories = await tx.healthCategory.findMany({ where: { id: { in: input.items.map((item) => item.categoryId) }, isActive: true }, select: { id: true } });
-    const activeCategories = new Set(categories.map((c) => c.id));
-    for (const [index, item] of input.items.entries()) {
-      if (!activeCategories.has(item.categoryId)) throw new ServiceError(`Baris ${index + 1}: kategori klaim tidak tersedia`, `items.${index}.categoryId`);
-    }
+/** Ajukan draft yang sudah tersimpan / ajukan ulang klaim yang ditolak tanpa mengubah isinya (tombol di halaman detail). */
+export async function submitHealthClaimDraft(db: PrismaClient, actor: Actor, claimId: string): Promise<SubmitHealthClaimResult> {
+  return db.$transaction(async (tx) => {
+    const employee = await getRequester(tx, actor);
+    const draft = await getOwnEditableClaim(tx, actor, claimId);
+    if (draft.draftForm !== null) throw new ServiceError("Draft belum lengkap. Tekan Lanjutkan Mengisi untuk melengkapi isiannya sebelum mengajukan");
+    if (draft.items.length === 0) throw new ServiceError("Tambahkan minimal 1 baris sebelum mengajukan");
+    // Isi tersimpan divalidasi ulang dengan aturan form (tahun sama, nominal > 0) sebelum dicek kategori & plafon.
+    const input = healthClaimSchema.parse({
+      items: draft.items.map((item) => ({ categoryId: item.categoryId, date: toJakartaIsoDate(item.date), amount: Number(item.amount), note: item.note })),
+      note: draft.note,
+    });
+    return submitInTransaction(tx, actor, employee.id, input, draft);
+  });
+}
 
-    // HC-07: total klaim dibatasi plafon tahunan (semua baris di tahun yang sama, dicek schema).
-    const total = input.items.reduce((sum, item) => sum + item.amount, 0);
-    const claimDate = input.items.map((item) => item.date).sort()[0];
-    const year = Number(claimDate.slice(0, 4));
-    const plafond = await lockPlafond(tx, employeeId, year);
-    const remaining = remainingPlafond(Number(plafond.annualAmount), await usedOrPendingAmount(tx, employeeId, year));
-    if (total > remaining) {
-      throw new ServiceError(`Sisa plafon ${year} ${formatRupiah(Math.max(0, remaining))}, klaim ${formatRupiah(total)}`);
-    }
+async function submitInTransaction(tx: Tx, actor: Actor, employeeId: string, input: HealthClaimInput, existing: HealthClaim | null): Promise<SubmitHealthClaimResult> {
+  const { total, claimDate, data, items } = await buildClaimData(tx, input);
 
-    const number = revised ? revised.number : await nextDocumentNumber(tx, "HC");
-    const data = {
-      categoryId: input.items[0].categoryId,
-      claimDate: fromIsoDate(claimDate),
-      amount: BigInt(total),
-      note: input.note,
-      status: "PENDING" as const,
-      submittedAt: new Date(),
-      items: { create: input.items.map((item) => ({ categoryId: item.categoryId, date: fromIsoDate(item.date), amount: BigInt(item.amount), note: item.note })) },
-    };
-    if (revised) await tx.healthClaimItem.deleteMany({ where: { claimId: revised.id } });
-    const claim = revised
-      ? await tx.healthClaim.update({ where: { id: revised.id }, data })
-      : await tx.healthClaim.create({ data: { ...data, number, employeeId } });
-    const approval = await restartApproval(tx, { module: "HEALTH", entityId: claim.id, entityNumber: number, requesterId: actor.id });
-    await logAudit(tx, { actorId: actor.id, action: revised ? "UPDATE" : "CREATE", entity: "HealthClaim", entityId: claim.id, before: revised, after: claim });
-    return { claimId: claim.id, number, status: approval.status, notifications: approval.notifications };
+  // HC-07: total klaim dibatasi plafon tahunan (semua baris di tahun yang sama, dicek schema). Draft & klaim yang ditolak
+  // tidak ikut dihitung terpakai.
+  const year = Number(claimDate.slice(0, 4));
+  const plafond = await lockPlafond(tx, employeeId, year);
+  const remaining = remainingPlafond(Number(plafond.annualAmount), await usedOrPendingAmount(tx, employeeId, year));
+  if (total > remaining) {
+    throw new ServiceError(`Sisa plafon ${year} ${formatRupiah(Math.max(0, remaining))}, klaim ${formatRupiah(total)}`);
+  }
+
+  // Ajukan ulang setelah ditolak: nomor tetap. Klaim baru / draft: nomor HC terbit sekarang.
+  const resubmit = existing?.status === "REJECTED";
+  const number = existing && resubmit ? existing.number : await nextDocumentNumber(tx, "HC");
+  const claimData = { ...data, number, status: "PENDING" as const, submittedAt: new Date() };
+  if (existing) await tx.healthClaimItem.deleteMany({ where: { claimId: existing.id } });
+  const claim = existing
+    ? await tx.healthClaim.update({ where: { id: existing.id }, data: { ...claimData, items: { create: items } } })
+    : await tx.healthClaim.create({ data: { ...claimData, employeeId, items: { create: items } } });
+  const approval = await restartApproval(tx, { module: "HEALTH", entityId: claim.id, entityNumber: number, requesterId: actor.id });
+  await logAudit(tx, { actorId: actor.id, action: existing ? "UPDATE" : "CREATE", entity: "HealthClaim", entityId: claim.id, before: existing, after: { ...claim, resubmit } });
+  return { claimId: claim.id, number, status: approval.status, notifications: approval.notifications };
+}
+
+/** Hapus draft milik sendiri (soft delete, NFR v1.14). Klaim yang ditolak tidak bisa dihapus — direvisi / dibiarkan. */
+export async function deleteHealthClaimDraft(db: PrismaClient, actor: Actor, claimId: string): Promise<void> {
+  return db.$transaction(async (tx) => {
+    const draft = await getOwnEditableClaim(tx, actor, claimId);
+    if (draft.status !== "DRAFT") throw new ServiceError("Hanya draft yang bisa dihapus");
+    await tx.healthClaim.update({ where: { id: draft.id }, data: { deletedAt: new Date() } });
+    await logAudit(tx, { actorId: actor.id, action: "DELETE", entity: "HealthClaim", entityId: draft.id, before: draft });
   });
 }
 

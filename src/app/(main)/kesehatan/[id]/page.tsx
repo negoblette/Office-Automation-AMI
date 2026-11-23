@@ -15,7 +15,9 @@ import { formatDate, formatDateTime, formatRupiah } from "@/lib/format";
 import { getApprovalForEntity } from "@/lib/services/approval-queries";
 import { divisionLabels } from "@/lib/services/division";
 import { getHealthClaimDetail, getHealthSummary, listHealthCategories } from "@/lib/services/health-queries";
-import { HealthClaimDialog } from "../claim-form";
+import { healthClaimDraftFormSchema } from "@/lib/validators/health";
+import { type ExistingHealthClaim, HealthClaimDialog } from "../claim-form";
+import { HealthDraftActions } from "./draft-actions";
 
 export const metadata: Metadata = { title: "Detail Klaim Kesehatan" };
 
@@ -38,21 +40,39 @@ export default async function DetailKlaimKesehatanPage({ params }: { params: Pro
   if (!isOwner && ((user.role !== "ADMIN" && !isAssignedApprover) || c.status === "DRAFT")) redirect("/akses-ditolak");
 
   const badge = requestStatusBadge(c.status, c.currentLevel);
+  const title = c.number ?? "Draft Klaim Kesehatan";
+  const incomplete = c.draftForm !== null;
   // Aksi approver langsung di halaman ini: Setujui (isi nominal disetujui), Tolak, Koreksi, Batalkan.
   const approval = user.role !== "STAFF" ? await getApprovalForEntity(prisma, "HEALTH", c.id, user) : null;
-  // Revisi klaim sendiri yang ditolak (butuh plafon tahun berjalan, sama dengan tombol di daftar klaim).
-  const revise =
-    isOwner && c.status === "REJECTED" && user.employeeId
+  // Draft (2026-11-23) / klaim ditolak milik sendiri: Ubah / Revisi lewat dialog yang sama dengan Ajukan Klaim (butuh plafon
+  // tahun berjalan, sama dengan tombol di daftar klaim).
+  const editable = isOwner && (c.status === "DRAFT" || c.status === "REJECTED") ? c.status : null;
+  const dialogContext =
+    editable && user.employeeId
       ? await Promise.all([getHealthSummary(prisma, user.employeeId), listHealthCategories(prisma)]).then(([summary, categories]) =>
           summary.annual != null ? { categories, remaining: summary.remaining } : null,
         )
       : null;
+  // Draft belum lengkap dilanjutkan dari isian yang tersimpan; selain itu dari baris klaim.
+  const draftForm = incomplete ? healthClaimDraftFormSchema.safeParse(c.draftForm).data : undefined;
+  const existing: ExistingHealthClaim | null = editable
+    ? {
+        id: c.id,
+        number: c.number,
+        status: editable,
+        incomplete,
+        items: draftForm
+          ? draftForm.items.map((item) => ({ categoryId: item.categoryId, date: item.date, amount: item.amount, note: item.note }))
+          : c.items.map((item) => ({ categoryId: item.categoryId, date: item.date, amount: item.amount, note: item.note })),
+        note: draftForm ? draftForm.note : c.note,
+      }
+    : null;
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title={c.number}
-        breadcrumbs={[{ label: "Pengajuan & Keuangan" }, { label: "Kesehatan & Plafon", href: "/kesehatan" }, { label: c.number }]}
+        title={title}
+        breadcrumbs={[{ label: "Pengajuan & Keuangan" }, { label: "Kesehatan & Plafon", href: "/kesehatan" }, { label: title }]}
         description={
           <span className="flex flex-wrap items-center gap-2">
             {c.employeeName} · {c.employeePosition} · {(await divisionLabels(prisma))[c.division] ?? c.division}
@@ -61,8 +81,13 @@ export default async function DetailKlaimKesehatanPage({ params }: { params: Pro
         }
         actions={
           <div className="flex flex-col items-end gap-2">
-            {revise ? (
-              <HealthClaimDialog {...revise} revise={{ id: c.id, number: c.number, items: c.items, note: c.note }} />
+            {existing ? (
+              <HealthDraftActions
+                claimId={c.id}
+                rejected={existing.status === "REJECTED"}
+                incomplete={incomplete}
+                edit={dialogContext && <HealthClaimDialog {...dialogContext} claim={existing} size="lg" />}
+              />
             ) : (
               approval && <RowActions row={approval} />
             )}
@@ -74,12 +99,12 @@ export default async function DetailKlaimKesehatanPage({ params }: { params: Pro
       />
 
       <section className="grid gap-4 rounded-2xl bg-card p-5 shadow-card sm:grid-cols-4">
-        <Info label="Nominal Diajukan" value={formatRupiah(c.amount)} />
+        <Info label={c.status === "DRAFT" ? "Total" : "Nominal Diajukan"} value={formatRupiah(c.amount)} />
         <Info
           label="Nominal Disetujui"
           value={c.approvedAmount === null ? <span className="text-muted-foreground">—</span> : <span className="text-lg font-bold">{formatRupiah(c.approvedAmount)}</span>}
         />
-        <Info label="Tahun Plafon" value={c.claimDate.slice(0, 4)} />
+        <Info label="Tahun Plafon" value={c.claimDate?.slice(0, 4) ?? <span className="text-muted-foreground">—</span>} />
         <Info
           label={c.approvedAt ? "Disetujui" : c.submittedAt ? "Diajukan" : "Dibuat"}
           value={formatDateTime(c.approvedAt ?? c.submittedAt ?? c.createdAt)}
@@ -99,46 +124,55 @@ export default async function DetailKlaimKesehatanPage({ params }: { params: Pro
         </section>
       )}
 
-      <TableScroll as="section" label="Rincian klaim kesehatan" className="rounded-2xl bg-card shadow-card">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead className="bg-muted/60 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-            <tr>
-              {["Tanggal", "Kategori", "Keterangan", "Nominal"].map((h) => (
-                <th key={h} className={h === "Nominal" ? "px-4 py-3 text-right" : "px-4 py-3"}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {/* Dikelompokkan per tanggal + subtotal harian, sama dengan detail reimburse. */}
-            {groupByDate(c.items).map(([day, items]) => (
-              <Fragment key={day}>
-                {items.map((item) => (
-                  <tr key={item.id} className="border-t border-border align-top">
-                    <td className="px-4 py-3 whitespace-nowrap">{formatDate(`${item.date}T00:00:00Z`, "short")}</td>
-                    <td className="px-4 py-3">{item.categoryName}</td>
-                    <td className="px-4 py-3 whitespace-pre-line text-muted-foreground">{item.note || "—"}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatRupiah(item.amount)}</td>
-                  </tr>
+      {incomplete && (
+        <p role="status" className="rounded-2xl bg-warning-soft px-5 py-4 text-sm">
+          <span className="font-semibold">Draft belum lengkap.</span> Isian Anda tersimpan. Tekan Lanjutkan Mengisi untuk meneruskannya; draft bisa diajukan setelah semua isian lengkap.
+        </p>
+      )}
+
+      {/* Draft belum lengkap belum punya baris (isiannya ada di dialog Lanjutkan Mengisi). */}
+      {c.items.length > 0 && (
+        <TableScroll as="section" label="Rincian klaim kesehatan" className="rounded-2xl bg-card shadow-card">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead className="bg-muted/60 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+              <tr>
+                {["Tanggal", "Kategori", "Keterangan", "Nominal"].map((h) => (
+                  <th key={h} className={h === "Nominal" ? "px-4 py-3 text-right" : "px-4 py-3"}>
+                    {h}
+                  </th>
                 ))}
-                <tr className="border-t border-border bg-muted/40 text-sm">
-                  <td colSpan={3} className="px-4 py-2 text-right font-medium text-muted-foreground">
-                    Subtotal {formatDate(`${day}T00:00:00Z`, "short")}
-                  </td>
-                  <td className="px-4 py-2 text-right font-semibold tabular-nums">{formatRupiah(items.reduce((sum, i) => sum + i.amount, 0))}</td>
-                </tr>
-              </Fragment>
-            ))}
-            <tr className="border-t-2 border-border">
-              <td colSpan={3} className="px-4 py-2 text-right font-medium text-muted-foreground">
-                Total diajukan
-              </td>
-              <td className="px-4 py-2 text-right font-semibold tabular-nums">{formatRupiah(c.amount)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </TableScroll>
+              </tr>
+            </thead>
+            <tbody>
+              {/* Dikelompokkan per tanggal + subtotal harian, sama dengan detail reimburse. */}
+              {groupByDate(c.items).map(([day, items]) => (
+                <Fragment key={day}>
+                  {items.map((item) => (
+                    <tr key={item.id} className="border-t border-border align-top">
+                      <td className="px-4 py-3 whitespace-nowrap">{formatDate(`${item.date}T00:00:00Z`, "short")}</td>
+                      <td className="px-4 py-3">{item.categoryName}</td>
+                      <td className="px-4 py-3 whitespace-pre-line text-muted-foreground">{item.note || "—"}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{formatRupiah(item.amount)}</td>
+                    </tr>
+                  ))}
+                  <tr className="border-t border-border bg-muted/40 text-sm">
+                    <td colSpan={3} className="px-4 py-2 text-right font-medium text-muted-foreground">
+                      Subtotal {formatDate(`${day}T00:00:00Z`, "short")}
+                    </td>
+                    <td className="px-4 py-2 text-right font-semibold tabular-nums">{formatRupiah(items.reduce((sum, i) => sum + i.amount, 0))}</td>
+                  </tr>
+                </Fragment>
+              ))}
+              <tr className="border-t-2 border-border">
+                <td colSpan={3} className="px-4 py-2 text-right font-medium text-muted-foreground">
+                  {c.status === "DRAFT" ? "Total" : "Total diajukan"}
+                </td>
+                <td className="px-4 py-2 text-right font-semibold tabular-nums">{formatRupiah(c.amount)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </TableScroll>
+      )}
 
       {c.payouts.length > 0 && (
         <section className="rounded-2xl bg-card p-5 shadow-card">

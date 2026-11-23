@@ -11,9 +11,10 @@ const yearRange = (year: number) => ({ gte: fromIsoDate(`${year}-01-01`), lte: f
 
 const claimItems = { orderBy: { id: "asc" as const }, include: { category: { select: { name: true } } } };
 
-/** Nama kategori sebuah klaim: gabungan kategori tiap baris tanpa duplikat (2026-11-06). */
-function categoryLabel(claim: { category: { name: string }; items: { category: { name: string } }[] }) {
-  return claim.items.length ? [...new Set(claim.items.map((item) => item.category.name))].join(", ") : claim.category.name;
+/** Nama kategori sebuah klaim: gabungan kategori tiap baris tanpa duplikat (2026-11-06). Draft belum lengkap → keterangan. */
+function categoryLabel(claim: { category: { name: string } | null; items: { category: { name: string } }[]; draftForm?: unknown }) {
+  if (claim.draftForm != null) return "Draft belum lengkap";
+  return claim.items.length ? [...new Set(claim.items.map((item) => item.category.name))].join(", ") : (claim.category?.name ?? "—");
 }
 
 export type HealthSummary = {
@@ -60,11 +61,16 @@ export async function getHealthSummary(db: PrismaClient, employeeId: string): Pr
 export type HealthClaimRow = {
   id: string;
   employeeId: string;
-  number: string;
+  /** null = draft (nomor HC terbit saat diajukan, 2026-11-23). */
+  number: string | null;
   employeeName: string;
   employeePosition: string;
   categoryName: string;
-  claimDate: string;
+  /** null = draft belum lengkap. */
+  claimDate: string | null;
+  createdAt: string;
+  /** Draft belum lengkap (2026-11-23): belum bisa diajukan. */
+  incomplete: boolean;
   amount: number;
   /** Nominal disetujui (null selama belum disetujui). */
   approvedAmount: number | null;
@@ -79,10 +85,14 @@ export type HealthClaimRow = {
   rejection: { reason: string; by: string } | null;
 };
 
-/** Staf: klaim sendiri; Admin: semua. */
+/** Staf: klaim sendiri; Admin: semua yang sudah diajukan + draft miliknya sendiri (draft orang lain tidak tampil, seperti reimburse). */
 export async function listHealthClaims(db: PrismaClient, viewer: { role: Role; employeeId: string | null }) {
+  const ownId = viewer.employeeId ?? "__none__";
   const claims = await db.healthClaim.findMany({
-    where: viewer.role === "ADMIN" ? {} : { employeeId: viewer.employeeId ?? "__none__" },
+    where: {
+      deletedAt: null,
+      ...(viewer.role === "ADMIN" ? { OR: [{ status: { not: "DRAFT" as const } }, { employeeId: ownId }] } : { employeeId: ownId }),
+    },
     orderBy: { createdAt: "desc" },
     include: {
       employee: { select: { fullName: true, position: true } },
@@ -100,11 +110,13 @@ export async function listHealthClaims(db: PrismaClient, viewer: { role: Role; e
   return claims.map<HealthClaimRow>((claim) => ({
     id: claim.id,
     employeeId: claim.employeeId,
-    number: claim.number,
+    number: claim.status === "DRAFT" ? null : claim.number,
     employeeName: claim.employee.fullName,
     employeePosition: claim.employee.position,
     categoryName: categoryLabel(claim),
-    claimDate: toJakartaIsoDate(claim.claimDate),
+    claimDate: claim.claimDate ? toJakartaIsoDate(claim.claimDate) : null,
+    createdAt: claim.createdAt.toISOString(),
+    incomplete: claim.draftForm !== null,
     amount: Number(claim.amount),
     approvedAmount: claim.approvedAmount === null ? null : Number(claim.approvedAmount),
     note: claim.note,
@@ -123,10 +135,10 @@ export async function listHealthClaims(db: PrismaClient, viewer: { role: Role; e
   }));
 }
 
-/** Detail satu klaim (halaman /kesehatan/[id], 2026-11-20) — tanpa cek hak akses; halaman yang mengecek. */
+/** Detail satu klaim (halaman /kesehatan/[id], 2026-11-20) — tanpa cek hak akses; halaman yang mengecek. Draft terhapus → null. */
 export async function getHealthClaimDetail(db: PrismaClient, claimId: string) {
   const claim = await db.healthClaim.findUnique({
-    where: { id: claimId },
+    where: { id: claimId, deletedAt: null },
     include: {
       employee: { select: { fullName: true, position: true, division: true } },
       category: { select: { name: true } },
@@ -138,7 +150,8 @@ export async function getHealthClaimDetail(db: PrismaClient, claimId: string) {
   const { currentLevel, steps, corrections } = await getApprovalTimeline(db, "HEALTH", claim.id);
   return {
     id: claim.id,
-    number: claim.number,
+    /** null = draft. */
+    number: claim.status === "DRAFT" ? null : claim.number,
     status: claim.status,
     currentLevel,
     employeeId: claim.employeeId,
@@ -146,7 +159,10 @@ export async function getHealthClaimDetail(db: PrismaClient, claimId: string) {
     employeePosition: claim.employee.position,
     division: claim.employee.division,
     categoryName: categoryLabel(claim),
-    claimDate: toJakartaIsoDate(claim.claimDate),
+    /** null = draft belum lengkap. */
+    claimDate: claim.claimDate ? toJakartaIsoDate(claim.claimDate) : null,
+    /** Isian draft belum lengkap (dibaca halaman dengan `healthClaimDraftFormSchema`); null = draft lengkap / sudah diajukan. */
+    draftForm: claim.draftForm,
     amount: Number(claim.amount),
     approvedAmount: claim.approvedAmount === null ? null : Number(claim.approvedAmount),
     note: claim.note,
@@ -250,7 +266,8 @@ export async function healthExportGroups(db: PrismaClient, viewer: { role: strin
   });
   const groups = new Map<string, { employeeId: string; year: number; claimIds: Set<string> }>();
   for (const claim of claims) {
-    const year = Number(toJakartaIsoDate(claim.claimDate).slice(0, 4));
+    // Klaim yang diajukan selalu punya tanggal (hanya draft belum lengkap yang kosong, dan draft tidak ikut ekspor).
+    const year = Number(toJakartaIsoDate(claim.claimDate!).slice(0, 4));
     const key = `${claim.employeeId}|${year}`;
     const group = groups.get(key) ?? { employeeId: claim.employeeId, year, claimIds: new Set<string>() };
     group.claimIds.add(claim.id);
@@ -334,7 +351,8 @@ export async function getHealthPrintData(db: PrismaClient, employeeId: string, y
   const rows: HealthPrintRow[] = claims.map((c) => ({
     id: c.id,
     number: c.number,
-    claimDate: toJakartaIsoDate(c.claimDate),
+    // Draft tidak ikut (status bukan DRAFT), jadi tanggal klaim selalu terisi.
+    claimDate: toJakartaIsoDate(c.claimDate!),
     category: categoryLabel(c),
     note: [c.note, ...c.items.map((item) => item.note)].filter(Boolean).join("; ") || null,
     amount: Number(c.amount),

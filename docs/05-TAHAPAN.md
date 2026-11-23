@@ -874,6 +874,62 @@ per unit (boleh sebagian), memakai Hardware Admission Form, unit yang dikembalik
   detail, daftar, form pengembalian, cetak HAF & Daftar Unit dirender benar (HTML server); klik kirim form belum dicoba
   di browser.
 
+### Tambahan: Draft klaim kesehatan ✅ (2026-11-23)
+Permintaan user: pengajuan klaim kesehatan bisa disimpan sebagai draft, persis seperti pengajuan reimburse.
+- [x] Migrasi `20261123090000_health_claim_draft`: `HealthClaim.draftForm` (isian draft belum lengkap), `deletedAt` (hapus
+      draft = soft delete), `categoryId` & `claimDate` boleh null (hanya draft belum lengkap); data lama tidak berubah, tanpa drift
+- [x] Dialog Ajukan Klaim: tombol **Simpan Draft** (tanpa cek kelengkapan: lengkap → draft biasa, belum lengkap → isian
+      disimpan apa adanya); pesan "Masih ada isian yang belum lengkap…" bila Ajukan ditekan saat isian kurang. Draft baru →
+      halaman detail draft
+- [x] Detail `/kesehatan/[id]` untuk draft: **Ubah** / **Lanjutkan Mengisi** (dialog yang sama berisi data tersimpan),
+      **Hapus**, **Ajukan** (hanya bila lengkap) + catatan "Draft belum lengkap"; klaim ditolak: **Revisi** + **Ajukan Ulang**
+- [x] Daftar klaim: nomor "Draft" (nomor HC terbit saat diajukan), filter status Semua / Draft / Menunggu / Disetujui /
+      Ditolak, tombol Buka Draft / Lanjutkan Mengisi; Admin hanya melihat draft miliknya sendiri
+- [x] Draft tidak mengurangi plafon; plafon, kategori aktif & nomor dicek saat diajukan (satu transaksi, baris dikunci)
+- **Cek:** typecheck kode aplikasi & lint bersih; uji alur oleh user. **Perlu disesuaikan user:**
+  `health.db.test.ts` baris 146 (`claim.claimDate` sekarang bisa null) — sampai itu `npm run typecheck` gagal di file test
+
 ### 16.6 Dashboard Inventaris
 - [ ] Unit di gudang (per rak/posisi), sedang dipinjam (ke mana, PIC, sampai kapan, sisa hari), terlambat, akan jatuh tempo;
       kartu ringkas di Dashboard utama untuk user terkait
+
+---
+
+## Fase 17 — Booking Ruang Meeting (permintaan 2026-11-23)
+
+Keputusan user: 2 ruang meeting, baru Ruang Meeting 1 yang beroperasi; Ruang Meeting 2 dinyalakan Admin di Setting. Tanpa
+approval (siapa cepat dia dapat), wajib aman dari race condition. Senin–Jumat & bukan tanggal Kalender Libur, jam
+operasional di Setting (default 08:30–17:30), kelipatan 30 menit, maks 30 hari ke depan, maks satu hari jam operasional
+per booking, agenda wajib. Pemilik boleh mengubah satu kali (sebelum mulai) dan membatalkan sebelum mulai; Admin boleh
+membatalkan booking siapa pun (alasan wajib). Menonaktifkan ruang yang masih punya booking ditolak. Email konfirmasi ke
+pemesan (dibuat / diubah / dibatalkan). Kalender bulanan sendiri: tanggal, jam, ruang, pemesan, agenda.
+
+### 17.1 Data, service & email ✅ (2026-11-23)
+- [x] Migrasi `20261123100000_meeting_room_booking`: `MeetingRoom` (2 ruang awal), `MeetingBooking`, enum
+      `MeetingBookingStatus`; CHECK `endAt > startAt`; extension `btree_gist` + exclusion constraint
+      `MeetingBooking_no_overlap` (`roomId =`, `tsrange(startAt, endAt, '[)') &&`, hanya ACTIVE) — tanpa drift Prisma
+- [x] `seedMeetingRooms` di `seedAll` & `seedProduction` (reset DB test mengosongkan semua tabel)
+- [x] Aturan murni `lib/meeting-room.ts` (slot 30 menit, hari & jam, batas 30 hari), validator `validators/meeting-room.ts`
+- [x] Service `services/meeting-room.ts`: buat (satu INSERT, bentrok 23P01 → pesan berisi pemesan yang lebih dulu), ubah
+      satu kali (`updateMany` bersyarat `editedAt: null`), batal (bersyarat `status: ACTIVE`), saklar ruang (`FOR UPDATE`
+      vs booking `FOR SHARE`), jam operasional (`AppSetting meetingRoom.hours`); semua tercatat AuditLog
+- [x] Query `services/meeting-room-queries.ts`: daftar ruang, kalender bulanan, Booking Saya
+- [x] Email `meeting-booked` / `meeting-updated` / `meeting-cancelled` (`mail/meeting-booking-emails.ts`)
+- **Cek:** lint bersih; typecheck kode aplikasi bersih (satu-satunya error di `health.db.test.ts` baris 146, dari draft
+  klaim kesehatan). Tanpa test (preferensi user).
+
+### 17.2 Halaman booking ✅ (2026-11-23)
+- [x] Menu "Ruang Meeting" (grup Operasional & Aset): Kalender & Booking Saya
+- [x] Kalender bulanan (`?bulan=`) + panel hari terpilih (`?tanggal=`) per ruang: booking, jam kosong, alasan hari yang
+      tidak bisa dibooking (akhir pekan / libur / lewat / > 30 hari / jam hari ini sudah lewat); HP: kalender mini + titik per ruang
+- [x] Dialog Booking / Ubah (jam dari jam operasional, jam selesai hanya setelah jam mulai), tombol Batal (pemilik: konfirmasi;
+      Admin atas milik orang lain: alasan wajib). Bentrok → pesan di dialog + kalender ikut diperbarui (`revalidatePath`)
+- [x] Booking Saya: mendatang (Ubah bila belum pernah diubah, Batal) + riwayat 30 hari (Selesai / Dibatalkan oleh … + alasan)
+
+### 17.3 Setting & dokumen ✅ (2026-11-23)
+- [x] Setting → Ruang Meeting: jam operasional (dropdown kelipatan 30 menit) + Nyalakan / Nonaktifkan tiap ruang (jumlah
+      booking yang belum selesai ditampilkan); kartu & sub-menu Setting
+- [x] Update `CLAUDE.md`, `docs/01-URD.md` (§3.10a MTG-01…09, SET-08, NTF-05), `docs/02-TECH-SPEC.md` (§6.7),
+      `docs/04-MAPPING-MENU.md`, `docs/PLAN.md` (Fase 17), `docs/09-DOKUMENTASI-TEKNIS.md` (.docx belum dibuat ulang)
+- **Cek:** lint bersih; typecheck kode aplikasi bersih (error tersisa hanya `health.db.test.ts` baris 146). Uji alur oleh
+  user (langkah di laporan sesi).

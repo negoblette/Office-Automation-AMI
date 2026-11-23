@@ -1,11 +1,14 @@
 "use client";
 
+import { Pencil } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { requestStatusBadge } from "@/components/shared/approval-status";
+import { FilterPills } from "@/components/shared/filter-pills";
 import { PersonCell } from "@/components/shared/person-cell";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { DataTable, type DataTableColumn, dataTableColumnHelper } from "@/components/table/data-table";
+import { buttonVariants } from "@/components/ui/button";
 import { formatDate, formatRupiah } from "@/lib/format";
 import type { HealthClaimRow } from "@/lib/services/health-queries";
 import { ExportLinks } from "@/components/shared/export-selector";
@@ -15,13 +18,17 @@ import { HealthClaimDialog } from "./claim-form";
 const col = dataTableColumnHelper<HealthClaimRow>();
 const monthLabel = (yearMonth: string) => formatDate(`${yearMonth}-01T00:00:00Z`, "short").replace(/^1 /, "");
 
-// Klik nomor → halaman detail klaim (2026-11-20, seperti reimburse).
-const numberColumn = col.accessor("number", {
+// Klik nomor → halaman detail klaim (2026-11-20, seperti reimburse). Draft (2026-11-23) belum bernomor: "Draft" + tanggal
+// klaim, atau tanggal dibuat bila draft belum lengkap.
+const numberColumn = col.accessor((row) => row.number ?? "Draft", {
+  id: "number",
   header: "Nomor & Tanggal",
   cell: ({ row }) => (
     <Link href={`/kesehatan/${row.original.id}`} className="block hover:underline">
-      <p className="font-semibold whitespace-nowrap">{row.original.number}</p>
-      <p className="text-xs whitespace-nowrap text-muted-foreground">{formatDate(`${row.original.claimDate}T00:00:00Z`, "short")}</p>
+      <p className="font-semibold whitespace-nowrap">{row.original.number ?? "Draft"}</p>
+      <p className="text-xs whitespace-nowrap text-muted-foreground">
+        {row.original.claimDate ? formatDate(`${row.original.claimDate}T00:00:00Z`, "short") : `Dibuat ${formatDate(row.original.createdAt, "short")}`}
+      </p>
     </Link>
   ),
 });
@@ -62,7 +69,7 @@ const restColumns = [
               diajukan <span className="line-through">{formatRupiah(amount)}</span>
             </p>
           )}
-          {approvedAmount === null && <p className="text-xs text-muted-foreground">diajukan</p>}
+          {approvedAmount === null && <p className="text-xs text-muted-foreground">{row.original.status === "DRAFT" ? "belum diajukan" : "diajukan"}</p>}
         </div>
       );
     },
@@ -106,11 +113,18 @@ const restColumns = [
 /** Data form untuk tombol Revisi (klaim milik sendiri yang ditolak). */
 export type ClaimReviseContext = { categories: { value: string; label: string }[]; remaining: number };
 
+type StatusFilter = "ALL" | "DRAFT" | "PENDING" | "APPROVED" | "REJECTED";
+
 export function HealthClaimTable({ rows, showRequester, revise }: { rows: HealthClaimRow[]; showRequester: boolean; revise?: ClaimReviseContext }) {
-  // Filter per nama karyawan (2026-11-09, Admin).
+  // Filter status (2026-11-23, sama dengan reimburse) & per nama karyawan (2026-11-09, Admin).
+  const [status, setStatus] = useState<StatusFilter>("ALL");
   const [person, setPerson] = useState("");
   const people = useMemo(() => [...new Map(rows.map((row) => [row.employeeId, row.employeeName])).entries()].sort((a, b) => a[1].localeCompare(b[1], "id")), [rows]);
-  const data = useMemo(() => (person ? rows.filter((row) => row.employeeId === person) : rows), [rows, person]);
+  const data = useMemo(
+    () => rows.filter((row) => (status === "ALL" || row.status === status) && (!person || row.employeeId === person)),
+    [rows, status, person],
+  );
+  const count = (s: StatusFilter) => rows.filter((row) => row.status === s).length;
   const columns = useMemo(
     () =>
       [
@@ -127,13 +141,20 @@ export function HealthClaimTable({ rows, showRequester, revise }: { rows: Health
               {revise && row.original.own && row.original.status === "REJECTED" && (
                 <HealthClaimDialog
                   {...revise}
-                  revise={{
+                  claim={{
                     id: row.original.id,
                     number: row.original.number,
+                    status: "REJECTED",
                     items: row.original.items,
                     note: row.original.note,
                   }}
                 />
+              )}
+              {/* Draft (2026-11-23): dilanjutkan / diajukan / dihapus dari halaman detailnya, seperti reimburse. */}
+              {row.original.own && row.original.status === "DRAFT" && (
+                <Link href={`/kesehatan/${row.original.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+                  <Pencil aria-hidden /> {row.original.incomplete ? "Lanjutkan Mengisi" : "Buka Draft"}
+                </Link>
               )}
             </div>
           ),
@@ -142,14 +163,28 @@ export function HealthClaimTable({ rows, showRequester, revise }: { rows: Health
     [showRequester, revise],
   );
   return (
-    <DataTable
-      columns={columns}
-      data={data}
-      toolbar={showRequester && <PersonFilter value={person} onChange={setPerson} people={people} />}
-      getRowId={(row) => row.id}
-      searchPlaceholder="Cari nomor, karyawan, kategori…"
-      rowNoun="klaim"
-      emptyMessage="Belum ada klaim kesehatan."
-    />
+    <div className="flex flex-col gap-4">
+      <FilterPills
+        label="Status"
+        value={status}
+        onChange={setStatus}
+        options={[
+          { value: "ALL", label: "Semua", count: rows.length },
+          { value: "DRAFT", label: "Draft", count: count("DRAFT") },
+          { value: "PENDING", label: "Menunggu", count: count("PENDING") },
+          { value: "APPROVED", label: "Disetujui", count: count("APPROVED") },
+          { value: "REJECTED", label: "Ditolak", count: count("REJECTED"), danger: count("REJECTED") > 0 },
+        ]}
+      />
+      <DataTable
+        columns={columns}
+        data={data}
+        toolbar={showRequester && <PersonFilter value={person} onChange={setPerson} people={people} />}
+        getRowId={(row) => row.id}
+        searchPlaceholder="Cari nomor, karyawan, kategori…"
+        rowNoun="klaim"
+        emptyMessage="Belum ada klaim kesehatan."
+      />
+    </div>
   );
 }

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CalendarCog, ChevronRight, Clock, Database, GitBranch, HeartPulse, KeyRound, UserCog, Warehouse, type LucideIcon } from "lucide-react";
+import { CalendarCog, ChevronRight, Clock, Database, DoorOpen, GitBranch, HeartPulse, KeyRound, UserCog, Warehouse, type LucideIcon } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { requireAdmin } from "@/lib/auth/guards";
 import { isRecoveryKeyHolder } from "@/lib/services/recovery-key";
@@ -50,6 +50,12 @@ const SETTING_SECTIONS: { title: string; description: string; href: string; icon
     href: "/setting/inventaris",
     icon: Warehouse,
   },
+  {
+    title: "Ruang Meeting",
+    description: "Jam operasional booking dan ruang meeting yang sedang beroperasi.",
+    href: "/setting/ruang-meeting",
+    icon: DoorOpen,
+  },
 ];
 
 /** Hanya untuk pemegang kunci (env RECOVERY_KEY_HOLDERS). */
@@ -68,7 +74,7 @@ export default async function SettingPage() {
     <div className="space-y-6">
       <PageHeader
         title="Setting"
-        description="Pengaturan sistem: user, approval flow, cuti, plafon kesehatan, dan master data."
+        description="Pengaturan sistem: user, approval flow, cuti, plafon kesehatan, ruang meeting, dan master data."
         breadcrumbs={[{ label: "Kontrol & Sistem" }, { label: "Setting" }]}
       />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

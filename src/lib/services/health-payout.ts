@@ -32,7 +32,8 @@ export async function applyApprovedHealthClaim(tx: Tx, claimId: string, approved
     throw new ServiceError("Nominal disetujui harus lebih dari 0 dan tidak melebihi nominal diajukan", "approvedAmount");
   }
   const claim = await tx.healthClaim.update({ where: { id: claimId }, data: { status: "APPROVED", approvedAt, approvedAmount: approved } });
-  const claimYear = Number(toJakartaIsoDate(claim.claimDate).slice(0, 4));
+  // Klaim yang disetujui pernah diajukan, jadi tanggal klaim selalu terisi (null hanya untuk draft belum lengkap).
+  const claimYear = Number(toJakartaIsoDate(claim.claimDate!).slice(0, 4));
   await lockPlafond(tx, claim.employeeId, claimYear);
   await tx.healthPayout.create({
     data: {

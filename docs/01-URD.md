@@ -25,6 +25,7 @@ alur approval berjenjang dan notifikasi email.
 9. Expense & Revenue Project
 10. Role User, Mapping Approval, Setting
 11. Notifikasi Email
+12. Booking Ruang Meeting (Fase 17, 2026-11-23)
 
 ### 1.3 Di Luar Ruang Lingkup (fase ini)
 - Tools testing skill karyawan
@@ -177,6 +178,20 @@ Approval bersifat berurutan. Approval Level 2 (atau level terakhir) adalah final
 | SET-05 | Master data: tipe reimburse per divisi, kategori klaim, libur, customer, project |
 | SET-06 | Hak approve berdasarkan mapping approval, bukan role saja |
 | SET-07 | Jam kerja (jam masuk & pulang) untuk absensi |
+| SET-08 | Ruang meeting: jam operasional booking (default 08:30–17:30) dan saklar aktif per ruang (MTG-01, MTG-09) |
+
+### 3.10a Booking Ruang Meeting (MTG) — ditambahkan 2026-11-23
+| ID | Requirement |
+|---|---|
+| MTG-01 | Ada 2 ruang meeting; saat ini hanya Ruang Meeting 1 yang beroperasi. Admin menyalakan / mematikan ruang di Setting → Ruang Meeting (nama & kapasitas belum diatur) |
+| MTG-02 | Semua karyawan bisa booking **tanpa approval** — siapa cepat dia dapat. Satu ruang tidak boleh dipakai dua booking di jam yang bertumpuk, termasuk saat dua orang menyimpan bersamaan (dijaga database) |
+| MTG-03 | Booking hanya Senin–Jumat dan bukan tanggal di Kalender Libur, di dalam jam operasional (Setting, default 08:30–17:30), kelipatan 30 menit, paling lama satu hari jam operasional, paling jauh 30 hari ke depan, tidak boleh jam yang sudah lewat |
+| MTG-04 | Isian: ruang, tanggal, jam mulai–selesai, agenda (wajib, maks 200 karakter) |
+| MTG-05 | Pemesan boleh mengubah booking (ruang, tanggal, jam, agenda) **satu kali** per booking, sebelum jam mulai |
+| MTG-06 | Pemesan boleh membatalkan sebelum jam mulai; Admin boleh membatalkan booking siapa pun sebelum jam selesai, alasan wajib bila bukan miliknya. Jam yang dibatalkan langsung bebas |
+| MTG-07 | Kalender bulanan di fitur ini menampilkan tanggal, jam mulai–selesai, ruang, pemesan, dan agenda; semua karyawan melihat semua booking |
+| MTG-08 | Email konfirmasi ke pemesan saat booking dibuat, diubah, dan dibatalkan (pembatalan oleh Admin menyertakan alasan) |
+| MTG-09 | Menonaktifkan ruang yang masih punya booking yang belum selesai ditolak |
 
 ### 3.11 Notifikasi Email (NTF)
 | ID | Event | Penerima |
@@ -185,6 +200,7 @@ Approval bersifat berurutan. Approval Level 2 (atau level terakhir) adalah final
 | NTF-02 | Approve non-final | Approver step berikutnya + info ke pemohon |
 | NTF-03 | Approve final | Pemohon + semua Admin |
 | NTF-04 | Sertifikat / support / warranty H-30 | Karyawan terkait + Admin |
+| NTF-05 | Booking ruang meeting dibuat / diubah / dibatalkan | Pemesan |
 
 ## 4. Kebutuhan Non-Fungsional
 | ID | Requirement |

@@ -221,6 +221,8 @@ model User {
   goodsReceiptsPrepared  GoodsReceipt[]         @relation("GoodsReceiptPreparer")
   goodsReturnsPrepared   GoodsReturn[]          @relation("GoodsReturnPreparer")
   demoLoanExtensions     DemoLoanExtension[]
+  meetingBookings        MeetingBooking[]       @relation("MeetingBookingOwner")
+  meetingBookingsCancelled MeetingBooking[]     @relation("MeetingBookingCanceller")
 }
 
 /// File yang di-upload lewat aplikasi (hardening Tahap 7): pengunggahnya — hanya dia yang boleh menautkan file ke data —
@@ -1007,23 +1009,27 @@ model HealthClaim {
   number      String         @unique // HC/YYYY/MM/NNNN
   employeeId  String
   employee    Employee       @relation(fields: [employeeId], references: [id])
-  /// Kategori baris pertama (rincian per baris di `items`, 2026-11-06).
-  categoryId  String
-  category    HealthCategory @relation(fields: [categoryId], references: [id])
-  /// Tanggal baris paling awal; tahunnya = tahun plafon (semua baris wajib di tahun yang sama).
-  claimDate   DateTime       @db.Date
+  /// Kategori baris pertama (rincian per baris di `items`, 2026-11-06). null hanya untuk draft belum lengkap (2026-11-23).
+  categoryId  String?
+  category    HealthCategory? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  /// Tanggal baris paling awal; tahunnya = tahun plafon (semua baris wajib di tahun yang sama). null hanya untuk draft belum lengkap.
+  claimDate   DateTime?       @db.Date
   /// Total semua baris.
   amount      BigInt
   note        String?
-  status      RequestStatus  @default(DRAFT)
+  status      RequestStatus   @default(DRAFT)
   submittedAt DateTime?
   approvedAt  DateTime?
-  createdAt   DateTime       @default(now())
+  createdAt   DateTime        @default(now())
 
   items          HealthClaimItem[]
   payouts        HealthPayout[]
   /// Nominal disetujui approver (≤ nominal diajukan `amount`); null selama belum disetujui.
   approvedAmount BigInt?
+  /// Draft belum lengkap (2026-11-23, seperti reimburse): isian form apa adanya; `items` kosong sampai lengkap.
+  draftForm      Json?
+  /// Draft dihapus pemohon (soft delete, NFR v1.14). Hanya draft yang bisa dihapus.
+  deletedAt      DateTime?
 
   @@index([employeeId, status])
 }
@@ -1355,5 +1361,53 @@ model Division {
   isActive    Boolean  @default(true)
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------
+// RUANG MEETING (Fase 17, 2026-11-23) — booking tanpa approval, siapa cepat dia dapat.
+// ---------------------------------------------------------------------
+
+/// Ruang meeting. Dibuat lewat migrasi (Ruang Meeting 1 aktif, Ruang Meeting 2 nonaktif); Admin hanya menyalakan /
+/// mematikan di Setting → Ruang Meeting. Mematikan ditolak bila ruang masih punya booking aktif yang belum selesai.
+model MeetingRoom {
+  id        String           @id @default(cuid())
+  number    Int              @unique
+  name      String
+  isActive  Boolean          @default(false)
+  bookings  MeetingBooking[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+enum MeetingBookingStatus {
+  ACTIVE
+  CANCELLED
+}
+
+/// Booking ruang meeting. Bentrok jadwal dicegah di DATABASE oleh exclusion constraint "MeetingBooking_no_overlap"
+/// (btree_gist, `tsrange(startAt, endAt, '[)')`, hanya status ACTIVE) — dibuat di migrasi, tidak dikenal Prisma.
+/// Dibatalkan = status CANCELLED (riwayat tetap ada), bukan dihapus.
+model MeetingBooking {
+  id            String               @id @default(cuid())
+  roomId        String
+  room          MeetingRoom          @relation(fields: [roomId], references: [id])
+  /// Pemesan = User (super admin tanpa data karyawan juga bisa booking).
+  userId        String
+  user          User                 @relation("MeetingBookingOwner", fields: [userId], references: [id])
+  agenda        String
+  startAt       DateTime
+  endAt         DateTime
+  status        MeetingBookingStatus @default(ACTIVE)
+  /// Terisi = jatah ubah satu kali sudah dipakai.
+  editedAt      DateTime?
+  cancelledAt   DateTime?
+  cancelledById String?
+  cancelledBy   User?                @relation("MeetingBookingCanceller", fields: [cancelledById], references: [id])
+  cancelReason  String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@index([startAt])
+  @@index([userId, startAt])
 }
 

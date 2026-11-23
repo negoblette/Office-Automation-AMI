@@ -646,6 +646,25 @@ pengajuan 3 hari kerja"*.
 
 **File kode:** `src/lib/services/project.ts`, `project-queries.ts`.
 
+### 8.10a Ruang meeting (booking, 2026-11-23)
+**Untuk apa:** semua karyawan memesan ruang meeting **tanpa approval** — siapa yang lebih dulu tersimpan, dia yang dapat.
+
+- Halaman **Ruang Meeting** (`/ruang-meeting`) berisi kalender bulanan: tanggal, jam, ruang, pemesan, dan agenda. Klik
+  tanggal untuk melihat booking per ruang dan jam yang masih kosong. **Booking Saya** (`/ruang-meeting/saya`) berisi booking
+  mendatang dan riwayat 30 hari.
+- Aturan: Senin–Jumat dan bukan hari libur, di dalam jam operasional (Setting, awalnya 08:30–17:30), kelipatan 30 menit,
+  paling jauh 30 hari ke depan, agenda wajib. Pemesan boleh **mengubah satu kali** dan membatalkan sebelum jam mulai.
+  Admin boleh membatalkan booking siapa pun dengan alasan.
+- Ada 2 ruang; Ruang Meeting 2 dinyalakan Admin di **Setting → Ruang Meeting** saat sudah bisa dipakai. Ruang yang masih
+  punya booking tidak bisa dimatikan.
+- **Anti rebutan:** pengecekan bentrok jadwal dilakukan oleh database sendiri (aturan `MeetingBooking_no_overlap`). Bila dua
+  orang menekan Booking untuk jam yang sama di detik yang sama, database hanya menerima satu; yang lain mendapat pesan
+  "sudah dibooking oleh …". Perumpamaannya: satu kursi hanya bisa diduduki satu orang, dan kursinya sendiri yang menolak.
+- Email konfirmasi dikirim ke pemesan saat booking dibuat, diubah, atau dibatalkan.
+
+**File kode:** `src/lib/meeting-room.ts`, `src/lib/services/meeting-room.ts`, `meeting-room-queries.ts`,
+`src/app/(main)/ruang-meeting/`.
+
 ### 8.11 Halaman Approval
 **Untuk apa:** tempat Admin & Approver menyelesaikan pengajuan yang ditugaskan kepada mereka.
 
@@ -663,6 +682,7 @@ menunggu. Cara kerja lengkapnya ada di §9.
 | Plafon Kesehatan | Plafon tahunan per karyawan |
 | Master Data | Tipe reimburse, kategori klaim kesehatan |
 | Jam Kerja & Absensi | Jam masuk/pulang, tanggal mulai pemotongan cuti karena tidak hadir |
+| Ruang Meeting | Jam operasional booking ruang meeting, menyalakan / mematikan ruang |
 | Kunci Pemulihan | **Hanya untuk pemegang kunci** (Pak Rudy & Pak Leonard, `RECOVERY_KEY_HOLDERS`): membuat, menguji, dan mengganti kata sandi pemulihan backup (Bab 15) |
 
 ### 8.13 Cetak & export
@@ -797,6 +817,7 @@ urut dimulai lagi dari 0001 setiap bulan.
 | Kesehatan | `HealthCategory`, `HealthPlafond`, `HealthClaim`, `HealthPayout` | Kategori, plafon, klaim, jadwal bayar |
 | Reimburse | `ReimburseType`, `Reimbursement`, `ReimbursementItem` | Tipe, pengajuan, baris biaya |
 | Project | `Customer`, `Project`, `ProjectExpense` | Customer, project, expense |
+| Ruang meeting | `MeetingRoom`, `MeetingBooking` | Daftar ruang & booking (anti bentrok dijaga database) |
 | Inventory (ditunda) | `Asset`, `AssetAssignment` | Unit demo & peminjamannya |
 | Approval | `ApprovalFlow`, `ApprovalFlowStep`, `ApprovalStepApprover`, `ApprovalRequest`, `ApprovalRequestStep`, `ApprovalCorrection` | Definisi alur, salinan alur per pengajuan, koreksi |
 | Sistem | `NumberSequence`, `AppSetting`, `AuditLog`, `EmailLog`, `ReminderLog` | Penghitung nomor, pengaturan, audit, log email, log pengingat |
@@ -900,6 +921,7 @@ Antrian dan jadwalnya disimpan di PostgreSQL (skema `pgboss`), jadi tidak butuh 
 | `reminder-expiry` | 30 hari sebelum masa berlaku habis | Karyawan + Admin |
 | `security-notice` | Password/MFA diganti atau di-reset, kode cadangan dibuat ulang atau dipakai | Pemilik akun |
 | `security-alert` | Ada kejadian mencurigakan (lihat §14.6) | Semua Admin aktif |
+| `meeting-booked` / `meeting-updated` / `meeting-cancelled` | Booking ruang meeting dibuat / diubah / dibatalkan | Pemesan |
 
 Setiap email berisi nomor dokumen, ringkasan, dan link langsung ke halaman terkait. Di komputer developer, email tidak
 benar-benar terkirim: semuanya ditangkap **Mailpit** dan bisa dilihat di http://localhost:8025. Di produksi, koneksi

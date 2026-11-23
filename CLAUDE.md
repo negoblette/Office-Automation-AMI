@@ -66,7 +66,7 @@ src/
     (auth)/login/
     (main)/            # layout dengan sidebar, butuh login
       dashboard/ absensi/ overtime/ profil/ karyawan/ kandidat/ inventory/ (ditunda)
-      reimburse/ cuti/ kesehatan/ project/ approval/ setting/
+      reimburse/ cuti/ kesehatan/ project/ ruang-meeting/ approval/ setting/
     api/files/[key]/   # download file dengan cek hak akses (key = fileKey UUID)
   components/          # ui/ (shadcn), form/, table/, layout/
   lib/
@@ -203,9 +203,12 @@ Rekap cetak per orang per tahun di `/cetak/kesehatan` (2026-10-16).
 **Baris klaim (2026-11-06):** satu klaim berisi beberapa baris seperti reimburse tanpa kunjungan (`HealthClaimItem`: kategori, tanggal,
 nominal, keterangan). `HealthClaim.amount` = total, `claimDate` = tanggal paling awal, `categoryId` = baris pertama; semua baris wajib
 di tahun yang sama (plafon per tahun). Nominal disetujui tetap satu angka per klaim.
+**Draft klaim (2026-11-23, sama dengan draft reimburse):** Simpan Draft tanpa cek kelengkapan — lengkap → draft biasa (`DRAFT-<uuid>`);
+belum lengkap → `HealthClaim.draftForm` tanpa baris, `categoryId`/`claimDate` null (hanya draft). Plafon & nomor HC saat diajukan.
+Draft hanya terlihat pemiliknya, dihapus soft delete (`deletedAt`); query klaim WAJIB memfilter `deletedAt: null`.
 
 **Hapus data = soft delete** (`deletedAt`, NFR v1.14): Document, Certificate, FamilyMember, Candidate, Customer,
-Holiday, Reimbursement (draft), ApprovalFlow, Asset. Setiap query WAJIB memfilter `deletedAt: null` (termasuk
+Holiday, Reimbursement (draft), HealthClaim (draft), ApprovalFlow, Asset. Setiap query WAJIB memfilter `deletedAt: null` (termasuk
 include relasi); file di storage tidak dihapus. Tambah ulang libur/customer yang pernah dihapus → dipulihkan.
 Reimburse: 6 tipe untuk semua divisi. Dokumen: Kelompok I & II (`DOCUMENT_GROUP_I/II`).
 
@@ -310,6 +313,14 @@ menggabungkan tanggal yang hanya dipisah akhir pekan/libur jadi satu appeal rent
 untuk semuanya): hari kerja tidak hadir → appeal Sakit (surat keterangan sakit PDF opsional — wajib 2026-10-14, opsional sejak 2026-11-03) / Kunjungan keluar / Lainnya (keterangan wajib, tanpa lampiran, 2026-10-30) maks 7 hari (modul ATTENDANCE_APPEAL,
 `APL/…`, Bu Ika; milik Bu Ika → Fallback). Lewat 7 hari tanpa appeal → job `attendance.deduct` (01:00 WIB) memotong
 1 hari cuti (`LeaveAdjustment` ABSENCE), hanya untuk tanggal ≥ `attendance.deductionStartDate`.
+
+**Ruang meeting (Fase 17, 2026-11-23):** booking **tanpa approval** (siapa cepat dia dapat) di `/ruang-meeting` (kalender bulanan +
+panel hari) & `/ruang-meeting/saya`. `MeetingRoom` (Ruang Meeting 1 aktif, 2 nonaktif — dari migrasi + `seedMeetingRooms`; Admin
+menyalakan di Setting → Ruang Meeting, nonaktifkan ditolak bila masih ada booking belum selesai). Bentrok dicegah **database**:
+exclusion constraint `MeetingBooking_no_overlap` (btree_gist, `tsrange '[)'`, hanya ACTIVE) — jangan ganti dengan cek-lalu-simpan;
+error 23P01 → `isBookingOverlapError`. Senin–Jumat bukan libur, jam operasional `AppSetting meetingRoom.hours` (default 08:30–17:30),
+kelipatan 30 menit, ≤ 30 hari ke depan, agenda wajib. Pemilik ubah 1× (`editedAt`) & batal sebelum mulai; Admin batal siapa pun
+(alasan wajib bila bukan miliknya). Batal = status CANCELLED. Email konfirmasi ke pemesan (dibuat/diubah/dibatalkan). Detail: Tech Spec §6.7.
 
 **Modul ditunda:** Inventory / Demo Unit (`FEATURES.inventory = false` di `src/lib/features.ts`) —
 menu, halaman, aksi, dashboard & job `reminder.asset` nonaktif; kode & data tetap ada. Super admin tetap bisa membuka

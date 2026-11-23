@@ -40,7 +40,7 @@ async function detailLines(db: PrismaClient, module: ApprovalModule, entityId: s
     }
     case "HEALTH": {
       const c = await db.healthClaim.findUnique({ where: { id: entityId }, include: { category: { select: { name: true } }, _count: { select: { items: true } } } });
-      return c ? [`Klaim ${c._count.items > 1 ? `${c._count.items} baris` : c.category.name}: ${formatRupiah(Number(c.amount))}`] : [];
+      return c ? [`Klaim ${c._count.items > 1 ? `${c._count.items} baris` : (c.category?.name ?? "—")}: ${formatRupiah(Number(c.amount))}`] : [];
     }
     case "DEMO_LOAN": {
       const loan = await db.demoLoan.findUnique({

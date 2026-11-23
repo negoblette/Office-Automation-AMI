@@ -250,12 +250,26 @@ export async function seedApprovalFlows(prisma: PrismaClient, userIds: Record<st
   console.log(`✔ approval flow: ${APPROVAL_FLOWS.length} flow (${created} baru)`);
 }
 
+// Ruang meeting (Fase 17, 2026-11-23) — sama dengan isi migrasi 20261123100000_meeting_room_booking. Dibuat ulang di sini
+// karena reset database test mengosongkan semua tabel. Status yang sudah diatur Admin tidak ditimpa.
+export const MEETING_ROOMS = [
+  { id: "mtg_room_1", number: 1, name: "Ruang Meeting 1", isActive: true },
+  { id: "mtg_room_2", number: 2, name: "Ruang Meeting 2", isActive: false },
+];
+
+export async function seedMeetingRooms(prisma: PrismaClient) {
+  for (const room of MEETING_ROOMS) {
+    await prisma.meetingRoom.upsert({ where: { number: room.number }, create: room, update: {} });
+  }
+}
+
 /** Seed dev & test (data contoh). Mengembalikan id user per key (mis. "rudy"). */
 export async function seedAll(prisma: PrismaClient, passwordHash: string, { log = true } = {}) {
   const original = console.log;
   if (!log) console.log = () => undefined;
   try {
     await seedDivisions(prisma);
+    await seedMeetingRooms(prisma);
     const userIds = await seedPeople(prisma, passwordHash);
     await seedMasterData(prisma);
     await seedApprovalFlows(prisma, userIds);
@@ -272,6 +286,7 @@ export async function seedAll(prisma: PrismaClient, passwordHash: string, { log 
  */
 export async function seedProduction(prisma: PrismaClient, passwordHash: string, adminEmail: string) {
   await seedLeaveRules(prisma);
+  await seedMeetingRooms(prisma);
   const email = adminEmail.trim().toLowerCase();
   // Password & status tidak ditimpa saat seed diulang. Akun Admin sistem = super admin (2026-10-30).
   await prisma.user.upsert({

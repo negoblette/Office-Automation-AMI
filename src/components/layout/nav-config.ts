@@ -4,6 +4,7 @@ import {
   CalendarDays,
   CheckCheck,
   Clock,
+  DoorOpen,
   HeartPulse,
   LayoutGrid,
   MonitorSmartphone,
@@ -118,6 +119,16 @@ export const NAV_GROUPS: NavGroup[] = [
           { label: "Customer & Project", href: "/project/customer", adminOnly: true },
         ],
       },
+      {
+        // Booking ruang meeting (Fase 17, 2026-11-23): semua karyawan.
+        label: "Ruang Meeting",
+        href: "/ruang-meeting",
+        icon: DoorOpen,
+        children: [
+          { label: "Kalender", href: "/ruang-meeting" },
+          { label: "Booking Saya", href: "/ruang-meeting/saya" },
+        ],
+      },
     ],
   },
   {
@@ -172,6 +183,7 @@ export const NAV_GROUPS: NavGroup[] = [
           { label: "Inventaris & Rak", href: "/setting/inventaris" },
           { label: "Jatah Cuti & Carry Over", href: "/setting/cuti" },
           { label: "Plafon Kesehatan", href: "/setting/kesehatan" },
+          { label: "Ruang Meeting", href: "/setting/ruang-meeting" },
           { label: "Master Data", href: "/setting/master" },
         ],
       },

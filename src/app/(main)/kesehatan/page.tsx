@@ -19,20 +19,24 @@ export default async function KesehatanPage() {
     listHealthClaims(prisma, user),
     listHealthCategories(prisma),
   ]);
-  // Pilihan ekspor: klaim yang menunggu / disetujui (draft & yang ditolak tidak ikut).
-  const exportItems: ExportItem[] = rows
-    .filter((row) => row.status === "PENDING" || row.status === "APPROVED")
-    .map((row) => ({
-      id: row.id,
-      employeeId: row.employeeId,
-      employeeName: row.employeeName,
-      title: row.number,
-      subtitle: `${formatDate(`${row.claimDate}T00:00:00Z`, "short")} · ${row.categoryName}${row.items.length > 1 ? ` (${row.items.length} baris)` : ""}`,
-      amount: row.approvedAmount ?? row.amount,
-      month: row.claimDate.slice(0, 7),
-      status: row.status,
-      currentLevel: row.currentLevel,
-    }));
+  // Pilihan ekspor: klaim yang menunggu / disetujui (draft & yang ditolak tidak ikut; yang diajukan selalu bernomor & bertanggal).
+  const exportItems: ExportItem[] = rows.flatMap((row) =>
+    (row.status === "PENDING" || row.status === "APPROVED") && row.number && row.claimDate
+      ? [
+          {
+            id: row.id,
+            employeeId: row.employeeId,
+            employeeName: row.employeeName,
+            title: row.number,
+            subtitle: `${formatDate(`${row.claimDate}T00:00:00Z`, "short")} · ${row.categoryName}${row.items.length > 1 ? ` (${row.items.length} baris)` : ""}`,
+            amount: row.approvedAmount ?? row.amount,
+            month: row.claimDate.slice(0, 7),
+            status: row.status,
+            currentLevel: row.currentLevel,
+          },
+        ]
+      : [],
+  );
 
   return (
     <div className="flex flex-col gap-6">

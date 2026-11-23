@@ -157,6 +157,23 @@
 
 ---
 
+> Fase 11–16 adalah permintaan perubahan setelah rilis awal; rinciannya hanya di `docs/05-TAHAPAN.md`.
+
+## Fase 17 — Booking Ruang Meeting (MTG, 2026-11-23)
+
+**Prompt:**
+> Buat fitur booking ruang meeting sesuai URD §3.10a dan Tech Spec §6.7: tanpa approval, aman dari race condition
+> (exclusion constraint database), kalender bulanan, Booking Saya, email konfirmasi, dan Setting → Ruang Meeting
+> (jam operasional + saklar ruang). Rincian tahap di docs/05-TAHAPAN.md Fase 17.
+
+**Kriteria selesai** (dicentang setelah uji manual user):
+- [ ] Dua booking bertumpuk di ruang yang sama ditolak, juga saat disimpan bersamaan (pesan menyebut pemesan yang lebih dulu)
+- [ ] Aturan hari/jam (Senin–Jumat bukan libur, jam operasional, kelipatan 30 menit, ≤ 30 hari), ubah 1×, batal, alasan Admin
+- [ ] Ruang Meeting 2 bisa dinyalakan di Setting; nonaktifkan ditolak bila masih ada booking
+- [ ] Email konfirmasi dibuat / diubah / dibatalkan muncul di Mailpit
+
+---
+
 ## Tips Bekerja dengan Claude Code
 - Jika hasil menyimpang dari docs, minta Claude Code membaca ulang bagian docs yang relevan.
 - Jika user memberi jawaban baru untuk Open Issue, **update `docs/01-URD.md` dulu**, lalu

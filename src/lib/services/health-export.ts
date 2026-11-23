@@ -43,7 +43,8 @@ export async function listHealthExportClaims(db: PrismaClient, viewer: { role: s
     employeeName: c.employee.fullName,
     employeeNo: c.employee.employeeNo,
     division: divisions[c.employee.division] ?? c.employee.division,
-    claimDate: toJakartaIsoDate(c.claimDate),
+    // Draft tidak ikut ekspor, jadi tanggal klaim selalu terisi (null hanya untuk draft belum lengkap).
+    claimDate: toJakartaIsoDate(c.claimDate!),
     note: c.note,
     status: c.status,
     amount: Number(c.amount),

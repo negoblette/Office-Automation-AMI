@@ -29,6 +29,8 @@ approval flow pengajuan tersebut.
 | └ Verifikasi Pengecekan Unit (Setujui / Tolak) | Approval Center & detail peminjaman | Approver di Approval Flow "Verifikasi Pengembalian Unit" (Ko Yosep) | Disetujui → Selesai / **Tindak lanjut**; ditolak → Operational cek ulang |
 | └ Selesaikan Tindak Lanjut (dialog di detail: hasil tiap unit bermasalah + catatan) | `/inventory/peminjaman/[id]` | Lihat saja (kecuali ditunjuk Operational) | Operational menutup; PIC & Operational menerima email & lonceng tiap 7 hari sampai selesai |
 | └ Cetak Hardware Admission Form (2 lembar: asli + COPY, dibawa kurir) | `/cetak/peminjaman/[id]/haf` | ✔ (sejak pengambilan dijadwalkan) | Semua user Inventaris |
+| **Ruang Meeting** *(Fase 17, 2026-11-23)* — Kalender (bulanan + panel hari: booking per ruang, jam kosong) | `/ruang-meeting` | ✔ Lihat semua + booking; **Batal** booking siapa pun (alasan wajib bila bukan miliknya) | ✔ Lihat semua + booking (tanpa approval); Ubah 1× & Batal milik sendiri sebelum jam mulai |
+| └ Booking Saya (mendatang + riwayat 30 hari) | `/ruang-meeting/saya` | ✔ | ✔ |
 | **Reimburse** | `/reimburse` | Ajukan + lihat semua | Ajukan + milik sendiri |
 | └ Pengajuan Baru | `/reimburse/baru` | ✔ | ✔ |
 | └ Detail | `/reimburse/[id]` | ✔ | Milik sendiri |
@@ -49,6 +51,7 @@ approval flow pengajuan tersebut.
 | └ Plafon Kesehatan | `/setting/kesehatan` | ✔ | — |
 | └ Jam Kerja & Absensi | `/setting/absensi` | ✔ | — |
 | └ Master Data (tipe reimburse, kategori klaim) | `/setting/master` | ✔ | — |
+| └ Ruang Meeting (jam operasional booking, nyalakan / nonaktifkan ruang) | `/setting/ruang-meeting` | ✔ | — |
 | └ Inventaris & Rak (Operational, nomor Product Trial Form & Hardware Admission Form `NNN/AMI-PTF\|HAF/<pemilik unit>/<tahun>`, daftar rak) | `/setting/inventaris` | ✔ | — |
 | └ Kunci Pemulihan (kartu di halaman Setting) | `/setting/kunci-pemulihan` | Hanya pemegang kunci (`RECOVERY_KEY_HOLDERS`: Pak Rudy & Pak Leonard) | — |
 | Laporan | — | *(menyusul)* | — |

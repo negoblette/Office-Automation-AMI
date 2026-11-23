@@ -24,6 +24,38 @@ export const healthClaimSchema = z
   });
 export type HealthClaimInput = z.infer<typeof healthClaimSchema>;
 
+const draftText = (max: number) =>
+  z
+    .string()
+    .max(max, { error: `Isian maksimal ${max} karakter` })
+    .nullish()
+    .transform((value) => value ?? "");
+
+/**
+ * Draft klaim belum lengkap (2026-11-23, sama dengan draft reimburse): isian form apa adanya, hanya dibatasi ukurannya.
+ * Kelengkapan, kategori aktif & plafon dicek saat draft lengkap disimpan / diajukan. Tanggal baris tidak dihitung
+ * "terisi" karena form sudah mengisinya dengan hari ini.
+ */
+export const healthClaimDraftFormSchema = z
+  .object({
+    note: draftText(500),
+    items: z
+      .array(
+        z.object({
+          categoryId: draftText(64),
+          date: draftText(10),
+          amount: z.number().int().min(0).nullable().catch(null),
+          note: draftText(300),
+        }),
+      )
+      .max(50, { error: "Maksimal 50 baris per klaim" }),
+  })
+  .superRefine((v, ctx) => {
+    const filled = v.note.trim() !== "" || v.items.some((item) => item.categoryId || item.amount || item.note.trim());
+    if (!filled) ctx.addIssue({ code: "custom", path: ["items"], message: "Isi minimal satu data sebelum menyimpan draft" });
+  });
+export type HealthClaimDraftForm = z.output<typeof healthClaimDraftFormSchema>;
+
 /** Plafon tahunan per karyawan per tahun (HC-01, SET-04). */
 export const healthPlafondSchema = z.object({
   employeeId: z.string().min(1),
