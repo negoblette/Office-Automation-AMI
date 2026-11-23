@@ -20,6 +20,17 @@ export const APPROVAL_MODULE_META: Record<ApprovalModule, { label: string; path:
 };
 
 /**
+ * Modul yang punya halaman detail per pengajuan, lengkap dengan tombol Setujui / Tolak / Koreksi (2026-11-23, permintaan
+ * user): klik nomor di antrian approval langsung ke sana, bukan lewat halaman `/approval/[id]` dulu.
+ */
+const ENTITY_DETAIL_MODULES: readonly ApprovalModule[] = ["REIMBURSE", "OVERTIME_REIMBURSE", "HEALTH", "DEMO_LOAN", "DEMO_LOAN_EXTENSION", "DEMO_LOAN_RETURN"];
+
+/** Tujuan klik nomor pengajuan di antrian / monitor approval. */
+export function approvalDetailHref(row: { id: string; module: ApprovalModule; entityId: string }): string {
+  return ENTITY_DETAIL_MODULES.includes(row.module) ? APPROVAL_MODULE_META[row.module].path(row.entityId) : `/approval/${row.id}`;
+}
+
+/**
  * Modul yang tidak punya Approval Flow sendiri (tidak bisa dipilih di Setting → Approval Flow): perpanjangan peminjaman
  * memakai flow "Peminjaman Unit" (DEMO_LOAN), jadi approvernya selalu sama dengan approver peminjaman.
  */

@@ -171,6 +171,8 @@ export type PayoutRow = {
   id: string;
   employeeName: string;
   employeePosition: string;
+  /** Untuk tautan nomor klaim → /kesehatan/[id] (2026-11-23). */
+  claimId: string;
   claimNumber: string;
   categoryName: string;
   claimAmount: number;
@@ -189,6 +191,7 @@ export async function listPayoutsForMonth(db: PrismaClient, yearMonth: string): 
     id: p.id,
     employeeName: p.claim.employee.fullName,
     employeePosition: p.claim.employee.position,
+    claimId: p.claim.id,
     claimNumber: p.claim.number,
     categoryName: categoryLabel(p.claim),
     claimAmount: Number(p.claim.amount),

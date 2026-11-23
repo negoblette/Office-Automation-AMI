@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Fragment } from "react";
 import { PrintLetterhead } from "@/components/print/letterhead";
-import { PrintPageSetup } from "@/components/print/page-setup";
 import { PrintToolbar } from "@/components/print/print-button";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
@@ -12,8 +11,6 @@ import { listReimburseExportRows, type ReimburseExportRow } from "@/lib/services
 import { dailySubtotals, reimbursementTotals } from "@/lib/validators/reimbursement";
 
 export const metadata: Metadata = { title: "Rekap Reimburse" };
-
-const STATUS_LABEL = { PENDING: "Menunggu", APPROVED: "Disetujui", REJECTED: "Ditolak", DRAFT: "Draft" } as const;
 
 /**
  * Ekspor PDF reimburse yang dipilih (2026-11-09: `?ids=`, dari panel "Pilih & Ekspor" atau detail pengajuan). Satu bagian
@@ -39,12 +36,24 @@ export default async function CetakReimbursePage({ searchParams }: { searchParam
 
   return (
     <>
-      {/* 10 kolom tidak muat di A4 tegak (kolom terlalu sempit, 2026-11-20) → lembar mendatar. */}
-      <PrintPageSetup orientation="landscape" />
+      {/* A4 tegak (layout cetak, permintaan user 2026-11-23): kolom dipadatkan jadi 6 — lihat EmployeeSection. */}
       <PrintToolbar backHref="/reimburse" autoPrint />
       {[...byEmployee.values()].map((list, index) => (
         <EmployeeSection key={list[0].employeeId} rows={list} pageBreak={index > 0} />
       ))}
+    </>
+  );
+}
+
+/** "RMB/2026/11/0031" boleh pindah baris hanya setelah "RMB/2026/" (kolom Tanggal sempit di A4 tegak). */
+function breakableNumber(number: string) {
+  const cut = number.indexOf("/", number.indexOf("/") + 1) + 1;
+  if (cut <= 0) return number;
+  return (
+    <>
+      {number.slice(0, cut)}
+      <wbr />
+      {number.slice(cut)}
     </>
   );
 }
@@ -54,10 +63,19 @@ function EmployeeSection({ rows, pageBreak }: { rows: ReimburseExportRow[]; page
   const totals = reimbursementTotals(rows);
   const days = dailySubtotals(rows);
   const numbers = [...new Set(rows.map((r) => r.number))];
-  // Satu pengajuan: nomornya sudah di kop, kolom No. Pengajuan tidak perlu diulang di setiap baris.
+  // Satu pengajuan: nomornya sudah di kop, tidak perlu diulang di setiap baris.
   const showNumber = numbers.length > 1;
-  const headers = ["Tanggal", ...(showNumber ? ["No. Pengajuan"] : []), "Perusahaan / Project", "Aktivitas", "Nama – Jabatan", "Lokasi", "Tipe", "Pembayaran", "Status", "Total"];
-  const labelSpan = headers.length - 1;
+  // A4 tegak (2026-11-23): 6 kolom berlebar tetap — nomor pengajuan di bawah tanggal, lokasi di bawah aktivitas,
+  // pembayaran di bawah tipe; tanpa kolom Status (permintaan user).
+  const columns: { header: string; width: string; className?: string }[] = [
+    { header: "Tanggal", width: "12%" },
+    { header: "Perusahaan / Project", width: "22%" },
+    { header: "Aktivitas / Lokasi", width: "24%" },
+    { header: "Nama – Jabatan", width: "17%" },
+    { header: "Tipe / Pembayaran", width: "11%" },
+    { header: "Total", width: "14%", className: "pr-0 text-right" },
+  ];
+  const labelSpan = columns.length - 1;
 
   return (
     <section className={pageBreak ? "mt-10 break-before-page" : undefined}>
@@ -69,12 +87,17 @@ function EmployeeSection({ rows, pageBreak }: { rows: ReimburseExportRow[]; page
         <p className="text-xs">Pengajuan: {numbers.join(", ")}</p>
       </PrintLetterhead>
 
-      <table className="w-full border-collapse text-xs">
+      <table className="w-full table-fixed border-collapse text-[11px] leading-snug">
+        <colgroup>
+          {columns.map((column) => (
+            <col key={column.header} style={{ width: column.width }} />
+          ))}
+        </colgroup>
         <thead>
           <tr className="border-b border-black text-left">
-            {headers.map((h) => (
-              <th key={h} className={`py-1.5 pr-2 font-semibold ${h === "Total" ? "pr-0 text-right" : ""}`}>
-                {h}
+            {columns.map((column) => (
+              <th key={column.header} className={`py-1.5 pr-2 font-semibold ${column.className ?? ""}`}>
+                {column.header}
               </th>
             ))}
           </tr>
@@ -86,18 +109,23 @@ function EmployeeSection({ rows, pageBreak }: { rows: ReimburseExportRow[]; page
                 .filter((r) => r.date === day.date)
                 .map((r) => (
                   <tr key={r.id} className="border-b border-black/20 align-top break-inside-avoid">
-                    <td className="py-1.5 pr-2 whitespace-nowrap">{formatDate(`${r.date}T00:00:00Z`, "short")}</td>
-                    {showNumber && <td className="py-1.5 pr-2 whitespace-nowrap">{r.number}</td>}
-                    <td className="min-w-[45mm] py-1.5 pr-2">
+                    <td className="py-1.5 pr-2">
+                      <span className="whitespace-nowrap">{formatDate(`${r.date}T00:00:00Z`, "short")}</span>
+                      {showNumber && <div className="text-[10px] text-black/60">{breakableNumber(r.number)}</div>}
+                    </td>
+                    <td className="py-1.5 pr-2 wrap-anywhere">
                       {r.customerName ?? "—"}
                       {r.projectName && <div className="text-black/60">{r.projectName}</div>}
                     </td>
-                    <td className="min-w-[35mm] py-1.5 pr-2">{r.activity}</td>
-                    <td className="py-1.5 pr-2 whitespace-pre-line">{r.participants}</td>
-                    <td className="py-1.5 pr-2">{r.location}</td>
-                    <td className="py-1.5 pr-2">{r.typeName}</td>
-                    <td className="py-1.5 pr-2 whitespace-nowrap">{PAYMENT_METHOD_LABEL[r.paymentMethod]}</td>
-                    <td className="py-1.5 pr-2 whitespace-nowrap">{STATUS_LABEL[r.status]}</td>
+                    <td className="py-1.5 pr-2 wrap-anywhere">
+                      {r.activity}
+                      {r.location && <div className="text-black/60">{r.location}</div>}
+                    </td>
+                    <td className="py-1.5 pr-2 wrap-anywhere whitespace-pre-line">{r.participants}</td>
+                    <td className="py-1.5 pr-2 wrap-anywhere">
+                      {r.typeName}
+                      <div className="text-black/60">{PAYMENT_METHOD_LABEL[r.paymentMethod]}</div>
+                    </td>
                     <td className="py-1.5 text-right whitespace-nowrap tabular-nums">{formatRupiah(r.amount)}</td>
                   </tr>
                 ))}
@@ -111,7 +139,7 @@ function EmployeeSection({ rows, pageBreak }: { rows: ReimburseExportRow[]; page
           ))}
         </tbody>
         {/* Bukan <tfoot>: tfoot diulang Chrome di bawah setiap lembar — total cukup sekali di akhir. */}
-        <tbody className="text-sm break-inside-avoid">
+        <tbody className="text-[12px] break-inside-avoid">
           <tr>
             <td colSpan={labelSpan} className="pt-3 pr-2 text-right">Total Pribadi (dibayarkan ke karyawan)</td>
             <td className="pt-3 text-right font-semibold whitespace-nowrap tabular-nums">{formatRupiah(totals.personal)}</td>
@@ -120,7 +148,7 @@ function EmployeeSection({ rows, pageBreak }: { rows: ReimburseExportRow[]; page
             <td colSpan={labelSpan} className="pr-2 text-right">Total Perusahaan</td>
             <td className="text-right font-semibold whitespace-nowrap tabular-nums">{formatRupiah(totals.corporate)}</td>
           </tr>
-          <tr className="text-base">
+          <tr className="text-[13px]">
             <td colSpan={labelSpan} className="pt-1 pr-2 text-right font-bold">Total</td>
             <td className="pt-1 text-right font-bold whitespace-nowrap tabular-nums">{formatRupiah(totals.total)}</td>
           </tr>

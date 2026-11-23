@@ -97,8 +97,31 @@ export async function assetHistory(db: PrismaClient, assetId: string): Promise<A
   for (const log of assetLogs) {
     const before = obj(log.before);
     const after = obj(log.after);
-    if (log.action === "CREATE" && str(after.receiptId)) {
-      const owner = `${ASSET_OWNERSHIP_LABEL[(str(after.ownership) ?? "PRINCIPAL") as AssetOwnership]} ${str(after.ownerName) ?? ""}`.trim();
+    const ownerOf = (snapshot: Json) => `${ASSET_OWNERSHIP_LABEL[(str(snapshot.ownership) ?? "PRINCIPAL") as AssetOwnership]} ${str(snapshot.ownerName) ?? ""}`.trim();
+    // Pengembalian ke principal / distributor & diterima lagi lewat penerimaan baru (2026-11-20).
+    const returnedToOwner = log.action === "UPDATE" && str(after.returnedToOwnerAt) && !str(before.returnedToOwnerAt);
+    const receivedAgain = log.action === "UPDATE" && str(before.returnedToOwnerAt) && !str(after.returnedToOwnerAt);
+    if (returnedToOwner) {
+      events.push({
+        ...base(log),
+        kind: "deleted",
+        title: `Dikembalikan ke ${ownerOf(before)}`,
+        changes: [],
+        note: [str(after.returnHafNumber) && `HAF ${after.returnHafNumber}`, `Keluar dari Daftar Unit · lokasi terakhir: ${location(before)}`].filter(Boolean).join(" · "),
+        href: str(before.receiptId) ? `/inventory/penerimaan/${before.receiptId as string}` : null,
+      });
+    } else if (receivedAgain) {
+      const haf = str(after.receiptId) ? hafOfReceipt.get(after.receiptId as string) : undefined;
+      events.push({
+        ...base(log),
+        kind: "created",
+        title: `Diterima lagi dari ${ownerOf(after)}`,
+        changes: [],
+        note: [haf && `HAF ${haf}`, `Lokasi: ${location(after)}`].filter(Boolean).join(" · "),
+        href: str(after.receiptId) ? `/inventory/penerimaan/${after.receiptId as string}` : null,
+      });
+    } else if (log.action === "CREATE" && str(after.receiptId)) {
+      const owner = ownerOf(after);
       const haf = hafOfReceipt.get(after.receiptId as string);
       events.push({
         ...base(log),

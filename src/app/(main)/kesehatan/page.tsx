@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { type ExportItem, ExportSelector } from "@/components/shared/export-selector";
+import type { ExportItem } from "@/components/shared/export-selector";
 import { PageHeader } from "@/components/shared/page-header";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
@@ -7,8 +7,8 @@ import { formatDate } from "@/lib/format";
 import { getHealthSummary, listHealthCategories, listHealthClaims } from "@/lib/services/health-queries";
 import { HealthClaimDialog } from "./claim-form";
 import { HealthClaimTable } from "./claim-table";
+import { HealthExportPanel } from "./health-export-panel";
 import { HealthSummaryCard, KesehatanTabs } from "./health-ui";
-import { MonthlyRecapForm } from "./monthly-recap-form";
 
 export const metadata: Metadata = { title: "Kesehatan" };
 
@@ -46,21 +46,8 @@ export default async function KesehatanPage() {
       <KesehatanTabs active="klaim" isAdmin={isAdmin} />
       {summary && <HealthSummaryCard summary={summary} />}
 
-      {/* Rekap bulanan (2026-11-19): pilih karyawan & bulan → PDF semua klaim bulan itu. */}
-      <MonthlyRecapForm
-        claims={exportItems.map((item) => ({ employeeId: item.employeeId, employeeName: item.employeeName, month: item.month }))}
-        allowAllEmployees={isAdmin}
-        defaultEmployeeId={user.employeeId}
-      />
-      {/* Ekspor laporan (2026-11-09): pilih karyawan → pilih klaim → Ekspor PDF / Excel. */}
-      <ExportSelector
-        items={exportItems}
-        allowAllEmployees={isAdmin}
-        defaultEmployeeId={user.employeeId}
-        noun="klaim"
-        pdfPath="/cetak/kesehatan"
-        excelPath="/api/export/kesehatan"
-      />
+      {/* Satu panel Ekspor (2026-11-23): Per bulan (rekap PDF / Excel) atau Pilih klaim (PDF / Excel). */}
+      <HealthExportPanel items={exportItems} allowAllEmployees={isAdmin} defaultEmployeeId={user.employeeId} />
       <HealthClaimTable rows={rows} showRequester={isAdmin} revise={summary?.annual != null ? { categories, remaining: summary.remaining } : undefined} />
     </div>
   );

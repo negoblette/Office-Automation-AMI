@@ -9,7 +9,7 @@ import { PersonCell } from "@/components/shared/person-cell";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { DataTable, dataTableColumnHelper } from "@/components/table/data-table";
 import type { ApprovalModule } from "@/generated/prisma/enums";
-import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
+import { APPROVAL_MODULE_META, approvalDetailHref } from "@/lib/approval-modules";
 import { formatDateTime } from "@/lib/format";
 import type { ApprovalRow } from "@/lib/services/approval-queries";
 import { ApproveButton } from "./approve-button";
@@ -50,7 +50,8 @@ const moduleColumn = col.accessor((row) => APPROVAL_MODULE_META[row.module].labe
 
 /**
  * Nomor + ringkasan satu baris (2026-11-02). Rincian lengkap (alasan, catatan) muncul saat kursor di atas ringkasan;
- * klik nomor → halaman detail `/approval/[id]` (rincian, file, alur, koreksi, aksi).
+ * klik nomor → halaman detail pengajuannya bila modul punya (reimburse, klaim kesehatan, peminjaman — 2026-11-23),
+ * selain itu `/approval/[id]` (rincian, file, alur, koreksi, aksi). Dipakai Dashboard & Approval Center.
  */
 const numberColumn = col.accessor((row) => `${row.entityNumber} ${row.summary ?? ""}`, {
   id: "number",
@@ -58,7 +59,7 @@ const numberColumn = col.accessor((row) => `${row.entityNumber} ${row.summary ??
   sortFn: (a, b) => a.original.entityNumber.localeCompare(b.original.entityNumber),
   cell: ({ row }) => (
     <div className="flex max-w-64 flex-col gap-0.5">
-      <Link href={`/approval/${row.original.id}`} className="font-medium whitespace-nowrap text-primary hover:underline">
+      <Link href={approvalDetailHref(row.original)} className="font-medium whitespace-nowrap text-primary hover:underline">
         {row.original.entityNumber}
       </Link>
       {row.original.headline && (

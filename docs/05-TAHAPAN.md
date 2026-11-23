@@ -673,6 +673,10 @@ ikut dikirimi; perpanjangan lewat approval Ko Yosep.
       disetujui berdasarkan **tanggal klaim**, per karyawan dengan plafon & sisa tahun itu; "Semua karyawan" diawali halaman
       ringkasan (jumlah klaim, menunggu, diajukan, disetujui per karyawan + total). Query `healthMonthlyGroups`: selain
       Admin selalu hanya miliknya sendiri (parameter karyawan diabaikan); bulan & id divalidasi. Mode `?ids=` tetap
+      — **Revisi 2026-11-23 (user):** PDF kesehatan tanpa kartu plafon / menunggu approval & tanpa kolom Menunggu di
+      ringkasan; "Total disetujui" hanya di rekap bulanan; Rekap bulanan & Pilih & Ekspor digabung jadi satu panel
+      **Ekspor klaim** (`kesehatan/health-export-panel.tsx`): **Per bulan** (PDF rekap / Excel klaim bulan itu) atau
+      **Pilih klaim** (`ExportSelector bare`). PDF Rekap Reimburse kembali A4 tegak (6 kolom, tanpa Status)
 - [x] **Riwayat Unit** (detail unit): 10 per halaman lewat `?riwayat=<n>#riwayat` (server, bisa dibagikan, tanpa
       JavaScript); nomor di luar jangkauan → halaman terdekat
 - [x] **Daftar Unit**: 25 per halaman (satu rak umumnya muat satu halaman) + pilihan **Per halaman** 10 / 25 / 50
@@ -854,6 +858,21 @@ approval Ko Yosep. Ditolak → kembali cek ulang unit (pilihan user).
 - **Cek:** typecheck, lint, unit test, DB test alur baru lulus. 4 DB test lama tetap gagal (juga di `HEAD` tanpa
   perubahan ini): `asset` (validasi support), `overtime` (nomor bergantung tanggal hari ini), `security-monitor`,
   `setting-users-flows` (pesan approver tunggal) — perlu disesuaikan terpisah.
+
+### 16.5g Barang titipan milik AMI sementara + pengembalian ke principal ✅ (2026-11-20)
+Keputusan user: semua barang yang dipinjam AMI menjadi milik AMI untuk sementara; barang pinjaman bisa dikembalikan —
+per unit (boleh sebagian), memakai Hardware Admission Form, unit yang dikembalikan hilang dari Daftar Unit.
+- [x] Peminjaman ke customer selalu `…/AMI-PTF/AMI/…`; satu form boleh campur unit AMI & titipan (peringatan dihapus)
+- [x] Migrasi `20261120170000_goods_return` (`GoodsReturn`, `GoodsReturnItem`, `Asset.returnedToOwnerAt`; tanpa drift)
+- [x] Detail Penerimaan Barang: status per unit, tombol **Kembalikan ke …** (Operational), daftar pengembalian + Cetak HAF;
+      daftar penerimaan kolom Status
+- [x] Form `/inventory/penerimaan/[id]/kembali` → HAF terbit; cetak `/cetak/pengembalian/[id]` (To : principal)
+- [x] Serial yang pernah dikembalikan bisa diterima lagi (unit lama aktif lagi); Riwayat Unit "Dikembalikan ke …" /
+      "Diterima lagi dari …"
+- [x] DB test `goods-return.db.test.ts` (4 skenario); 4 DB test lama sudah diperbaiki (sesi terpisah)
+- **Cek:** typecheck, lint, 281 unit test, suite DB lengkap 41 file / 285 test lulus. Pratinjau lokal (DB pratinjau):
+  detail, daftar, form pengembalian, cetak HAF & Daftar Unit dirender benar (HTML server); klik kirim form belum dicoba
+  di browser.
 
 ### 16.6 Dashboard Inventaris
 - [ ] Unit di gudang (per rak/posisi), sedang dipinjam (ke mana, PIC, sampai kapan, sisa hari), terlambat, akan jatuh tempo;

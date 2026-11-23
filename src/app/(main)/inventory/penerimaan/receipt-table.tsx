@@ -3,6 +3,7 @@
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useMemo } from "react";
+import { StatusBadge, type StatusVariant } from "@/components/shared/status-badge";
 import { DataTable, dataTableColumnHelper } from "@/components/table/data-table";
 import { buttonVariants } from "@/components/ui/button";
 import { formatDate } from "@/lib/format";
@@ -11,6 +12,12 @@ import type { GoodsReceiptRow } from "@/lib/services/goods-receipt-queries";
 
 const col = dataTableColumnHelper<GoodsReceiptRow>();
 const date = (iso: string) => formatDate(`${iso}T00:00:00Z`, "short");
+
+function returnStatus(row: GoodsReceiptRow): { label: string; variant: StatusVariant } {
+  if (row.returnedCount === 0) return { label: "Di AMI", variant: "info" };
+  if (row.returnedCount >= row.unitCount) return { label: "Sudah dikembalikan", variant: "neutral" };
+  return { label: `${row.returnedCount}/${row.unitCount} dikembalikan`, variant: "warning" };
+}
 
 /** Daftar penerimaan barang principal / distributor (2026-11-20), terbaru dulu. */
 export function ReceiptTable({ rows }: { rows: GoodsReceiptRow[] }) {
@@ -46,6 +53,15 @@ export function ReceiptTable({ rows }: { rows: GoodsReceiptRow[] }) {
           header: "Diterima",
           enableGlobalFilter: false,
           cell: ({ row }) => <span className="whitespace-nowrap">{date(row.original.receivedDate)}</span>,
+        }),
+        // Pengembalian ke principal / distributor (2026-11-20): berapa unit yang sudah kembali.
+        col.accessor((row) => returnStatus(row).label, {
+          id: "status",
+          header: "Status",
+          cell: ({ row }) => {
+            const status = returnStatus(row.original);
+            return <StatusBadge variant={status.variant}>{status.label}</StatusBadge>;
+          },
         }),
         col.accessor((row) => `${row.picName} ${row.preparedByName}`, {
           id: "pic",

@@ -82,7 +82,10 @@ export default async function PembayaranPage({ searchParams }: { searchParams: P
                     <PersonCell name={row.employeeName} subtitle={row.employeePosition} />
                   </td>
                   <td className="px-4 py-3">
-                    <p className="font-medium">{row.claimNumber}</p>
+                    {/* Klik nomor → detail klaim (2026-11-23). */}
+                    <Link href={`/kesehatan/${row.claimId}`} className="font-medium underline-offset-4 hover:underline">
+                      {row.claimNumber}
+                    </Link>
                     <p className="text-xs text-muted-foreground">{row.categoryName}</p>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">{formatRupiah(row.claimAmount)}</td>

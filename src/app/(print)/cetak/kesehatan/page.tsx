@@ -21,8 +21,9 @@ const EMPLOYEE_ID = /^[\w-]{1,64}$/;
  *  - `?ids=` (2026-11-09): klaim yang dipilih di panel "Pilih & Ekspor" / tombol per klaim;
  *  - `?bulan=YYYY-MM[&karyawan=<id>]` (2026-11-19): rekap bulanan — semua klaim menunggu / disetujui yang tanggal klaimnya di
  *    bulan itu, satu karyawan atau semua karyawan (Admin; ada ringkasan per karyawan di halaman pertama).
- * Satu bagian per karyawan: ringkasan plafon tahun itu (semua klaim) + klaim yang dimaksud; dialog cetak langsung terbuka
- * untuk disimpan sebagai PDF. Selain Admin hanya miliknya sendiri (dicek di query, parameter karyawan diabaikan).
+ * Satu bagian per karyawan: klaim yang dimaksud (tanpa ringkasan plafon sejak 2026-11-23; total disetujui hanya di rekap
+ * bulanan); dialog cetak langsung terbuka untuk disimpan sebagai PDF. Selain Admin hanya miliknya sendiri (dicek di query,
+ * parameter karyawan diabaikan).
  */
 export default async function CetakKesehatanPage({ searchParams }: { searchParams: Promise<{ ids?: string; bulan?: string; karyawan?: string }> }) {
   const user = await requireUser();
@@ -57,7 +58,6 @@ export default async function CetakKesehatanPage({ searchParams }: { searchParam
       count: rows.length,
       requested: rows.reduce((n, r) => n + r.amount, 0),
       approved: rows.filter((r) => r.status === "APPROVED").reduce((n, r) => n + (r.approvedAmount ?? r.amount), 0),
-      pending: rows.filter((r) => r.status === "PENDING").length,
     };
   });
 
@@ -72,7 +72,8 @@ export default async function CetakKesehatanPage({ searchParams }: { searchParam
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="border-b border-black text-left">
-                {["Karyawan", "Jumlah klaim", "Menunggu", "Diajukan", "Disetujui"].map((h) => (
+                {/* Tanpa kolom Menunggu (permintaan user 2026-11-23: info menunggu approval tidak ditampilkan). */}
+                {["Karyawan", "Jumlah klaim", "Diajukan", "Disetujui"].map((h) => (
                   <th key={h} className={`py-1.5 pr-2 font-semibold ${h === "Karyawan" ? "" : "text-right"}`}>
                     {h}
                   </th>
@@ -84,7 +85,6 @@ export default async function CetakKesehatanPage({ searchParams }: { searchParam
                 <tr key={r.employeeId} className="border-b border-black/20">
                   <td className="py-1.5 pr-2">{r.name}</td>
                   <td className="py-1.5 pr-2 text-right tabular-nums">{r.count}</td>
-                  <td className="py-1.5 pr-2 text-right tabular-nums">{r.pending}</td>
                   <td className="py-1.5 pr-2 text-right whitespace-nowrap tabular-nums">{formatRupiah(r.requested)}</td>
                   <td className="py-1.5 text-right whitespace-nowrap tabular-nums">{formatRupiah(r.approved)}</td>
                 </tr>
@@ -95,7 +95,6 @@ export default async function CetakKesehatanPage({ searchParams }: { searchParam
               <tr>
                 <td className="pt-3 pr-2 font-bold">Total ({recap.length} karyawan)</td>
                 <td className="pt-3 pr-2 text-right font-bold tabular-nums">{recap.reduce((n, r) => n + r.count, 0)}</td>
-                <td className="pt-3 pr-2 text-right font-bold tabular-nums">{recap.reduce((n, r) => n + r.pending, 0)}</td>
                 <td className="pt-3 pr-2 text-right font-bold whitespace-nowrap tabular-nums">{formatRupiah(recap.reduce((n, r) => n + r.requested, 0))}</td>
                 <td className="pt-3 text-right font-bold whitespace-nowrap tabular-nums">{formatRupiah(recap.reduce((n, r) => n + r.approved, 0))}</td>
               </tr>
@@ -104,7 +103,7 @@ export default async function CetakKesehatanPage({ searchParams }: { searchParam
         </section>
       )}
       {sections.map(({ group, data }, index) => {
-        const { employee, summary } = data;
+        const { employee } = data;
         const rows = data.rows.filter((r) => group.claimIds.has(r.id));
         const approvedSelected = rows.filter((r) => r.status === "APPROVED").reduce((n, r) => n + (r.approvedAmount ?? r.amount), 0);
         return (
@@ -116,21 +115,7 @@ export default async function CetakKesehatanPage({ searchParams }: { searchParam
               </p>
             </PrintLetterhead>
 
-            {month && <p className="-mt-3 mb-3 text-xs">Plafon & sisa di bawah: posisi tahun {group.year} (semua klaim tahun itu).</p>}
-            <section className="mb-5 grid grid-cols-4 gap-3 text-sm break-inside-avoid">
-              {[
-                ["Plafon tahunan", summary.annual === null ? "Belum diatur" : formatRupiah(summary.annual)],
-                ["Terpakai (disetujui)", formatRupiah(summary.approved)],
-                ["Menunggu approval", formatRupiah(summary.pending)],
-                ["Sisa plafon", summary.remaining === null ? "—" : formatRupiah(summary.remaining)],
-              ].map(([label, value]) => (
-                <div key={label} className="border border-black/40 p-2">
-                  <p className="text-xs">{label}</p>
-                  <p className="font-semibold tabular-nums">{value}</p>
-                </div>
-              ))}
-            </section>
-
+            {/* Tanpa kartu plafon / terpakai / menunggu approval / sisa plafon (permintaan user 2026-11-23). */}
             <table className="w-full border-collapse text-xs">
               <thead>
                 <tr className="border-b border-black text-left">
@@ -159,15 +144,18 @@ export default async function CetakKesehatanPage({ searchParams }: { searchParam
                   </tr>
                 ))}
               </tbody>
-              {/* Bukan <tfoot>: tfoot diulang Chrome di bawah setiap lembar — total cukup sekali di akhir (2026-11-20). */}
-              <tbody className="text-sm break-inside-avoid">
-                <tr>
-                  <td colSpan={7} className="pt-3 pr-2 text-right font-bold">
-                    Total disetujui ({month ? `klaim ${monthLabel(month)}` : "klaim di atas"})
-                  </td>
-                  <td className="pt-3 text-right font-bold whitespace-nowrap tabular-nums">{formatRupiah(approvedSelected)}</td>
-                </tr>
-              </tbody>
+              {/* Total disetujui hanya di rekap bulanan (permintaan user 2026-11-23); ekspor klaim pilihan tanpa total.
+                  Bukan <tfoot>: tfoot diulang Chrome di bawah setiap lembar — total cukup sekali di akhir (2026-11-20). */}
+              {month && (
+                <tbody className="text-sm break-inside-avoid">
+                  <tr>
+                    <td colSpan={7} className="pt-3 pr-2 text-right font-bold">
+                      Total disetujui (klaim {monthLabel(month)})
+                    </td>
+                    <td className="pt-3 text-right font-bold whitespace-nowrap tabular-nums">{formatRupiah(approvedSelected)}</td>
+                  </tr>
+                </tbody>
+              )}
             </table>
 
             <footer className="mt-12 grid grid-cols-3 gap-8 text-center text-xs break-inside-avoid">

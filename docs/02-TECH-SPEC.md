@@ -224,7 +224,10 @@ bertahap (docs/05-TAHAPAN.md Fase 16); Tahap 1 = data, akses, rak; Tahap 2 = pen
   diperkecil bila ada unit di posisi yang hilang. Hapus = soft delete; nama yang dihapus dipulihkan bila ditambah lagi.
 - **Kepemilikan unit** (2026-11-17): `Asset.ownership` = `AMI` (bawaan) / `PRINCIPAL` / `DISTRIBUTOR` + `ownerName`.
   Unit titipan bisa disimpan di rak & dipinjamkan seperti unit AMI; dipisahkan lewat filter & label
-  (`lib/inventory.ts#ownershipText`). Sejak 2026-11-20 kepemilikan **tidak** ada di form Tambah / Ubah Unit
+  (`lib/inventory.ts#ownershipText`). **Milik AMI untuk sementara** (keputusan user 2026-11-20): peminjaman ke customer
+  selalu atas nama AMI — `DemoLoan.unitOwner` = `AMI`, nomor `…/AMI-PTF/AMI/…`, satu form boleh mencampur unit AMI &
+  titipan (aturan "satu form satu pemilik" 2026-11-19 dihapus; nomor yang sudah terbit tidak diubah). Asal unit tetap
+  tampil sebagai keterangan. Sejak 2026-11-20 kepemilikan **tidak** ada di form Tambah / Ubah Unit
   (`assetSchema` tanpa ownership; `createAsset` selalu AMI, `updateAsset` tidak mengubahnya). Support & warranty juga
   dihapus dari form (keputusan user 2026-11-20); kolomnya tetap di database dan nilai lama tidak diubah.
 - **Penerimaan Barang** (2026-11-20, `GoodsReceipt`, `services/goods-receipt.ts#receiveGoods`, halaman
@@ -237,7 +240,20 @@ bertahap (docs/05-TAHAPAN.md Fase 16); Tahap 1 = data, akses, rak; Tahap 2 = pen
   kepemilikan itu + `Asset.receiptId`, audit `Asset` CREATE (Riwayat Unit "Diterima dari Principal Cisco · HAF …") &
   `GoodsReceipt` CREATE. Cetak `/cetak/penerimaan/[id]` (lembar HAF bersama `components/print/haf-sheet.tsx`, asli +
   COPY): From = pemilik, up = kontak, Date = tanggal terima, Prepared By = Operational pencatat, Returned By = pengirim,
-  Received By = penerima. Unit titipan lama tanpa penerimaan dibiarkan.
+  Received By = penerima. Unit titipan lama tanpa penerimaan dibiarkan. Serial yang pernah **dikembalikan** lalu dipinjam
+  AMI lagi → baris `Asset` yang sama diaktifkan lagi (`deletedAt` & `returnedToOwnerAt` dikosongkan, `receiptId` baru;
+  audit `Asset` UPDATE, Riwayat Unit "Diterima lagi dari …"); serial unit aktif tetap ditolak.
+- **Pengembalian ke principal / distributor** (2026-11-20, keputusan user; `GoodsReturn` + `GoodsReturnItem`,
+  `services/goods-receipt.ts#returnGoods`, halaman `/inventory/penerimaan/[id]/kembali`): **hanya Operational**, **per
+  unit, boleh sebagian**. Isian: unit (milik penerimaan itu, masih di AMI — bukan di peminjaman aktif / tindak lanjut
+  `heldLoanItemWhere`, bukan sedang diserahkan ke karyawan), tanggal (≥ tanggal terima, ≤ hari ini), kontak (up:,
+  bawaan kontak penerimaan), karyawan AMI yang menyerahkan (Returned By), penerima di principal (opsional), catatan.
+  Simpan → **Hardware Admission Form** baru `NNN/AMI-HAF/<pemilik>/<tahun>` (counter HAF yang sama); `GoodsReturnItem`
+  menyalin nama & S/N; unit keluar dari inventaris (`Asset.returnedToOwnerAt` + `deletedAt`, rak dikosongkan) sehingga
+  **hilang dari Daftar Unit** & pilihan pinjam; audit `Asset` UPDATE (+ `returnHafNumber`, Riwayat Unit "Dikembalikan ke
+  …") & `GoodsReturn` CREATE. Detail penerimaan: status per unit (Di AMI / dipakai / Dikembalikan + HAF), daftar
+  pengembalian; daftar penerimaan: "x/y dikembalikan". Cetak `/cetak/pengembalian/[id]` (HAF, label **To :**, Remarks
+  merujuk HAF penerimaan).
 - **Lokasi unit:** `Asset.rackId` + `rackPosition` opsional tapi berpasangan, posisi harus di dalam rak (dicek service).
   Nama perangkat tampil sebagai "Part number / deskripsi" (sesuai kolom Product Trial Form). Posisi rak tetap melekat
   selama unit dipinjam = tempat kembalinya.
