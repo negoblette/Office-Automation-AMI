@@ -10,7 +10,7 @@ import { requireInventory } from "@/lib/auth/inventory";
 import { prisma } from "@/lib/db";
 import { loanPurposeText, RETURN_CONDITION_LABEL } from "@/lib/demo-loan";
 import { formatDate, formatDateTime } from "@/lib/format";
-import { ownershipText, rackLocationLabel } from "@/lib/inventory";
+import { ownershipText, rackLocationLabel, snLabel } from "@/lib/inventory";
 import { ASSET_CATEGORY_LABEL } from "@/lib/labels";
 import { type AssetHistoryEvent, assetHistory } from "@/lib/services/asset-history";
 import { listAssets } from "@/lib/services/asset-queries";
@@ -65,8 +65,8 @@ export default async function AssetDetailPage({ params, searchParams }: { params
     <div className="flex flex-col gap-6">
       <PageHeader
         title={asset.deviceName}
-        description={`SN ${asset.serialNo} · ${ASSET_CATEGORY_LABEL[asset.category]}`}
-        breadcrumbs={[{ label: "Operasional & Aset" }, { label: "Inventaris / Unit Demo", href: "/inventory" }, { label: asset.serialNo }]}
+        description={`${snLabel(asset.serialNo)} · ${ASSET_CATEGORY_LABEL[asset.category]}`}
+        breadcrumbs={[{ label: "Operasional & Aset" }, { label: "Inventaris / Unit Demo", href: "/inventory" }, { label: asset.serialNo ?? "Tanpa S/N" }]}
         actions={
           (access.canManage || !busy) && (
             <>

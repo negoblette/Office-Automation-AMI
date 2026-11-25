@@ -10,7 +10,7 @@ const iso = (date: Date | null) => (date ? toJakartaIsoDate(date) : null);
 export type AssetRow = {
   id: string;
   deviceName: string;
-  serialNo: string;
+  serialNo: string | null;
   category: AssetCategory;
   supportStart: string | null;
   supportEnd: string | null;
@@ -91,7 +91,7 @@ export type AssignmentRow = {
   id: string;
   assetId: string;
   deviceName: string;
-  serialNo: string;
+  serialNo: string | null;
   category: AssetCategory;
   employeeName: string;
   assignedAt: string;
@@ -109,7 +109,7 @@ function toAssignmentRow(a: {
   assignedAt: Date;
   returnedAt: Date | null;
   note: string | null;
-  asset: { id: string; deviceName: string; serialNo: string; category: AssetCategory };
+  asset: { id: string; deviceName: string; serialNo: string | null; category: AssetCategory };
   employee: { fullName: string };
 }): AssignmentRow {
   return {

@@ -133,7 +133,7 @@ Satu schema Zod dipakai di client dan server. Normalisasi sebelum simpan.
 | No HP | normalisasi ke `+62…` (terima `08…`, `62…`, `+62…`), 10–15 digit |
 | Email | valid, simpan lowercase |
 | Nama | trim, spasi ganda dihapus, Title Case |
-| Serial number | trim, UPPERCASE, unik |
+| Serial number | opsional (2026-11-25); bila diisi trim, UPPERCASE, unik |
 | Nominal | integer > 0, tanpa desimal |
 | Rentang tanggal | end ≥ start |
 

@@ -11,9 +11,11 @@ import {
   FOLLOW_UP_REPEAT_DAYS,
   formatLoanDuration,
   groupLoanItems,
+  loanItemGroupText,
   isProblemCondition,
   loanPurposeText,
   RETURN_CONDITION_LABEL,
+  snSuffix,
 } from "@/lib/demo-loan";
 import { formatDate, toJakartaIsoDate } from "@/lib/format";
 import { getOperationalUserIds } from "@/lib/services/inventory-access";
@@ -47,7 +49,7 @@ export async function buildDemoLoanEmails(db: PrismaClient, loanId: string, temp
     `Periode: ${formatDate(loan.startDate, "short")} – ${formatDate(loan.dueDate, "short")} (${formatLoanDuration(toJakartaIsoDate(loan.startDate), toJakartaIsoDate(loan.dueDate))})`,
     `Kontak peminjam: ${loan.contactName} (${loan.contactEmail})`,
     `PIC: ${loan.pic.fullName}`,
-    ...groupLoanItems(loan.items).map((group) => `${group.deviceName} ×${group.serials.length} — SN ${group.serials.join(", ")}`),
+    ...groupLoanItems(loan.items).map(loanItemGroupText),
     ...(loan.remarks ? [`Keperluan: ${loan.remarks}`] : []),
   ];
   const operational = await operationalRecipients(db);
@@ -102,7 +104,7 @@ export type DueLoan = {
   deliveredAt: Date | null;
   requester: { email: string; isActive: boolean; employee: { fullName: string } | null };
   pic: { fullName: string };
-  items: { deviceName: string; serialNo: string }[];
+  items: { deviceName: string; serialNo: string | null }[];
 };
 
 function dueDetails(loan: DueLoan): string[] {
@@ -111,7 +113,7 @@ function dueDetails(loan: DueLoan): string[] {
     ...(loan.deliveredAt ? [`Diantar: ${formatDate(loan.deliveredAt)}`] : []),
     `Jatuh tempo: ${formatDate(loan.dueDate)} (periode ${formatLoanDuration(toJakartaIsoDate(loan.startDate), toJakartaIsoDate(loan.dueDate))})`,
     `PIC: ${loan.pic.fullName}`,
-    ...groupLoanItems(loan.items).map((group) => `${group.deviceName} ×${group.serials.length} — SN ${group.serials.join(", ")}`),
+    ...groupLoanItems(loan.items).map(loanItemGroupText),
   ];
 }
 
@@ -206,7 +208,7 @@ export async function buildLoanFollowUpEmails(db: PrismaClient, loanId: string, 
     `Peminjam: ${loan.borrowerName} (up: ${loan.contactName}, ${loan.contactEmail})`,
     ...(loan.hafNumber ? [`Hardware Admission Form: ${loan.hafNumber}`] : []),
     `Tiba & dicek: ${formatDate(`${returnedIso}T00:00:00Z`)}${loan.receivedBy ? ` oleh ${personName(loan.receivedBy)}` : ""}`,
-    ...problems.map((item) => `${item.deviceName} · SN ${item.serialNo} — ${RETURN_CONDITION_LABEL[item.returnCondition!]}: ${item.returnNote ?? "-"}`),
+    ...problems.map((item) => `${item.deviceName}${snSuffix(item.serialNo)} — ${RETURN_CONDITION_LABEL[item.returnCondition!]}: ${item.returnNote ?? "-"}`),
     ...(loan.returnNote ? [`Catatan pengembalian: ${loan.returnNote}`] : []),
     `PIC: ${loan.pic.fullName}`,
   ];

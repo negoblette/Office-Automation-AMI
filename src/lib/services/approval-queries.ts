@@ -3,7 +3,7 @@ import type { ApprovalModule, Prisma, PrismaClient, RequestStatus } from "@/gene
 import type { ApprovalStepView } from "@/components/shared/approval-stepper";
 import { CORRECTABLE_MODULES, type CorrectionView, listCorrections } from "./approval-correction";
 import { APPEAL_REASON_LABEL, formatDuration } from "@/lib/attendance";
-import { formatLoanDuration, LOAN_PURPOSE_LABEL, loanPurposeDescription, loanPurposeText, returnCheckLine } from "@/lib/demo-loan";
+import { formatLoanDuration, LOAN_PURPOSE_LABEL, loanPurposeDescription, loanPurposeText, returnCheckLine, snSuffix } from "@/lib/demo-loan";
 import { ownershipText } from "@/lib/inventory";
 import { formatDate, formatRupiah, formatTime, toJakartaIsoDate } from "@/lib/format";
 import { overtimeMinutes } from "@/lib/validators/overtime";
@@ -222,7 +222,7 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
         const period = `${formatDate(loan.startDate, "short")} – ${formatDate(loan.dueDate, "short")} (${formatLoanDuration(toJakartaIsoDate(loan.startDate), toJakartaIsoDate(loan.dueDate))})`;
         const units = loan.items.map(
           (item) =>
-            `${item.deviceName} · SN ${item.serialNo}${item.rack && item.rackPosition ? ` · ${item.rack.name} ${item.rackPosition}` : ""}${
+            `${item.deviceName}${snSuffix(item.serialNo)}${item.rack && item.rackPosition ? ` · ${item.rack.name} ${item.rackPosition}` : ""}${
               item.asset.ownership === "AMI" ? "" : ` · ${ownershipText(item.asset.ownership, item.asset.ownerName)}`
             }`,
         );
@@ -271,7 +271,7 @@ async function toRows(db: PrismaClient, requests: RequestWithSteps[], viewerId: 
             `Jatuh tempo: ${change}`,
             `Periode menjadi: ${formatDate(loan.startDate, "short")} – ${formatDate(extension.newDueDate, "short")} (${formatLoanDuration(toJakartaIsoDate(loan.startDate), toJakartaIsoDate(extension.newDueDate))})`,
             `Alasan: ${extension.reason}`,
-            ...loan.items.map((item) => `${item.deviceName} · SN ${item.serialNo}`),
+            ...loan.items.map((item) => `${item.deviceName}${snSuffix(item.serialNo)}`),
           ].join("\n"),
           file: null,
         };

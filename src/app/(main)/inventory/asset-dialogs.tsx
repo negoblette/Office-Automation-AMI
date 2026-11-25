@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useTransition } from "react";
@@ -14,8 +14,9 @@ import { Button } from "@/components/ui/button";
 import { ownershipText, rackPositions, rackRangeLabel } from "@/lib/inventory";
 import { ASSET_CATEGORY_LABEL, toOptions } from "@/lib/labels";
 import type { AssetRow } from "@/lib/services/asset-queries";
+import { cn } from "@/lib/utils";
 import { assetSchema } from "@/lib/validators/asset";
-import { deleteAssetAction, saveAssetAction } from "./actions";
+import { deleteAssetAction, updateAssetAction } from "./actions";
 
 export type RackOption = { id: string; name: string; columns: number; rows: number };
 
@@ -80,20 +81,21 @@ function RackFields({ racks }: { racks: RackOption[] }) {
 }
 
 /**
- * Kepemilikan (2026-11-20): unit baru di sini selalu milik AMI dan kepemilikan tidak bisa diubah — unit principal /
- * distributor dicatat lewat Penerimaan Barang (menerbitkan HAF). Hanya keterangan, bukan isian.
+ * Kepemilikan (2026-11-20): unit yang didaftarkan lewat Daftarkan Unit selalu milik AMI dan kepemilikan tidak bisa
+ * diubah — unit principal / distributor dicatat lewat Penerimaan Barang (menerbitkan HAF). Hanya keterangan, bukan isian.
+ * Tanpa `asset` = keterangan di halaman Daftarkan Unit.
  */
-function OwnershipNote({ asset }: { asset?: AssetRow }) {
+export function OwnershipNote({ asset, className }: { asset?: AssetRow; className?: string }) {
   if (asset && asset.ownership !== "AMI") {
     return (
-      <p className="rounded-xl bg-panel px-4 py-3 text-sm text-ink-2 sm:col-span-2">
+      <p className={cn("rounded-xl bg-panel px-4 py-3 text-sm text-ink-2", className)}>
         Kepemilikan: <span className="font-semibold text-ink">{ownershipText(asset.ownership, asset.ownerName)}</span>
         {asset.receipt ? ` · masuk lewat HAF ${asset.receipt.hafNumber}` : ""}. Kepemilikan tidak bisa diubah di sini.
       </p>
     );
   }
   return (
-    <p className="rounded-xl bg-info-soft px-4 py-3 text-sm text-ink sm:col-span-2">
+    <p className={cn("rounded-xl bg-info-soft px-4 py-3 text-sm text-ink", className)}>
       {asset ? "Unit milik AMI." : "Untuk unit milik AMI."} Barang dari principal / distributor dicatat lewat{" "}
       <Link href="/inventory/penerimaan" className="font-semibold underline underline-offset-4">
         Penerimaan Barang
@@ -103,43 +105,43 @@ function OwnershipNote({ asset }: { asset?: AssetRow }) {
   );
 }
 
+/** Keterangan isian serial number (opsional sejak 2026-11-25) — sama di Ubah Unit, Daftarkan Unit & Terima Barang. */
+export const SERIAL_HINT = "Opsional. Disimpan dalam huruf besar; bila diisi tidak boleh sama dengan unit lain.";
+
 /**
- * Daftarkan unit baru / ubah data unit (INV-01). Setiap simpan tercatat di Riwayat Unit (siapa, kapan, apa yang berubah).
- * `trigger` = tombol pengganti (mis. "Ubah Unit" di halaman detail).
+ * Ubah data satu unit (INV-01). Setiap simpan tercatat di Riwayat Unit (siapa, kapan, apa yang berubah). Unit baru
+ * didaftarkan lewat halaman Daftarkan Unit (`/inventory/baru`, berbaris, 2026-11-25). `trigger` = tombol pengganti
+ * (mis. "Ubah Unit" di halaman detail).
  */
-export function AssetFormDialog({ asset, racks, trigger }: { asset?: AssetRow; racks: RackOption[]; trigger?: React.ReactElement }) {
+export function AssetFormDialog({ asset, racks, trigger }: { asset: AssetRow; racks: RackOption[]; trigger?: React.ReactElement }) {
   return (
     <FormDialog
       wide
       trigger={
-        trigger ?? (asset ? (
+        trigger ?? (
           <Button variant="ghost" size="icon-sm" aria-label={`Ubah ${asset.deviceName}`}>
             <Pencil />
           </Button>
-        ) : (
-          <Button size="lg">
-            <Plus aria-hidden /> Daftarkan Unit
-          </Button>
-        ))
+        )
       }
-      title={asset ? `Ubah ${asset.deviceName}` : "Daftarkan Unit"}
-      description={asset ? "Perubahan tercatat di Riwayat Unit beserta nama Anda." : undefined}
+      title={`Ubah ${asset.deviceName}`}
+      description="Perubahan tercatat di Riwayat Unit beserta nama Anda."
       schema={assetSchema}
       defaults={{
-        deviceName: asset?.deviceName ?? "",
-        serialNo: asset?.serialNo ?? "",
-        category: asset?.category ?? "DEMO_UNIT",
-        notes: asset?.notes ?? "",
-        rackId: asset?.rackId ?? "",
-        rackPosition: asset?.rackPosition ?? "",
+        deviceName: asset.deviceName,
+        serialNo: asset.serialNo ?? "",
+        category: asset.category,
+        notes: asset.notes ?? "",
+        rackId: asset.rackId ?? "",
+        rackPosition: asset.rackPosition ?? "",
       }}
       submitLabel="Simpan"
-      action={(values) => saveAssetAction(asset?.id ?? null, values)}
+      action={(values) => updateAssetAction(asset.id, values)}
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <OwnershipNote asset={asset} />
+        <OwnershipNote asset={asset} className="sm:col-span-2" />
         <TextInputField name="deviceName" label="Part number / deskripsi" required placeholder="mis. SFP+ (10G)" />
-        <TextInputField name="serialNo" label="Serial number" required hint="Disimpan dalam huruf besar" />
+        <TextInputField name="serialNo" label="Serial number" hint={SERIAL_HINT} />
         <SelectInputField name="category" label="Kategori" required options={toOptions(ASSET_CATEGORY_LABEL)} />
         <RackFields racks={racks} />
         <TextareaField name="notes" label="Catatan" className="sm:col-span-2" />
@@ -161,7 +163,7 @@ export function DeleteAssetButton({ asset }: { asset: AssetRow }) {
       disabled={pending}
       aria-label={`Hapus ${asset.deviceName}`}
       onClick={async () => {
-        const ok = await confirm({ title: `Hapus ${asset.deviceName}?`, description: `Serial number ${asset.serialNo}.`, confirmLabel: "Hapus", tone: "danger" });
+        const ok = await confirm({ title: `Hapus ${asset.deviceName}?`, description: asset.serialNo ? `Serial number ${asset.serialNo}.` : "Tanpa serial number.", confirmLabel: "Hapus", tone: "danger" });
         if (!ok) return;
         startTransition(async () => {
           const result = await deleteAssetAction(asset.id);

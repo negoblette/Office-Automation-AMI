@@ -1,12 +1,13 @@
-import { AlertTriangle, Archive, Boxes, PackageSearch } from "lucide-react";
+import { AlertTriangle, Archive, Boxes, PackageSearch, Plus } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { PageHeader } from "@/components/shared/page-header";
 import { STAT_GRID, StatCard } from "@/components/shared/stat-card";
+import { buttonVariants } from "@/components/ui/button";
 import { requireInventory } from "@/lib/auth/inventory";
 import { prisma } from "@/lib/db";
 import { listAssets } from "@/lib/services/asset-queries";
 import { listRacks } from "@/lib/services/storage-rack";
-import { AssetFormDialog } from "./asset-dialogs";
 import { InventoryTable } from "./inventory-table";
 
 export const metadata: Metadata = { title: "Inventaris / Unit Demo" };
@@ -26,7 +27,13 @@ export default async function InventoryPage() {
         title="Inventaris & Unit Demo"
         description="Katalog unit demo & perangkat kantor, lokasi rak di gudang, serta masa support & warranty."
         breadcrumbs={[{ label: "Operasional & Aset" }, { label: "Inventaris / Unit Demo" }]}
-        actions={access.canManage ? <AssetFormDialog racks={rackOptions} /> : undefined}
+        actions={
+          access.canManage ? (
+            <Link href="/inventory/baru" className={buttonVariants({ size: "lg" })}>
+              <Plus aria-hidden /> Daftarkan Unit
+            </Link>
+          ) : undefined
+        }
       />
       <div className={`${STAT_GRID} xl:grid-cols-4`}>
         <StatCard

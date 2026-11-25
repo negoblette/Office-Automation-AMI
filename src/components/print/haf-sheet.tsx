@@ -6,6 +6,7 @@ import Image from "next/image";
 import { Fragment } from "react";
 import logo from "@/assets/brand/artha-mitra-logo.png";
 import { COMPANY } from "@/lib/company";
+import type { LoanItemGroup } from "@/lib/demo-loan";
 import { CopyMark } from "./form-copy";
 
 /** Lebar kolom tabel unit: Item · Qty · Part Number / Description · Remarks (Remarks = lebar kolom Received By). */
@@ -23,7 +24,8 @@ export type HafSheetData = {
   pic: string;
   preparedBy: string;
   /** Unit per part number, urutan kemunculan. */
-  groups: { deviceName: string; serials: string[] }[];
+  /** Unit per part number (jumlah + serial yang ada; unit tanpa S/N ikut dihitung). */
+  groups: LoanItemGroup[];
   remarks: string;
   returnedBy: string | null;
   receivedBy: string | null;
@@ -95,7 +97,7 @@ export function HafSheet({ data, copy = false }: { data: HafSheetData; copy?: bo
               {data.groups.map((group, index) => (
                 <Fragment key={group.deviceName}>
                   <p className="py-2 text-center">{index + 1}</p>
-                  <p className="py-2 text-center tabular-nums">{group.serials.length}</p>
+                  <p className="py-2 text-center tabular-nums">{group.quantity}</p>
                   <div className="px-3 py-2">
                     <p className="font-semibold">{group.deviceName}</p>
                     {group.serials.map((serial) => (

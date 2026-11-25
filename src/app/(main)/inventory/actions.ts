@@ -6,9 +6,9 @@ import { type ActionResult, toActionError } from "@/lib/actions";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { inventoryEnabled } from "@/lib/features";
-import { createAsset, deleteAsset, updateAsset } from "@/lib/services/asset";
+import { createAssets, deleteAsset, updateAsset } from "@/lib/services/asset";
 import { inventoryAccess } from "@/lib/services/inventory-access";
-import { assetSchema } from "@/lib/validators/asset";
+import { assetBatchSchema, assetSchema } from "@/lib/validators/asset";
 
 function revalidateInventory() {
   revalidatePath("/inventory", "layout");
@@ -32,12 +32,18 @@ async function run(action: (actorId: string) => Promise<unknown>): Promise<Actio
 
 const id = (value: string) => z.string().min(1).parse(value);
 
-/** Daftarkan atau ubah aset (INV-01). `assetId` null = baru. */
-export async function saveAssetAction(assetId: string | null, values: unknown): Promise<ActionResult> {
-  return run((actorId) => {
-    const input = assetSchema.parse(values);
-    return assetId ? updateAsset(prisma, actorId, id(assetId), input) : createAsset(prisma, actorId, input);
+/** Ubah satu unit (INV-01, dialog Ubah Unit). */
+export async function updateAssetAction(assetId: string, values: unknown): Promise<ActionResult> {
+  return run((actorId) => updateAsset(prisma, actorId, id(assetId), assetSchema.parse(values)));
+}
+
+/** Daftarkan Unit berbaris (2026-11-25): beberapa unit milik AMI sekaligus; semua tersimpan atau tidak sama sekali. */
+export async function createAssetsAction(values: unknown): Promise<ActionResult<{ count: number }>> {
+  let count = 0;
+  const result = await run(async (actorId) => {
+    count = (await createAssets(prisma, actorId, assetBatchSchema.parse(values))).length;
   });
+  return result.ok ? { ok: true, data: { count } } : result;
 }
 
 export async function deleteAssetAction(assetId: string): Promise<ActionResult> {

@@ -129,7 +129,7 @@ semua direktur auto-approve; bila flow REGULAR tidak ditemukan, engine melempar 
 | No HP | 10–15 digit | `08…` / `62…` → `+62…` |
 | Email | format email | lowercase, trim |
 | Nama | 2–100 karakter | trim, rapikan spasi, Title Case |
-| Serial number | 3–50 karakter | trim, UPPERCASE |
+| Serial number | opsional (2026-11-25); bila diisi 3–50 karakter & unik | trim, UPPERCASE; kosong → `NULL` |
 | BPJS Ketenagakerjaan | 11 digit | hapus spasi *(keputusan user 2026-09-24)* |
 | BPJS Kesehatan | 13 digit | hapus spasi *(keputusan user 2026-09-24)* |
 | Password | 15–128 karakter (lihat §9) | — |
@@ -239,12 +239,24 @@ bertahap (docs/05-TAHAPAN.md Fase 16); Tahap 1 = data, akses, rak; Tahap 2 = pen
   tampil sebagai keterangan. Sejak 2026-11-20 kepemilikan **tidak** ada di form Tambah / Ubah Unit
   (`assetSchema` tanpa ownership; `createAsset` selalu AMI, `updateAsset` tidak mengubahnya). Support & warranty juga
   dihapus dari form (keputusan user 2026-11-20); kolomnya tetap di database dan nilai lama tidak diubah.
+- **Serial number opsional & Daftarkan Unit berbaris** (permintaan user 2026-11-25; migrasi
+  `20261125090000_optional_serial_number`): `Asset.serialNo`, `DemoLoanItem.serialNo` & `GoodsReturnItem.serialNo` boleh
+  `NULL` (unique index tetap — banyak `NULL` tidak bentrok). Berlaku di Daftarkan Unit, Ubah Unit & Terima Barang; yang
+  diisi tetap UPPERCASE, unik (`assertSerialAvailable` melewati yang kosong) dan tidak boleh dobel antarbaris form
+  (`refineUniqueSerials`). Tampilan: `snLabel` → "SN X" / "Tanpa S/N", `snSuffix` → " · SN X" / kosong; PTF & HAF
+  mengelompokkan per part number (`groupLoanItems` → `{ deviceName, quantity, serials }`: unit tanpa S/N ikut dihitung di
+  Qty, serialnya tidak ditulis). Unit tanpa S/N yang diterima lagi dari principal selalu jadi unit baru (tidak bisa
+  dikenali). **Daftarkan Unit** = halaman `/inventory/baru` (Admin & Operational, `requireInventory("manage")`), bukan
+  dialog lagi: satu baris per unit (maks `MAX_ASSET_BATCH` = 50), "Tambah unit", "Salin" (baris baru dengan isian sama
+  tanpa S/N, fokus ke S/N); `assetBatchSchema` → `createAssets` satu transaksi (satu baris gagal → tidak ada yang
+  tersimpan, pesan di `units.<i>.<field>`), audit `Asset` CREATE per unit. Ubah Unit tetap dialog satu unit
+  (`updateAssetAction`). Baris unit form dipakai bersama dengan Terima Barang (`inventory/unit-row.tsx`).
 - **Penerimaan Barang** (2026-11-20, `GoodsReceipt`, `services/goods-receipt.ts#receiveGoods`, halaman
   `/inventory/penerimaan`): barang yang dipinjam AMI dari principal / distributor wajib dicatat di sini — **hanya
   Operational**; satu kedatangan = **satu HAF**, banyak unit. Isian: principal / distributor + nama, kontak (wajib),
   tanggal terima (≤ hari ini), PIC (Engineer / Sales aktif, `assertInventoryPic`), penerima (karyawan aktif), pengirim
-  (opsional), keperluan, unit (part number, S/N unik — dobel di form & dengan unit terdaftar ditolak per baris
-  `units.<i>.serialNo` —, kategori, rak & posisi, catatan). Simpan → nomor HAF `NNN/AMI-HAF/<nama pemilik>/<tahun>` dari
+  (opsional), keperluan, unit (part number, S/N opsional sejak 2026-11-25 & unik bila diisi — dobel di form & dengan unit
+  terdaftar ditolak per baris `units.<i>.serialNo` —, kategori, rak & posisi, catatan; "Salin" menyalin baris tanpa S/N). Simpan → nomor HAF `NNN/AMI-HAF/<nama pemilik>/<tahun>` dari
   counter HAF yang sama dengan pengambilan peminjaman (`highestUsedSequence` memeriksa keduanya), unit dibuat dengan
   kepemilikan itu + `Asset.receiptId`, audit `Asset` CREATE (Riwayat Unit "Diterima dari Principal Cisco · HAF …") &
   `GoodsReceipt` CREATE. Cetak `/cetak/penerimaan/[id]` (lembar HAF bersama `components/print/haf-sheet.tsx`, asli +

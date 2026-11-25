@@ -18,6 +18,7 @@ import {
   rackGroupComparator,
   rackGroupKey,
   rackLocationLabel,
+  snLabel,
   sortUnitsByRack,
 } from "@/lib/inventory";
 import { ASSET_CATEGORY_LABEL } from "@/lib/labels";
@@ -90,7 +91,7 @@ export function InventoryTable({ rows, racks, canManage }: { rows: AssetRow[]; r
   const columns = useMemo(
     () =>
       col.columns([
-        col.accessor((row) => `${row.deviceName} ${row.serialNo} ${ownershipText(row.ownership, row.ownerName)}`, {
+        col.accessor((row) => `${row.deviceName} ${row.serialNo ?? ""} ${ownershipText(row.ownership, row.ownerName)}`, {
           id: "device",
           header: "Perangkat & Serial",
           sortFn: (a, b) => a.original.deviceName.localeCompare(b.original.deviceName, "id"),
@@ -101,7 +102,7 @@ export function InventoryTable({ rows, racks, canManage }: { rows: AssetRow[]; r
               </span>
               <div className="min-w-0">
                 <p className="font-semibold">{row.original.deviceName}</p>
-                <p className="font-mono text-xs text-muted-foreground">SN: {row.original.serialNo}</p>
+                <p className="font-mono text-xs text-muted-foreground">{snLabel(row.original.serialNo)}</p>
                 {/* Titipan principal / distributor ditandai; milik AMI tanpa label supaya tabel tetap tenang. */}
                 {row.original.ownership !== "AMI" && (
                   <StatusBadge variant="warning" className="mt-1">
@@ -161,7 +162,7 @@ export function InventoryTable({ rows, racks, canManage }: { rows: AssetRow[]; r
               <Link
                 href={`/inventory/${row.original.id}`}
                 className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
-                aria-label={`Detail ${row.original.deviceName} ${row.original.serialNo}`}
+                aria-label={`Detail ${row.original.deviceName} ${row.original.serialNo ?? ""}`.trim()}
                 title="Detail unit"
               >
                 <Eye aria-hidden />

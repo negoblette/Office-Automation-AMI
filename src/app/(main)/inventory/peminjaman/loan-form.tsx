@@ -17,8 +17,9 @@ import { useFeedback } from "@/components/shared/feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { LoanPurpose } from "@/generated/prisma/enums";
-import { addDaysIso, formatLoanDuration, LOAN_PURPOSE_HINT, LOAN_PURPOSE_LABEL, MAX_LOAN_ITEMS, maxLoanEnd, RETURN_CONDITION_LABEL } from "@/lib/demo-loan";
+import { addDaysIso, formatLoanDuration, LOAN_PURPOSE_HINT, LOAN_PURPOSE_LABEL, MAX_LOAN_ITEMS, maxLoanEnd, RETURN_CONDITION_LABEL, snSuffix } from "@/lib/demo-loan";
 import { formatDate, toJakartaIsoDate } from "@/lib/format";
+import { snLabel } from "@/lib/inventory";
 import { ASSET_CATEGORY_LABEL } from "@/lib/labels";
 import type { LoanFormOptions, LoanUnitOption } from "@/lib/services/demo-loan-queries";
 import { cn } from "@/lib/utils";
@@ -355,7 +356,7 @@ function UnitPicker({ units }: { units: LoanUnitOption[] }) {
     const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const list = words.length
       ? units.filter((unit) => {
-          const text = `${unit.deviceName} ${unit.serialNo} ${unit.location ?? "tidak di rak"} ${ASSET_CATEGORY_LABEL[unit.category]} ${unit.ownerLabel}`.toLowerCase();
+          const text = `${unit.deviceName} ${unit.serialNo ?? ""} ${unit.location ?? "tidak di rak"} ${ASSET_CATEGORY_LABEL[unit.category]} ${unit.ownerLabel}`.toLowerCase();
           return words.every((word) => text.includes(word));
         })
       : units;
@@ -383,15 +384,15 @@ function UnitPicker({ units }: { units: LoanUnitOption[] }) {
                     const unit = byId.get(id);
                     return (
                       <li key={id} className="flex items-center gap-1 rounded-full bg-panel py-1 pr-1 pl-3 text-[13px] font-semibold text-ink">
-                        <span className="max-w-[16rem] truncate" title={unit ? `${unit.deviceName} · SN ${unit.serialNo}` : id}>
-                          {unit ? `${unit.deviceName} · ${unit.serialNo}` : "Unit tidak ditemukan"}
+                        <span className="max-w-[16rem] truncate" title={unit ? `${unit.deviceName}${snSuffix(unit.serialNo)}` : id}>
+                          {unit ? `${unit.deviceName}${unit.serialNo ? ` · ${unit.serialNo}` : ""}` : "Unit tidak ditemukan"}
                         </span>
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon-xs"
                           className="text-ink-3 hover:text-ink"
-                          aria-label={`Batalkan pilihan ${unit ? `${unit.deviceName} SN ${unit.serialNo}` : "unit"}`}
+                          aria-label={`Batalkan pilihan ${unit ? `${unit.deviceName}${snSuffix(unit.serialNo)}` : "unit"}`}
                           onClick={() => toggle(id, false)}
                         >
                           <X aria-hidden />
@@ -468,7 +469,7 @@ function UnitPicker({ units }: { units: LoanUnitOption[] }) {
                           <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                             <span className="min-w-0">
                               <span className={cn("block text-sm font-semibold wrap-anywhere", disabled ? "text-ink-3" : "text-ink")}>{unit.deviceName}</span>
-                              <span className="block font-mono text-xs text-ink-3">SN {unit.serialNo}</span>
+                              <span className="block font-mono text-xs text-ink-3">{snLabel(unit.serialNo)}</span>
                               {unit.ownership !== "AMI" && <span className="mt-0.5 block text-xs font-semibold text-amber-deep">{unit.ownerLabel}</span>}
                             </span>
                             <span className="flex shrink-0 flex-col gap-0.5 text-xs sm:items-end">

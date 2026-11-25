@@ -181,3 +181,36 @@ describe("pengembalian ke principal / distributor (2026-11-20)", () => {
     await expect(receive(["CS001"], TODAY)).rejects.toThrow("Serial number sudah terdaftar");
   });
 });
+
+describe("unit tanpa serial number (2026-11-25)", () => {
+  it("diterima, dipinjamkan & dikembalikan ke principal tanpa S/N; penerimaan berikutnya selalu unit baru", async () => {
+    const receipt = await receive(["", "CS001", ""]);
+    const units = (await getGoodsReceipt(testDb, receipt.id))!.units;
+    expect(units.map((unit) => unit.serialNo).sort()).toEqual(["CS001", null, null]);
+    const [noSerial, otherNoSerial] = units.filter((unit) => !unit.serialNo);
+
+    const loan = await submitDemoLoan(
+      testDb,
+      await actor("sinta"),
+      demoLoanSchema.parse({
+        purpose: "POC",
+        assetIds: [noSerial.id],
+        borrowerName: "PT Bank Uji",
+        contactName: "Bapak Uji",
+        contactEmail: "uji@bank.test",
+        picId: emp.sinta,
+        startDate: TODAY,
+        dueDate: addDaysIso(TODAY, 30),
+      }),
+      TODAY,
+    );
+    expect(await testDb.demoLoanItem.findMany({ where: { loanId: loan.loanId }, select: { serialNo: true } })).toEqual([{ serialNo: null }]);
+
+    const goodsReturn = await returnGoods(testDb, await actor("devi"), receipt.id, returnInput([otherNoSerial.id]), TODAY);
+    expect((await getGoodsReturn(testDb, goodsReturn.id))!.units).toEqual([expect.objectContaining({ assetId: otherNoSerial.id, serialNo: null })]);
+
+    const again = await receive([""], TODAY);
+    const [fresh] = (await getGoodsReceipt(testDb, again.id))!.units;
+    expect(fresh.id).not.toBe(otherNoSerial.id);
+  });
+});

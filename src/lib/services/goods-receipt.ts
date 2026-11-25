@@ -6,6 +6,7 @@
 // - Nomor `NNN/AMI-HAF/<nama pemilik>/<tahun>` dari counter HAF yang sama dengan pengambilan peminjaman.
 // - Selama di AMI, unit titipan dipinjamkan ke customer atas nama AMI (milik AMI untuk sementara, 2026-11-20); keluar
 //   lagi lewat Pengembalian (`returnGoods`, HAF baru). Serial yang sama diterima lagi → baris Asset lama dipakai lagi.
+// - Serial number boleh kosong (2026-11-25); yang diisi tetap unik.
 import { type Asset, Prisma, type PrismaClient } from "@/generated/prisma/client";
 import { fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import type { GoodsReceiptInput, GoodsReturnInput } from "@/lib/validators/goods-receipt";
@@ -13,22 +14,12 @@ import { assertSerialAvailable } from "./asset";
 import { logAudit } from "./audit";
 import type { LoanActor } from "./demo-loan";
 import { heldLoanItemWhere } from "./demo-loan-hold";
-import { ServiceError } from "./errors";
+import { onRow, ServiceError } from "./errors";
 import { assertInventoryPic, assertOperational } from "./inventory-access";
 import { nextHafNumber } from "./numbering";
 import { assertRackPosition } from "./storage-rack";
 
 type Tx = Prisma.TransactionClient;
-
-/** Pesan rak / posisi / serial number ditempel ke baris unit yang salah (`units.<i>.<field>`). */
-async function onRow<T>(index: number, check: () => Promise<T>): Promise<T> {
-  try {
-    return await check();
-  } catch (error) {
-    if (error instanceof ServiceError && error.field) throw new ServiceError(error.message, `units.${index}.${error.field}`);
-    throw error;
-  }
-}
 
 /** Catat penerimaan barang & daftarkan unitnya. HAF langsung bisa dicetak. */
 export async function receiveGoods(db: PrismaClient, actor: LoanActor, input: GoodsReceiptInput, today = toJakartaIsoDate()) {
@@ -39,13 +30,14 @@ export async function receiveGoods(db: PrismaClient, actor: LoanActor, input: Go
     const receiver = await tx.employee.findUnique({ where: { id: input.receiverId }, select: { status: true } });
     if (receiver?.status !== "ACTIVE") throw new ServiceError("Penerima harus karyawan aktif", "receiverId");
     // Unit yang pernah dikembalikan ke principal / distributor lalu dipinjam AMI lagi: baris Asset yang sama dipakai lagi
-    // (serial number unik, riwayatnya menyambung) — bukan ditolak sebagai serial yang sudah terpakai.
+    // (serial number unik, riwayatnya menyambung) — bukan ditolak sebagai serial yang sudah terpakai. Unit tanpa S/N
+    // (boleh sejak 2026-11-25) tidak bisa dikenali, jadi selalu jadi unit baru.
     const returnedBefore = new Map<number, Asset>();
     for (const [index, unit] of input.units.entries()) {
-      const existing = await tx.asset.findUnique({ where: { serialNo: unit.serialNo } });
+      const existing = unit.serialNo ? await tx.asset.findUnique({ where: { serialNo: unit.serialNo } }) : null;
       if (existing?.returnedToOwnerAt) returnedBefore.set(index, existing);
-      else await onRow(index, () => assertSerialAvailable(tx, unit.serialNo));
-      await onRow(index, () => assertRackPosition(tx, unit.rackId, unit.rackPosition));
+      else await onRow(`units.${index}`, () => assertSerialAvailable(tx, unit.serialNo));
+      await onRow(`units.${index}`, () => assertRackPosition(tx, unit.rackId, unit.rackPosition));
     }
 
     const receipt = await tx.goodsReceipt.create({
@@ -125,7 +117,7 @@ export async function returnGoods(db: PrismaClient, actor: LoanActor, receiptId:
       tx.demoLoanItem.findMany({ where: { assetId: { in: input.assetIds }, ...heldLoanItemWhere() }, select: { asset: { select: { deviceName: true, serialNo: true } } } }),
       tx.assetAssignment.findMany({ where: { assetId: { in: input.assetIds }, returnedAt: null }, select: { asset: { select: { deviceName: true, serialNo: true } } } }),
     ]);
-    const busy = [...held, ...assigned].map(({ asset }) => `${asset.deviceName} (SN ${asset.serialNo})`);
+    const busy = [...held, ...assigned].map(({ asset }) => `${asset.deviceName}${asset.serialNo ? ` (SN ${asset.serialNo})` : ""}`);
     if (busy.length) {
       throw new ServiceError(`Unit masih dipakai (diajukan / dipinjam / ditindaklanjuti / diserahkan ke karyawan): ${[...new Set(busy)].join(", ")}`, "assetIds");
     }

@@ -12,6 +12,7 @@ import { useFeedback } from "@/components/shared/feedback";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { formatDate, toJakartaIsoDate } from "@/lib/format";
+import { snLabel } from "@/lib/inventory";
 import { ASSET_CATEGORY_LABEL } from "@/lib/labels";
 import type { AssignmentRow } from "@/lib/services/asset-queries";
 import type { EmployeeAssetView } from "@/lib/services/employee-asset";
@@ -169,7 +170,7 @@ function InventoryLine({ row, canOpen }: { row: AssignmentRow; canOpen: boolean 
           </StatusBadge>
         </div>
         <p className="text-sm text-muted-foreground">
-          SN {row.serialNo} · Diterima {date(row.assignedAt)}
+          {snLabel(row.serialNo)} · Diterima {date(row.assignedAt)}
           {row.returnedAt && ` · dikembalikan ${date(row.returnedAt)}`}
         </p>
         {row.note && <p className="text-sm text-muted-foreground">{row.note}</p>}

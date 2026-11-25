@@ -73,7 +73,7 @@ type RowSource = {
   pickupDate: Date | null;
   requester: { email: string; employee: { fullName: string } | null };
   pic: { fullName: string };
-  items: { deviceName: string; serialNo: string }[];
+  items: { deviceName: string; serialNo: string | null }[];
 };
 
 function toRow(loan: RowSource, today: string): LoanRow {
@@ -95,7 +95,7 @@ function toRow(loan: RowSource, today: string): LoanRow {
     durationLabel: formatLoanDuration(iso(loan.startDate), dueDate),
     itemCount: loan.items.length,
     itemSummary: groupLoanItems(loan.items)
-      .map((group) => (group.serials.length > 1 ? `${group.deviceName} ×${group.serials.length}` : group.deviceName))
+      .map((group) => (group.quantity > 1 ? `${group.deviceName} ×${group.quantity}` : group.deviceName))
       .join(" · "),
     submittedAt: loan.submittedAt.toISOString(),
     overdue: loan.status === "ON_LOAN" && dueDate < today,
@@ -114,7 +114,7 @@ export type LoanItemView = {
   id: string;
   assetId: string;
   deviceName: string;
-  serialNo: string;
+  serialNo: string | null;
   /** Posisi saat diajukan, mis. "Rak 1 · A1". */
   location: string | null;
   /** Posisi unit sekarang (bisa sudah dipindah); null = tidak di rak. */
@@ -317,7 +317,7 @@ export async function getDemoLoanDetail(db: PrismaClient, loanId: string, today 
 export type LoanUnitOption = {
   id: string;
   deviceName: string;
-  serialNo: string;
+  serialNo: string | null;
   category: AssetCategory;
   location: string | null;
   /**

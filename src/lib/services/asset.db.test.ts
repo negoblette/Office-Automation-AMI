@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { assignAsset, createAsset, deleteAsset, returnAsset, updateAsset } from "@/lib/services/asset";
+import { assignAsset, createAsset, createAssets, deleteAsset, returnAsset, updateAsset } from "@/lib/services/asset";
 import { resignEmployee } from "@/lib/services/employee";
-import { assetSchema, assignAssetSchema, returnAssetSchema } from "@/lib/validators/asset";
+import { assetBatchSchema, assetSchema, assignAssetSchema, returnAssetSchema } from "@/lib/validators/asset";
 import { testDb } from "@/test/db";
 import { resetAndSeed } from "@/test/seed";
 
@@ -32,6 +32,48 @@ describe("aset (INV-01)", () => {
     const supportEnd = new Date("2027-03-01T00:00:00Z");
     await testDb.asset.update({ where: { id: created.id }, data: { supportEnd } });
     await expect(updateAsset(testDb, u.yosep, created.id, asset({ deviceName: "Cisco Router 2911" }))).resolves.toMatchObject({ deviceName: "Cisco Router 2911", supportEnd });
+  });
+
+  it("serial number boleh kosong (2026-11-25): banyak unit tanpa S/N, serial bisa dihapus / diisi lewat Ubah Unit", async () => {
+    const a = await createAsset(testDb, u.yosep, asset({ serialNo: "" }));
+    const b = await createAsset(testDb, u.yosep, asset({ serialNo: "   " }));
+    expect([a.serialNo, b.serialNo]).toEqual([null, null]);
+    const withSerial = await createAsset(testDb, u.yosep, asset());
+    await expect(updateAsset(testDb, u.yosep, a.id, asset({ serialNo: "cs-2901-x7718a" }))).rejects.toThrow("Serial number sudah terdaftar");
+    await expect(updateAsset(testDb, u.yosep, withSerial.id, asset({ serialNo: "" }))).resolves.toMatchObject({ serialNo: null });
+    await expect(updateAsset(testDb, u.yosep, a.id, asset())).resolves.toMatchObject({ serialNo: "CS-2901-X7718A" });
+    // Yang diisi tetap minimal 3 karakter.
+    expect(() => asset({ serialNo: "ab" })).toThrow("minimal 3 karakter");
+  });
+});
+
+describe("Daftarkan Unit berbaris (2026-11-25)", () => {
+  const batch = (units: Record<string, unknown>[]) =>
+    assetBatchSchema.parse({ units: units.map((unit) => ({ deviceName: "SFP+ 10G", category: "DEMO_UNIT", serialNo: "", ...unit })) });
+
+  it("semua baris tersimpan sebagai unit milik AMI + audit per unit; baris tanpa S/N boleh lebih dari satu", async () => {
+    const assets = await createAssets(testDb, u.yosep, batch([{ serialNo: "sfp-001" }, { serialNo: "sfp-002" }, {}, {}]));
+    expect(assets.map((a) => [a.serialNo, a.ownership])).toEqual([
+      ["SFP-001", "AMI"],
+      ["SFP-002", "AMI"],
+      [null, "AMI"],
+      [null, "AMI"],
+    ]);
+    expect(await testDb.auditLog.count({ where: { entity: "Asset", action: "CREATE" } })).toBe(4);
+  });
+
+  it("serial dobel di form ditolak schema; dobel dengan unit terdaftar → error di baris itu & tidak ada yang tersimpan", async () => {
+    expect(() => batch([{ serialNo: "SFP-001" }, { serialNo: "sfp-001" }])).toThrow("Serial number sama dengan baris 1");
+    await createAsset(testDb, u.yosep, asset({ serialNo: "SFP-009" }));
+    const error = await createAssets(testDb, u.yosep, batch([{ serialNo: "SFP-010" }, { serialNo: "SFP-009" }])).catch((e: unknown) => e);
+    expect(error).toMatchObject({ message: "Serial number sudah terdaftar", field: "units.1.serialNo" });
+    expect(await testDb.asset.count()).toBe(1);
+  });
+
+  it("posisi rak dicek per baris", async () => {
+    const error = await createAssets(testDb, u.yosep, batch([{}, { rackId: "rak-tidak-ada", rackPosition: "A1" }])).catch((e: unknown) => e);
+    expect(error).toMatchObject({ field: expect.stringMatching(/^units\.1\./) });
+    expect(await testDb.asset.count()).toBe(0);
   });
 });
 

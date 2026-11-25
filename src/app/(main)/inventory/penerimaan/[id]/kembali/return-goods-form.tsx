@@ -14,6 +14,7 @@ import { useUnsavedChangesGuard } from "@/components/form/unsaved-changes";
 import { useActionSubmit } from "@/components/form/use-action-submit";
 import { useFeedback } from "@/components/shared/feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { snLabel } from "@/lib/inventory";
 import { cn } from "@/lib/utils";
 import { goodsReturnSchema } from "@/lib/validators/goods-receipt";
 import { returnGoodsAction } from "../../actions";
@@ -22,7 +23,7 @@ type FormInput = z.input<typeof goodsReturnSchema>;
 type FormOutput = z.output<typeof goodsReturnSchema>;
 
 /** Unit penerimaan yang masih di AMI; `busy` = sedang dipakai (tidak bisa dikembalikan dulu). */
-export type ReturnableUnit = { id: string; deviceName: string; serialNo: string; location: string | null; busy: string | null };
+export type ReturnableUnit = { id: string; deviceName: string; serialNo: string | null; location: string | null; busy: string | null };
 
 /**
  * Kembalikan barang ke principal / distributor (2026-11-20, Operational): pilih unit (boleh sebagian), tanggal, kontak,
@@ -111,7 +112,7 @@ export function ReturnGoodsForm({ receiptId, ownerName, units, employees, defaul
                               />
                               <span className="min-w-0 flex-1">
                                 <span className="block font-semibold wrap-anywhere text-ink">{unit.deviceName}</span>
-                                <span className="block font-mono text-xs text-ink-3">SN {unit.serialNo}</span>
+                                <span className="block font-mono text-xs text-ink-3">{snLabel(unit.serialNo)}</span>
                                 {unit.busy && <span className="mt-0.5 block text-xs font-semibold text-amber-deep">{unit.busy} — belum bisa dikembalikan</span>}
                               </span>
                               <span className="shrink-0 text-xs text-ink-3">{unit.location ?? "Tidak di rak"}</span>

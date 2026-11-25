@@ -24,6 +24,7 @@ import {
   RETURN_CONDITION_LABEL,
 } from "@/lib/demo-loan";
 import { formatDate, toJakartaIsoDate } from "@/lib/format";
+import { snLabel } from "@/lib/inventory";
 import { cn } from "@/lib/utils";
 import { deliverDemoLoanSchema, demoLoanExtensionSchema, itemSenderSchema, loanPickupSchema, resolveFollowUpSchema } from "@/lib/validators/demo-loan";
 import {
@@ -151,7 +152,7 @@ export function CancelPickupButton({ loanId }: { loanId: string }) {
 }
 
 /** Unit yang kembali Rusak / Tidak lengkap & perlu diisi hasil tindak lanjutnya. */
-export type FollowUpUnit = { itemId: string; deviceName: string; serialNo: string; condition: ReturnCondition; note: string | null };
+export type FollowUpUnit = { itemId: string; deviceName: string; serialNo: string | null; condition: ReturnCondition; note: string | null };
 
 type ResolveInput = z.input<typeof resolveFollowUpSchema>;
 const RESULTS: FollowUpResult[] = ["RESOLVED", "UNRESOLVED"];
@@ -207,7 +208,7 @@ function FollowUpUnitField({ index, unit }: { index: number; unit: FollowUpUnit 
   return (
     <li className="rounded-[14px] p-3.5 shadow-[inset_0_0_0_1px_var(--edge)]">
       <p className="font-semibold wrap-anywhere text-ink">{unit.deviceName}</p>
-      <p className="font-mono text-xs text-ink-3">SN {unit.serialNo}</p>
+      <p className="font-mono text-xs text-ink-3">{snLabel(unit.serialNo)}</p>
       <p className="mt-1 text-sm wrap-anywhere text-red-deep">
         {RETURN_CONDITION_LABEL[unit.condition]}
         {unit.note && `: ${unit.note}`}

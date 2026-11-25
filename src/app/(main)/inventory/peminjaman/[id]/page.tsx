@@ -290,7 +290,7 @@ export default async function DemoLoanDetailPage({ params }: { params: Promise<{
                       {item.deviceName}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs">{item.serialNo}</td>
+                  <td className="px-4 py-3 font-mono text-xs">{item.serialNo ?? "—"}</td>
                   <td className="px-4 py-3">
                     <span className={cn(!item.location && "text-muted-foreground")}>{item.location ?? "Tidak di rak"}</span>
                     {!returned && item.currentLocation !== item.location && (
@@ -533,7 +533,7 @@ function StatusNote({
           <span className="mt-1 block">
             {problems.map((item) => (
               <span key={item.id} className="block">
-                {item.deviceName} (SN {item.serialNo}) — {item.returnCondition ? RETURN_CONDITION_LABEL[item.returnCondition] : ""}
+                {item.deviceName}{item.serialNo && ` (SN ${item.serialNo})`} — {item.returnCondition ? RETURN_CONDITION_LABEL[item.returnCondition] : ""}
                 {item.returnNote && `: ${item.returnNote}`}
               </span>
             ))}

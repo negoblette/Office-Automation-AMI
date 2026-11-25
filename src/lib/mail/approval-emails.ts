@@ -3,7 +3,7 @@ import type { ApprovalModule, PrismaClient } from "@/generated/prisma/client";
 import { formatDuration } from "@/lib/attendance";
 import { formatDate, formatRupiah, formatTime, toJakartaIsoDate } from "@/lib/format";
 import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
-import { formatLoanDuration, groupLoanItems, LOAN_PURPOSE_HINT, LOAN_PURPOSE_LABEL, returnCheckLine } from "@/lib/demo-loan";
+import { formatLoanDuration, groupLoanItems, LOAN_PURPOSE_HINT, LOAN_PURPOSE_LABEL, loanItemGroupText, returnCheckLine } from "@/lib/demo-loan";
 import { enqueueDemoLoanEmails, enqueueLoanExtendedEmails, enqueueLoanFollowUpEmails } from "./demo-loan-emails";
 import { LEAVE_TYPE_LABEL, leaveDeductLabel, projectLabel } from "@/lib/labels";
 import { overtimeMinutes } from "@/lib/validators/overtime";
@@ -53,7 +53,7 @@ async function detailLines(db: PrismaClient, module: ApprovalModule, entityId: s
         `Peminjam: ${loan.borrowerName} (up: ${loan.contactName})`,
         `PIC: ${loan.pic.fullName}`,
         `Periode: ${formatDate(loan.startDate)} – ${formatDate(loan.dueDate)} (${formatLoanDuration(toJakartaIsoDate(loan.startDate), toJakartaIsoDate(loan.dueDate))})`,
-        ...groupLoanItems(loan.items).map((group) => `${group.deviceName} ×${group.serials.length} — SN ${group.serials.join(", ")}`),
+        ...groupLoanItems(loan.items).map(loanItemGroupText),
       ];
     }
     case "DEMO_LOAN_EXTENSION": {

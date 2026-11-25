@@ -92,7 +92,7 @@ export type GoodsReceiptUnitStatus =
 export type GoodsReceiptUnit = {
   id: string;
   deviceName: string;
-  serialNo: string;
+  serialNo: string | null;
   category: AssetCategory | null;
   location: string | null;
   notes: string | null;
@@ -109,7 +109,7 @@ export type GoodsReturnView = {
   note: string | null;
   preparedByName: string;
   createdAt: string;
-  units: { assetId: string; deviceName: string; serialNo: string }[];
+  units: { assetId: string; deviceName: string; serialNo: string | null }[];
 };
 
 export type GoodsReceiptDetail = Omit<GoodsReceiptRow, "unitSummary"> & {

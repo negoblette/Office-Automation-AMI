@@ -319,7 +319,7 @@ export type FollowUpResult = keyof typeof FOLLOW_UP_RESULT_LABEL;
  */
 export function returnCheckLine(item: {
   deviceName: string;
-  serialNo: string;
+  serialNo: string | null;
   returnCondition: ReturnCondition | null;
   returnNote: string | null;
   resolvedCondition: ReturnCondition | null;
@@ -331,7 +331,7 @@ export function returnCheckLine(item: {
     ? ` → tindak lanjut: ${FOLLOW_UP_RESULT_LABEL[item.resolvedCondition === "GOOD" ? "RESOLVED" : "UNRESOLVED"].toLowerCase()}`
     : "";
   const rack = item.returnRack && item.returnRackPosition ? ` · ditaruh ${item.returnRack.name} ${item.returnRackPosition}` : "";
-  return `${item.deviceName} · SN ${item.serialNo} — ${condition}${item.returnNote ? `: ${item.returnNote}` : ""}${followUp}${rack}`;
+  return `${item.deviceName}${snSuffix(item.serialNo)} — ${condition}${item.returnNote ? `: ${item.returnNote}` : ""}${followUp}${rack}`;
 }
 
 // ---------------------------------------------------------------------
@@ -356,8 +356,26 @@ export function formatTrialPeriod(startIso: string, endIso: string): string {
 }
 
 /** Kelompokkan unit per part number untuk tabel form (Item · Qty · S/N), urutan kemunculan dipertahankan. */
-export function groupLoanItems<T extends { deviceName: string; serialNo: string }>(items: T[]): { deviceName: string; serials: string[] }[] {
-  const groups = new Map<string, string[]>();
-  for (const item of items) groups.set(item.deviceName, [...(groups.get(item.deviceName) ?? []), item.serialNo]);
-  return [...groups].map(([deviceName, serials]) => ({ deviceName, serials }));
+export function groupLoanItems<T extends { deviceName: string; serialNo: string | null }>(items: T[]): LoanItemGroup[] {
+  const groups = new Map<string, LoanItemGroup>();
+  for (const item of items) {
+    const group = groups.get(item.deviceName) ?? { deviceName: item.deviceName, quantity: 0, serials: [] };
+    group.quantity += 1;
+    if (item.serialNo) group.serials.push(item.serialNo);
+    groups.set(item.deviceName, group);
+  }
+  return [...groups.values()];
+}
+
+/** Satu part number: jumlah unit & serial number yang ada (unit tanpa S/N ikut dihitung, tidak tertulis — 2026-11-25). */
+export type LoanItemGroup = { deviceName: string; quantity: number; serials: string[] };
+
+/** "Switch ×2 — SN A, B" untuk ringkasan teks (email); tanpa bagian SN bila tidak ada satu pun. */
+export function loanItemGroupText(group: LoanItemGroup): string {
+  return `${group.deviceName} ×${group.quantity}${group.serials.length ? ` — SN ${group.serials.join(", ")}` : ""}`;
+}
+
+/** " · SN X", atau "" bila unit tanpa serial number (boleh kosong sejak 2026-11-25). */
+export function snSuffix(serial: string | null | undefined): string {
+  return serial ? ` · SN ${serial}` : "";
 }

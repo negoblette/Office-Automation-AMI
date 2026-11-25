@@ -142,7 +142,7 @@ export async function assetReminders(db: PrismaClient, todayIso = toJakartaIsoDa
     const base = {
       entityId: a.id,
       itemName: a.deviceName,
-      detailLine: `Serial: ${a.serialNo}`,
+      detailLine: a.serialNo ? `Serial: ${a.serialNo}` : "Tanpa serial number",
       recipients: admins.map((admin) => ({ ...admin, path: `/inventory/${a.id}` })),
     };
     const due: DueItem[] = [];

@@ -8,6 +8,11 @@ export const ASSET_OWNERSHIP_LABEL: Record<AssetOwnership, string> = {
   DISTRIBUTOR: "Distributor",
 };
 
+/** "SN X" untuk tampilan; unit tanpa serial number (boleh sejak 2026-11-25) → "Tanpa S/N". */
+export function snLabel(serial: string | null | undefined): string {
+  return serial ? `SN ${serial}` : "Tanpa S/N";
+}
+
 /** "Milik AMI" / "Principal · Cisco" / "Distributor · PT Datascrip". */
 export function ownershipText(ownership: AssetOwnership, ownerName: string | null | undefined): string {
   return ownership === "AMI" || !ownerName ? ASSET_OWNERSHIP_LABEL[ownership] : `${ASSET_OWNERSHIP_LABEL[ownership]} · ${ownerName}`;
@@ -57,7 +62,7 @@ export function rackLocationLabel(rackName: string | null | undefined, position:
 /** Kunci kelompok unit yang tidak disimpan di rak. */
 export const NO_RACK_GROUP = "__tanpa-rak";
 
-type RackedUnit = { rackId: string | null; rackName: string | null; rackPosition: string | null; deviceName: string; serialNo: string };
+type RackedUnit = { rackId: string | null; rackName: string | null; rackPosition: string | null; deviceName: string; serialNo: string | null };
 
 const natural = (a: string, b: string) => a.localeCompare(b, "id", { numeric: true, sensitivity: "base" });
 
@@ -87,6 +92,6 @@ export function sortUnitsByRack<T extends RackedUnit>(units: T[]): T[] {
       compareGroup(rackGroupKey(a), rackGroupKey(b)) ||
       natural(a.rackPosition ?? "", b.rackPosition ?? "") ||
       natural(a.deviceName, b.deviceName) ||
-      natural(a.serialNo, b.serialNo),
+      natural(a.serialNo ?? "", b.serialNo ?? ""),
   );
 }

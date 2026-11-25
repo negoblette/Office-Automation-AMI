@@ -889,6 +889,26 @@ Permintaan user: pengajuan klaim kesehatan bisa disimpan sebagai draft, persis s
 - **Cek:** typecheck kode aplikasi & lint bersih; uji alur oleh user. **Perlu disesuaikan user:**
   `health.db.test.ts` baris 146 (`claim.claimDate` sekarang bisa null) — sampai itu `npm run typecheck` gagal di file test
 
+### Tambahan: Serial number opsional & Daftarkan Unit berbaris ✅ (2026-11-25)
+Permintaan user: serial number saat pendaftaran unit tidak wajib; pendaftaran unit bisa banyak baris sekaligus.
+Keputusan user: berlaku di Daftarkan Unit & Terima Barang (juga Ubah Unit); Daftarkan Unit jadi halaman seperti Terima
+Barang (Ubah Unit tetap dialog satu unit). Serial yang diisi tetap harus unik.
+- [x] Migrasi `20261125090000_optional_serial_number` (`Asset`, `DemoLoanItem`, `GoodsReturnItem` `serialNo` boleh NULL;
+      data lama tidak berubah, tanpa drift)
+- [x] Validator & service: S/N opsional di `assetSchema` & `receiptUnitSchema`, dobel antarbaris dicek hanya yang diisi
+      (`refineUniqueSerials`), `assertSerialAvailable` melewati yang kosong; `receiveGoods` tidak mencari unit lama untuk
+      baris tanpa S/N
+- [x] Halaman `/inventory/baru` **Daftarkan Unit**: baris unit + Tambah unit + **Salin** (tanpa S/N), maks 50 unit, satu
+      transaksi (`createAssets`); tombol Daftarkan Unit di Daftar Unit membuka halaman ini. Terima Barang memakai baris unit
+      yang sama (ikut punya Salin)
+- [x] Tampilan unit tanpa S/N: "Tanpa S/N" (daftar, detail, peminjaman, penerimaan, profil), PTF / HAF / email
+      mengelompokkan per part number dengan Qty termasuk unit tanpa S/N
+- [x] Test: `asset.db.test.ts` (S/N kosong, Daftarkan Unit berbaris: sukses, dobel, rak per baris), `goods-return.db.test.ts`
+      (terima, pinjam, kembalikan tanpa S/N), unit test `demo-loan.test.ts` (pengelompokan & label)
+- **Cek:** typecheck, lint, 283 unit test, suite DB 41 file / 293 test lulus. Pratinjau lokal: 3 unit didaftarkan sekaligus
+  (1 tanpa S/N, 2 hasil Salin), serial yang sudah terdaftar ditandai di barisnya & tidak ada yang tersimpan, detail unit
+  "Tanpa S/N".
+
 ### 16.6 Dashboard Inventaris
 - [ ] Unit di gudang (per rak/posisi), sedang dipinjam (ke mana, PIC, sampai kapan, sisa hari), terlambat, akan jatuh tempo;
       kartu ringkas di Dashboard utama untuk user terkait

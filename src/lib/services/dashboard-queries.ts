@@ -108,7 +108,7 @@ async function expiringItems(db: PrismaClient, todayIso: string): Promise<Expiri
     ] as const) {
       if (!inRange(date)) continue;
       const due = toJakartaIsoDate(date);
-      items.push({ key: `${key}-${a.id}`, label, name: a.deviceName, detail: a.serialNo, dueDate: due, daysLeft: daysUntil(due, todayIso), href: `/inventory/${a.id}` });
+      items.push({ key: `${key}-${a.id}`, label, name: a.deviceName, detail: a.serialNo ?? "Tanpa serial number", dueDate: due, daysLeft: daysUntil(due, todayIso), href: `/inventory/${a.id}` });
     }
   }
   return items.sort((x, y) => x.dueDate.localeCompare(y.dueDate));

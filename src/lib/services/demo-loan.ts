@@ -83,7 +83,7 @@ async function loadAvailableUnits(tx: Tx, assetIds: string[], exceptLoanId?: str
     select: { asset: { select: { deviceName: true, serialNo: true } } },
   });
   if (busy.length) {
-    const units = busy.map(({ asset }) => `${asset.deviceName} (SN ${asset.serialNo})`).join(", ");
+    const units = busy.map(({ asset }) => `${asset.deviceName}${asset.serialNo ? ` (SN ${asset.serialNo})` : ""}`).join(", ");
     throw new ServiceError(
       `Unit sudah diajukan, sedang dipinjam, atau masih ditindaklanjuti di peminjaman lain: ${units}. Hapus dari pilihan lalu coba lagi.`,
       "assetIds",

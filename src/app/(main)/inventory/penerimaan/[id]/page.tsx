@@ -9,7 +9,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { requireInventory } from "@/lib/auth/inventory";
 import { prisma } from "@/lib/db";
 import { formatDate, formatDateTime } from "@/lib/format";
-import { ASSET_OWNERSHIP_LABEL } from "@/lib/inventory";
+import { ASSET_OWNERSHIP_LABEL, snLabel } from "@/lib/inventory";
 import { ASSET_CATEGORY_LABEL } from "@/lib/labels";
 import { type GoodsReceiptUnit, getGoodsReceipt } from "@/lib/services/goods-receipt-queries";
 import { cn } from "@/lib/utils";
@@ -127,7 +127,7 @@ export default async function GoodsReceiptDetailPage({ params }: { params: Promi
                     )}
                     {unit.notes && <span className="block text-xs wrap-anywhere text-muted-foreground">{unit.notes}</span>}
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs">{unit.serialNo}</td>
+                  <td className="px-4 py-3 font-mono text-xs">{unit.serialNo ?? "—"}</td>
                   <td className="px-4 py-3">{unit.category ? ASSET_CATEGORY_LABEL[unit.category] : "—"}</td>
                   <td className="px-4 py-3">
                     {unit.status.kind === "RETURNED" ? (
@@ -163,7 +163,7 @@ export default async function GoodsReceiptDetailPage({ params }: { params: Promi
                   <ul className="list-disc pl-5">
                     {goodsReturn.units.map((unit) => (
                       <li key={unit.assetId} className="wrap-anywhere">
-                        {unit.deviceName} <span className="font-mono text-xs text-muted-foreground">SN {unit.serialNo}</span>
+                        {unit.deviceName} <span className="font-mono text-xs text-muted-foreground">{snLabel(unit.serialNo)}</span>
                       </li>
                     ))}
                   </ul>

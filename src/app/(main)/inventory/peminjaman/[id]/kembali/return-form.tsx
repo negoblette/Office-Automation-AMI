@@ -17,7 +17,7 @@ import { useFeedback } from "@/components/shared/feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
 import type { ReturnCondition } from "@/generated/prisma/enums";
 import { RETURN_CONDITION_LABEL } from "@/lib/demo-loan";
-import { rackPositions, rackRangeLabel } from "@/lib/inventory";
+import { rackPositions, rackRangeLabel, snLabel } from "@/lib/inventory";
 import { cn } from "@/lib/utils";
 import { returnDemoLoanSchema } from "@/lib/validators/demo-loan";
 import type { RackOption } from "../../../asset-dialogs";
@@ -26,7 +26,7 @@ import { returnDemoLoanAction } from "../../actions";
 type FormInput = z.input<typeof returnDemoLoanSchema>;
 type FormOutput = z.output<typeof returnDemoLoanSchema>;
 
-export type ReturnUnit = { itemId: string; deviceName: string; serialNo: string; originalLocation: string | null };
+export type ReturnUnit = { itemId: string; deviceName: string; serialNo: string | null; originalLocation: string | null };
 
 const CONDITIONS: ReturnCondition[] = ["GOOD", "DAMAGED", "INCOMPLETE"];
 const CONDITION_STYLE: Record<ReturnCondition, string> = {
@@ -159,7 +159,7 @@ function UnitCheck({ index, unit, racks }: { index: number; unit: ReturnUnit; ra
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-semibold wrap-anywhere text-ink">{unit.deviceName}</p>
-          <p className="font-mono text-xs text-ink-3">SN {unit.serialNo}</p>
+          <p className="font-mono text-xs text-ink-3">{snLabel(unit.serialNo)}</p>
         </div>
         <p className="inline-flex items-center gap-1 text-xs text-ink-2">
           <MapPin className="size-3.5" aria-hidden /> Posisi semula: {unit.originalLocation ?? "tidak di rak"}

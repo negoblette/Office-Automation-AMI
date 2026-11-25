@@ -5,9 +5,9 @@
 // unit principal / distributor hanya masuk lewat Penerimaan Barang (services/goods-receipt.ts, menerbitkan HAF).
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { formatDate, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
-import type { AssetInput, AssignAssetInput, ReturnAssetInput } from "@/lib/validators/asset";
+import type { AssetBatchInput, AssetInput, AssignAssetInput, ReturnAssetInput } from "@/lib/validators/asset";
 import { logAudit } from "./audit";
-import { ServiceError } from "./errors";
+import { onRow, ServiceError } from "./errors";
 import { assertRackPosition } from "./storage-rack";
 
 type Tx = Prisma.TransactionClient;
@@ -24,8 +24,12 @@ function assetData(input: AssetInput) {
   };
 }
 
-/** Serial number belum dipakai unit lain (termasuk yang sudah dihapus). `field` = kolom form untuk pesan error. */
-export async function assertSerialAvailable(tx: Tx, serialNo: string, exceptId?: string, field = "serialNo") {
+/**
+ * Serial number belum dipakai unit lain (termasuk yang sudah dihapus). Kosong = lolos: serial number boleh kosong sejak
+ * 2026-11-25 dan banyak unit boleh sama-sama tanpa S/N. `field` = kolom form untuk pesan error.
+ */
+export async function assertSerialAvailable(tx: Tx, serialNo: string | null, exceptId?: string, field = "serialNo") {
+  if (!serialNo) return;
   const existing = await tx.asset.findUnique({ where: { serialNo }, select: { id: true, deletedAt: true } });
   if (existing && existing.id !== exceptId) {
     throw new ServiceError(existing.deletedAt ? "Serial number pernah dipakai aset yang sudah dihapus" : "Serial number sudah terdaftar", field);
@@ -36,13 +40,34 @@ async function openAssignment(tx: Tx, assetId: string) {
   return tx.assetAssignment.findFirst({ where: { assetId, returnedAt: null }, include: { employee: { select: { fullName: true } } } });
 }
 
+/** Unit baru milik AMI + audit. Serial number & rak sudah dicek pemanggil. */
+async function insertAsset(tx: Tx, actorId: string, input: AssetInput) {
+  const asset = await tx.asset.create({ data: { ...assetData(input), ownership: "AMI", ownerName: null } });
+  await logAudit(tx, { actorId, action: "CREATE", entity: "Asset", entityId: asset.id, after: asset });
+  return asset;
+}
+
 export async function createAsset(db: PrismaClient, actorId: string, input: AssetInput) {
   return db.$transaction(async (tx) => {
     await assertSerialAvailable(tx, input.serialNo);
     await assertRackPosition(tx, input.rackId, input.rackPosition);
-    const asset = await tx.asset.create({ data: { ...assetData(input), ownership: "AMI", ownerName: null } });
-    await logAudit(tx, { actorId, action: "CREATE", entity: "Asset", entityId: asset.id, after: asset });
-    return asset;
+    return insertAsset(tx, actorId, input);
+  });
+}
+
+/**
+ * Daftarkan Unit berbaris (2026-11-25, permintaan user): beberapa unit milik AMI sekaligus dalam satu transaksi — satu
+ * baris gagal (serial sudah terdaftar, posisi rak salah) → tidak ada yang tersimpan, pesannya di baris itu (`units.<i>.…`).
+ */
+export async function createAssets(db: PrismaClient, actorId: string, input: AssetBatchInput) {
+  return db.$transaction(async (tx) => {
+    for (const [index, unit] of input.units.entries()) {
+      await onRow(`units.${index}`, () => assertSerialAvailable(tx, unit.serialNo));
+      await onRow(`units.${index}`, () => assertRackPosition(tx, unit.rackId, unit.rackPosition));
+    }
+    const assets = [];
+    for (const unit of input.units) assets.push(await insertAsset(tx, actorId, unit));
+    return assets;
   });
 }
 

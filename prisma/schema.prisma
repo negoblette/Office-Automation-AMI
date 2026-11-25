@@ -410,7 +410,8 @@ model Certificate {
 model Asset {
   id            String        @id @default(cuid())
   deviceName    String
-  serialNo      String        @unique // uppercase
+  /// UPPERCASE, unik bila diisi. Boleh kosong sejak 2026-11-25 (permintaan user) — NULL tidak bentrok satu sama lain.
+  serialNo      String?       @unique
   category      AssetCategory
   supportStart  DateTime?     @db.Date
   supportEnd    DateTime?     @db.Date
@@ -518,7 +519,7 @@ model GoodsReturnItem {
   assetId     String
   asset       Asset       @relation(fields: [assetId], references: [id])
   deviceName  String
-  serialNo    String
+  serialNo    String?
 
   @@unique([returnId, assetId])
   @@index([assetId])
@@ -708,7 +709,7 @@ model DemoLoanItem {
   assetId      String
   asset        Asset        @relation(fields: [assetId], references: [id])
   deviceName   String
-  serialNo     String
+  serialNo     String?
   rackId       String?
   rack         StorageRack? @relation("DemoLoanItemRack", fields: [rackId], references: [id])
   rackPosition String?
