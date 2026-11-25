@@ -5,7 +5,7 @@ import { Loader2, Plus, Save } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { FormProvider, useFieldArray, useForm } from "react-hook-form";
+import { FormProvider, useFieldArray, useForm, useWatch } from "react-hook-form";
 import type { z } from "zod";
 import { FormSection } from "@/components/form/fields";
 import { FormAlert } from "@/components/form/form-actions";
@@ -13,17 +13,18 @@ import { DraftNotice, useFormDraft, useUnsavedChangesGuard } from "@/components/
 import { useActionSubmit } from "@/components/form/use-action-submit";
 import { useFeedback } from "@/components/shared/feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { assetBatchSchema, MAX_ASSET_BATCH } from "@/lib/validators/asset";
+import { assetBatchSchema, MAX_UNITS_PER_FORM } from "@/lib/validators/asset";
 import { createAssetsAction } from "../actions";
 import { OwnershipNote, type RackOption } from "../asset-dialogs";
-import { EMPTY_UNIT, UnitRow } from "../unit-row";
+import { EMPTY_UNIT, UnitRow, unitTotal } from "../unit-row";
 
 type FormInput = z.input<typeof assetBatchSchema>;
 type FormOutput = z.output<typeof assetBatchSchema>;
 
 /**
- * Daftarkan Unit (2026-11-25, permintaan user): beberapa unit milik AMI sekaligus, satu baris per unit — seperti Terima
- * Barang tapi tanpa HAF. Serial number opsional; "Salin" menyalin baris tanpa serial number. Semua tersimpan dalam satu
+ * Daftarkan Unit (2026-11-25, permintaan user): beberapa unit milik AMI sekaligus — seperti Terima Barang tapi tanpa HAF.
+ * Satu baris per jenis unit dengan Jumlah (tiap unit tetap tercatat sendiri); serial number opsional, beberapa sekaligus
+ * (satu per baris); "Salin" menyalin baris tanpa serial number. Semua tersimpan dalam satu
  * transaksi; serial number yang sudah terdaftar & posisi rak dicek ulang di server dan ditandai di barisnya.
  */
 export function AssetBatchForm({ racks, draftKey }: { racks: RackOption[]; draftKey: string }) {
@@ -36,7 +37,8 @@ export function AssetBatchForm({ racks, draftKey }: { racks: RackOption[]; draft
   const draft = useFormDraft(form, draftKey);
   const [incomplete, setIncomplete] = useState(false);
   const unitsError = form.formState.errors.units?.message ?? form.formState.errors.units?.root?.message;
-  const full = fields.length >= MAX_ASSET_BATCH;
+  const total = unitTotal(useWatch({ control: form.control, name: "units" }));
+  const full = total >= MAX_UNITS_PER_FORM;
 
   const onSubmit = form.handleSubmit(
     (values) => {
@@ -62,8 +64,8 @@ export function AssetBatchForm({ racks, draftKey }: { racks: RackOption[]; draft
         <div className="flex flex-col gap-[26px] rounded-2xl bg-card p-5 shadow-card sm:p-6">
           <OwnershipNote />
           <FormSection
-            title={`Unit (${fields.length})`}
-            description="Satu baris per unit. Serial number boleh dikosongkan. “Salin” membuat baris baru dengan isian yang sama tanpa serial number."
+            title={`Unit (${total})`}
+            description="Satu baris per jenis unit; isi Jumlah untuk beberapa unit sejenis. Serial number boleh dikosongkan. “Salin” membuat baris baru dengan isian yang sama tanpa serial number."
           >
             <ol className="flex flex-col gap-4 sm:col-span-2" aria-label="Unit yang didaftarkan">
               {fields.map((field, index) => (
@@ -72,15 +74,15 @@ export function AssetBatchForm({ racks, draftKey }: { racks: RackOption[]; draft
                   index={index}
                   racks={racks}
                   onRemove={fields.length > 1 ? () => remove(index) : undefined}
-                  onCopy={full ? undefined : () => insert(index + 1, { ...form.getValues(`units.${index}`), serialNo: "" }, { focusName: `units.${index + 1}.serialNo` })}
+                  onCopy={full ? undefined : () => insert(index + 1, { ...form.getValues(`units.${index}`), serials: "" }, { focusName: `units.${index + 1}.serials` })}
                 />
               ))}
             </ol>
             <div className="flex flex-col gap-2 sm:col-span-2">
               <Button type="button" variant="outline" className="self-start" disabled={full} onClick={() => append({ ...EMPTY_UNIT })}>
-                <Plus aria-hidden /> Tambah unit
+                <Plus aria-hidden /> Tambah baris
               </Button>
-              {full && <p className="text-xs text-muted-foreground">Maksimal {MAX_ASSET_BATCH} unit sekali daftar.</p>}
+              {full && <p className="text-xs text-muted-foreground">Maksimal {MAX_UNITS_PER_FORM} unit sekali daftar.</p>}
               {unitsError && <p className="text-[12.5px] font-semibold text-red-ink">{unitsError}</p>}
             </div>
           </FormSection>
@@ -93,7 +95,7 @@ export function AssetBatchForm({ racks, draftKey }: { racks: RackOption[]; draft
           </Link>
           <Button type="submit" size="lg" disabled={pending}>
             {pending ? <Loader2 className="animate-spin" aria-hidden /> : <Save aria-hidden />}
-            Daftarkan {fields.length} Unit
+            Daftarkan {total} Unit
           </Button>
         </div>
       </form>

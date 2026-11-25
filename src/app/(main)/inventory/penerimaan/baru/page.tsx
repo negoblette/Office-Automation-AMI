@@ -43,7 +43,7 @@ export default async function NewGoodsReceiptPage() {
           receiverId,
           senderName: "",
           purpose: "",
-          units: [{ deviceName: "", serialNo: "", category: "DEMO_UNIT", rackId: "", rackPosition: "", notes: "" }],
+          units: [{ deviceName: "", quantity: 1, serials: "", category: "DEMO_UNIT", rackId: "", rackPosition: "", notes: "" }],
         }}
       />
     </div>

@@ -909,6 +909,17 @@ Barang (Ubah Unit tetap dialog satu unit). Serial yang diisi tetap harus unik.
   (1 tanpa S/N, 2 hasil Salin), serial yang sudah terdaftar ditandai di barisnya & tidak ada yang tersimpan, detail unit
   "Tanpa S/N".
 
+### Tambahan: Jumlah per baris di Daftarkan Unit & Terima Barang ✅ (2026-11-25)
+Permintaan user: fitur quantity saat penambahan inventaris. Keputusan user: jumlah = N unit terpisah (bukan stok), S/N
+boleh beberapa (satu per baris), berlaku di Daftarkan Unit & Terima Barang.
+- [x] `unitRowSchema` (jumlah 1–50, `serials` daftar opsional ≤ jumlah, tidak dobel) + `unitRowsSchema` (total ≤ 50, dobel
+      antarbaris) + `expandUnitRows`; dipakai `assetBatchSchema` & `goodsReceiptSchema` (`receiptUnitSchema` dihapus)
+- [x] `createAssets` & `receiveGoods` memecah baris jadi unit; pesan S/N terdaftar menyebut serialnya, di baris form-nya
+- [x] Baris unit: isian **Jumlah**; jumlah > 1 → S/N jadi kotak daftar + hitungan "x dari N unit ber-S/N"; judul & tombol
+      simpan menghitung total unit; "Tambah unit" → "Tambah baris"
+- [x] Test: unit test `validators/asset.test.ts` (5), DB test jumlah di `asset.db.test.ts` & `goods-return.db.test.ts`
+- **Cek:** typecheck, lint, 288 unit test, suite DB 41 file / 295 test lulus; pratinjau lokal (lihat laporan sesi).
+
 ### 16.6 Dashboard Inventaris
 - [ ] Unit di gudang (per rak/posisi), sedang dipinjam (ke mana, PIC, sampai kapan, sisa hari), terlambat, akan jatuh tempo;
       kartu ringkas di Dashboard utama untuk user terkait

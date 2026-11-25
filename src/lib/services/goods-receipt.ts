@@ -9,6 +9,7 @@
 // - Serial number boleh kosong (2026-11-25); yang diisi tetap unik.
 import { type Asset, Prisma, type PrismaClient } from "@/generated/prisma/client";
 import { fromIsoDate, toJakartaIsoDate } from "@/lib/format";
+import { expandUnitRows } from "@/lib/validators/asset";
 import type { GoodsReceiptInput, GoodsReturnInput } from "@/lib/validators/goods-receipt";
 import { assertSerialAvailable } from "./asset";
 import { logAudit } from "./audit";
@@ -31,14 +32,16 @@ export async function receiveGoods(db: PrismaClient, actor: LoanActor, input: Go
     if (receiver?.status !== "ACTIVE") throw new ServiceError("Penerima harus karyawan aktif", "receiverId");
     // Unit yang pernah dikembalikan ke principal / distributor lalu dipinjam AMI lagi: baris Asset yang sama dipakai lagi
     // (serial number unik, riwayatnya menyambung) — bukan ditolak sebagai serial yang sudah terpakai. Unit tanpa S/N
-    // (boleh sejak 2026-11-25) tidak bisa dikenali, jadi selalu jadi unit baru.
+    // (boleh sejak 2026-11-25) tidak bisa dikenali, jadi selalu jadi unit baru. Satu baris form = `quantity` unit
+    // (2026-11-25, `expandUnitRows`); pesan error tetap di baris form-nya.
+    const units = expandUnitRows(input.units);
     const returnedBefore = new Map<number, Asset>();
-    for (const [index, unit] of input.units.entries()) {
+    for (const [index, { rowIndex, unit }] of units.entries()) {
       const existing = unit.serialNo ? await tx.asset.findUnique({ where: { serialNo: unit.serialNo } }) : null;
       if (existing?.returnedToOwnerAt) returnedBefore.set(index, existing);
-      else await onRow(`units.${index}`, () => assertSerialAvailable(tx, unit.serialNo));
-      await onRow(`units.${index}`, () => assertRackPosition(tx, unit.rackId, unit.rackPosition));
+      else await onRow(`units.${rowIndex}`, () => assertSerialAvailable(tx, unit.serialNo, undefined, "serials"));
     }
+    for (const [rowIndex, row] of input.units.entries()) await onRow(`units.${rowIndex}`, () => assertRackPosition(tx, row.rackId, row.rackPosition));
 
     const receipt = await tx.goodsReceipt.create({
       data: {
@@ -55,7 +58,7 @@ export async function receiveGoods(db: PrismaClient, actor: LoanActor, input: Go
       },
     });
     const assets = [];
-    for (const [index, unit] of input.units.entries()) {
+    for (const [index, { unit }] of units.entries()) {
       const data = {
         deviceName: unit.deviceName,
         serialNo: unit.serialNo,

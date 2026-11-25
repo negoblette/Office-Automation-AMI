@@ -15,12 +15,12 @@ import { DraftNotice, useFormDraft, useUnsavedChangesGuard } from "@/components/
 import { useActionSubmit } from "@/components/form/use-action-submit";
 import { useFeedback } from "@/components/shared/feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { MAX_LOAN_ITEMS } from "@/lib/demo-loan";
 import type { GoodsReceiptFormOptions } from "@/lib/services/goods-receipt-queries";
 import { cn } from "@/lib/utils";
+import { MAX_UNITS_PER_FORM } from "@/lib/validators/asset";
 import { goodsReceiptSchema } from "@/lib/validators/goods-receipt";
 import type { RackOption } from "../asset-dialogs";
-import { EMPTY_UNIT, UnitRow } from "../unit-row";
+import { EMPTY_UNIT, UnitRow, unitTotal } from "../unit-row";
 import { receiveGoodsAction } from "./actions";
 
 type FormInput = z.input<typeof goodsReceiptSchema>;
@@ -52,6 +52,8 @@ export function ReceiptForm({ defaultValues, options, racks, today, draftKey }: 
   const draft = useFormDraft(form, draftKey);
   const [incomplete, setIncomplete] = useState(false);
   const unitsError = form.formState.errors.units?.message ?? form.formState.errors.units?.root?.message;
+  const total = unitTotal(useWatch({ control: form.control, name: "units" }));
+  const full = total >= MAX_UNITS_PER_FORM;
 
   const onSubmit = form.handleSubmit(
     (values) => {
@@ -96,8 +98,8 @@ export function ReceiptForm({ defaultValues, options, racks, today, draftKey }: 
           </FormSection>
 
           <FormSection
-            title={`Unit yang diterima (${fields.length})`}
-            description="Satu baris per unit. “Salin” membuat baris baru dengan isian yang sama tanpa serial number. Support / warranty bisa dilengkapi nanti lewat Ubah Unit."
+            title={`Unit yang diterima (${total})`}
+            description="Satu baris per jenis unit; isi Jumlah untuk beberapa unit sejenis. “Salin” membuat baris baru dengan isian yang sama tanpa serial number. Support / warranty bisa dilengkapi nanti lewat Ubah Unit."
           >
             <ol className="flex flex-col gap-4 sm:col-span-2" aria-label="Unit yang diterima">
               {fields.map((field, index) => (
@@ -106,14 +108,15 @@ export function ReceiptForm({ defaultValues, options, racks, today, draftKey }: 
                   index={index}
                   racks={racks}
                   onRemove={fields.length > 1 ? () => remove(index) : undefined}
-                  onCopy={fields.length < MAX_LOAN_ITEMS ? () => insert(index + 1, { ...form.getValues(`units.${index}`), serialNo: "" }, { focusName: `units.${index + 1}.serialNo` }) : undefined}
+                  onCopy={full ? undefined : () => insert(index + 1, { ...form.getValues(`units.${index}`), serials: "" }, { focusName: `units.${index + 1}.serials` })}
                 />
               ))}
             </ol>
             <div className="flex flex-col gap-2 sm:col-span-2">
-              <Button type="button" variant="outline" className="self-start" disabled={fields.length >= MAX_LOAN_ITEMS} onClick={() => append({ ...EMPTY_UNIT })}>
-                <Plus aria-hidden /> Tambah unit
+              <Button type="button" variant="outline" className="self-start" disabled={full} onClick={() => append({ ...EMPTY_UNIT })}>
+                <Plus aria-hidden /> Tambah baris
               </Button>
+              {full && <p className="text-xs text-muted-foreground">Maksimal {MAX_UNITS_PER_FORM} unit dalam satu penerimaan.</p>}
               {unitsError && <p className="text-[12.5px] font-semibold text-red-ink">{unitsError}</p>}
             </div>
           </FormSection>

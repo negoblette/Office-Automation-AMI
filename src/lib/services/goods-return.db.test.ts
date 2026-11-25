@@ -49,7 +49,7 @@ const receive = async (serials: string[], receivedDate = YESTERDAY) =>
       receivedDate,
       picId: emp.andi,
       receiverId: emp.devi,
-      units: serials.map((serialNo) => ({ deviceName: `Cisco ${serialNo}`, serialNo, category: "DEMO_UNIT" })),
+      units: serials.map((serial) => ({ deviceName: `Cisco ${serial}`, quantity: 1, serials: serial, category: "DEMO_UNIT" })),
     }),
     TODAY,
   );
@@ -212,5 +212,31 @@ describe("unit tanpa serial number (2026-11-25)", () => {
     const again = await receive([""], TODAY);
     const [fresh] = (await getGoodsReceipt(testDb, again.id))!.units;
     expect(fresh.id).not.toBe(otherNoSerial.id);
+  });
+
+  it("jumlah per baris (2026-11-25): satu baris → N unit titipan; serial yang pernah dikembalikan di dalam daftar dipakai lagi", async () => {
+    const first = await receive(["CS001"]);
+    await returnGoods(testDb, await actor("devi"), first.id, returnInput([await assetIdOf("CS001")]), TODAY);
+
+    const receipt = await receiveGoods(
+      testDb,
+      await actor("devi"),
+      goodsReceiptSchema.parse({
+        ownership: "PRINCIPAL",
+        ownerName: "Cisco",
+        contactName: "Sakil",
+        receivedDate: TODAY,
+        picId: emp.andi,
+        receiverId: emp.devi,
+        units: [{ deviceName: "SFP Cisco", quantity: 4, serials: "cs001\ncs002", category: "DEMO_UNIT" }],
+      }),
+      TODAY,
+    );
+    const view = (await getGoodsReceipt(testDb, receipt.id))!;
+    expect(view.unitCount).toBe(4);
+    expect(view.units.map((unit) => unit.serialNo).sort()).toEqual(["CS001", "CS002", null, null]);
+    // CS001 = unit lama yang aktif lagi, bukan unit baru.
+    expect(view.units.find((unit) => unit.serialNo === "CS001")!.id).toBe(await assetIdOf("CS001"));
+    expect(await testDb.asset.count({ where: { receiptId: receipt.id, ownership: "PRINCIPAL", ownerName: "Cisco" } })).toBe(4);
   });
 });

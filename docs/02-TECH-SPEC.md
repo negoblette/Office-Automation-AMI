@@ -247,10 +247,18 @@ bertahap (docs/05-TAHAPAN.md Fase 16); Tahap 1 = data, akses, rak; Tahap 2 = pen
   mengelompokkan per part number (`groupLoanItems` → `{ deviceName, quantity, serials }`: unit tanpa S/N ikut dihitung di
   Qty, serialnya tidak ditulis). Unit tanpa S/N yang diterima lagi dari principal selalu jadi unit baru (tidak bisa
   dikenali). **Daftarkan Unit** = halaman `/inventory/baru` (Admin & Operational, `requireInventory("manage")`), bukan
-  dialog lagi: satu baris per unit (maks `MAX_ASSET_BATCH` = 50), "Tambah unit", "Salin" (baris baru dengan isian sama
-  tanpa S/N, fokus ke S/N); `assetBatchSchema` → `createAssets` satu transaksi (satu baris gagal → tidak ada yang
-  tersimpan, pesan di `units.<i>.<field>`), audit `Asset` CREATE per unit. Ubah Unit tetap dialog satu unit
-  (`updateAssetAction`). Baris unit form dipakai bersama dengan Terima Barang (`inventory/unit-row.tsx`).
+  dialog lagi: "Tambah baris", "Salin" (baris baru dengan isian sama tanpa S/N, fokus ke S/N); `assetBatchSchema` →
+  `createAssets` satu transaksi (satu baris gagal → tidak ada yang tersimpan, pesan di `units.<i>.<field>`), audit `Asset`
+  CREATE per unit. Ubah Unit tetap dialog satu unit (`updateAssetAction`). Baris unit form dipakai bersama dengan Terima
+  Barang (`inventory/unit-row.tsx`, `unitRowSchema`).
+- **Jumlah per baris** (permintaan user 2026-11-25, Daftarkan Unit & Terima Barang): satu baris = `quantity` unit sejenis
+  (bilangan bulat 1–50) dan tiap unit tetap baris `Asset` sendiri (dipinjam, dikembalikan & disimpan di rak per unit —
+  bukan stok). Isian S/N (`serials`) = daftar, satu per baris (koma / titik koma / tab juga pemisah, `splitSerials`),
+  opsional, tidak lebih banyak dari jumlah, tidak dobel di baris maupun antarbaris; unit sisanya tanpa S/N. Semua unit di
+  satu baris memakai part number, kategori, catatan, rak & posisi yang sama. Total unit satu form ≤ `MAX_UNITS_PER_FORM`
+  (50). `expandUnitRows` memecah baris jadi unit (serial dipakai berurutan); error S/N dari service menyebut serialnya
+  ("Serial number sudah terdaftar: X") di `units.<i>.serials`. Di Terima Barang, serial dalam daftar yang pernah
+  dikembalikan ke principal tetap mengaktifkan unit lamanya.
 - **Penerimaan Barang** (2026-11-20, `GoodsReceipt`, `services/goods-receipt.ts#receiveGoods`, halaman
   `/inventory/penerimaan`): barang yang dipinjam AMI dari principal / distributor wajib dicatat di sini — **hanya
   Operational**; satu kedatangan = **satu HAF**, banyak unit. Isian: principal / distributor + nama, kontak (wajib),

@@ -5,7 +5,7 @@
 // unit principal / distributor hanya masuk lewat Penerimaan Barang (services/goods-receipt.ts, menerbitkan HAF).
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { formatDate, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
-import type { AssetBatchInput, AssetInput, AssignAssetInput, ReturnAssetInput } from "@/lib/validators/asset";
+import { type AssetBatchInput, type AssetInput, type AssignAssetInput, expandUnitRows, type ReturnAssetInput } from "@/lib/validators/asset";
 import { logAudit } from "./audit";
 import { onRow, ServiceError } from "./errors";
 import { assertRackPosition } from "./storage-rack";
@@ -32,7 +32,11 @@ export async function assertSerialAvailable(tx: Tx, serialNo: string | null, exc
   if (!serialNo) return;
   const existing = await tx.asset.findUnique({ where: { serialNo }, select: { id: true, deletedAt: true } });
   if (existing && existing.id !== exceptId) {
-    throw new ServiceError(existing.deletedAt ? "Serial number pernah dipakai aset yang sudah dihapus" : "Serial number sudah terdaftar", field);
+    // Serialnya ikut disebut: satu baris form bisa berisi beberapa S/N (2026-11-25).
+    throw new ServiceError(
+      existing.deletedAt ? `Serial number pernah dipakai aset yang sudah dihapus: ${serialNo}` : `Serial number sudah terdaftar: ${serialNo}`,
+      field,
+    );
   }
 }
 
@@ -56,17 +60,18 @@ export async function createAsset(db: PrismaClient, actorId: string, input: Asse
 }
 
 /**
- * Daftarkan Unit berbaris (2026-11-25, permintaan user): beberapa unit milik AMI sekaligus dalam satu transaksi — satu
- * baris gagal (serial sudah terdaftar, posisi rak salah) → tidak ada yang tersimpan, pesannya di baris itu (`units.<i>.…`).
+ * Daftarkan Unit berbaris (2026-11-25, permintaan user): beberapa unit milik AMI sekaligus dalam satu transaksi; satu baris
+ * = `quantity` unit sejenis (`expandUnitRows`, tiap unit baris `Asset` & audit sendiri). Satu baris gagal (serial sudah
+ * terdaftar, posisi rak salah) → tidak ada yang tersimpan, pesannya di baris itu (`units.<i>.serials` / `.rackId` / …).
  */
 export async function createAssets(db: PrismaClient, actorId: string, input: AssetBatchInput) {
   return db.$transaction(async (tx) => {
-    for (const [index, unit] of input.units.entries()) {
-      await onRow(`units.${index}`, () => assertSerialAvailable(tx, unit.serialNo));
-      await onRow(`units.${index}`, () => assertRackPosition(tx, unit.rackId, unit.rackPosition));
+    for (const [index, row] of input.units.entries()) {
+      for (const serial of row.serials) await onRow(`units.${index}`, () => assertSerialAvailable(tx, serial, undefined, "serials"));
+      await onRow(`units.${index}`, () => assertRackPosition(tx, row.rackId, row.rackPosition));
     }
     const assets = [];
-    for (const unit of input.units) assets.push(await insertAsset(tx, actorId, unit));
+    for (const { unit } of expandUnitRows(input.units)) assets.push(await insertAsset(tx, actorId, unit));
     return assets;
   });
 }

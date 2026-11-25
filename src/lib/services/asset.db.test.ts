@@ -49,10 +49,10 @@ describe("aset (INV-01)", () => {
 
 describe("Daftarkan Unit berbaris (2026-11-25)", () => {
   const batch = (units: Record<string, unknown>[]) =>
-    assetBatchSchema.parse({ units: units.map((unit) => ({ deviceName: "SFP+ 10G", category: "DEMO_UNIT", serialNo: "", ...unit })) });
+    assetBatchSchema.parse({ units: units.map((unit) => ({ deviceName: "SFP+ 10G", category: "DEMO_UNIT", quantity: 1, serials: "", ...unit })) });
 
   it("semua baris tersimpan sebagai unit milik AMI + audit per unit; baris tanpa S/N boleh lebih dari satu", async () => {
-    const assets = await createAssets(testDb, u.yosep, batch([{ serialNo: "sfp-001" }, { serialNo: "sfp-002" }, {}, {}]));
+    const assets = await createAssets(testDb, u.yosep, batch([{ serials: "sfp-001" }, { serials: "sfp-002" }, {}, {}]));
     expect(assets.map((a) => [a.serialNo, a.ownership])).toEqual([
       ["SFP-001", "AMI"],
       ["SFP-002", "AMI"],
@@ -62,11 +62,27 @@ describe("Daftarkan Unit berbaris (2026-11-25)", () => {
     expect(await testDb.auditLog.count({ where: { entity: "Asset", action: "CREATE" } })).toBe(4);
   });
 
+  it("jumlah per baris (2026-11-25): N unit terpisah, serial dipakai berurutan, sisanya tanpa S/N", async () => {
+    const assets = await createAssets(
+      testDb,
+      u.yosep,
+      batch([{ deviceName: "Kabel LAN", quantity: 3, serials: "lan-01\nlan-02", notes: "Cat6" }, { deviceName: "Switch", quantity: "2" }]),
+    );
+    expect(assets.map((a) => [a.deviceName, a.serialNo, a.notes])).toEqual([
+      ["Kabel LAN", "LAN-01", "Cat6"],
+      ["Kabel LAN", "LAN-02", "Cat6"],
+      ["Kabel LAN", null, "Cat6"],
+      ["Switch", null, null],
+      ["Switch", null, null],
+    ]);
+    expect(new Set(assets.map((a) => a.id)).size).toBe(5);
+  });
+
   it("serial dobel di form ditolak schema; dobel dengan unit terdaftar → error di baris itu & tidak ada yang tersimpan", async () => {
-    expect(() => batch([{ serialNo: "SFP-001" }, { serialNo: "sfp-001" }])).toThrow("Serial number sama dengan baris 1");
+    expect(() => batch([{ serials: "SFP-001" }, { serials: "sfp-001" }])).toThrow("Serial number SFP-001 sudah ada di baris 1");
     await createAsset(testDb, u.yosep, asset({ serialNo: "SFP-009" }));
-    const error = await createAssets(testDb, u.yosep, batch([{ serialNo: "SFP-010" }, { serialNo: "SFP-009" }])).catch((e: unknown) => e);
-    expect(error).toMatchObject({ message: "Serial number sudah terdaftar", field: "units.1.serialNo" });
+    const error = await createAssets(testDb, u.yosep, batch([{ serials: "SFP-010" }, { quantity: 2, serials: "SFP-011\nSFP-009" }])).catch((e: unknown) => e);
+    expect(error).toMatchObject({ message: "Serial number sudah terdaftar: SFP-009", field: "units.1.serials" });
     expect(await testDb.asset.count()).toBe(1);
   });
 
