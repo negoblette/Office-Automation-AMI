@@ -17,7 +17,7 @@ import { useFeedback } from "@/components/shared/feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { LoanPurpose } from "@/generated/prisma/enums";
-import { formatLoanDuration, LOAN_PURPOSE_HINT, LOAN_PURPOSE_LABEL, MAX_LOAN_ITEMS, maxLoanEnd, RETURN_CONDITION_LABEL } from "@/lib/demo-loan";
+import { addDaysIso, formatLoanDuration, LOAN_PURPOSE_HINT, LOAN_PURPOSE_LABEL, MAX_LOAN_ITEMS, maxLoanEnd, RETURN_CONDITION_LABEL } from "@/lib/demo-loan";
 import { formatDate, toJakartaIsoDate } from "@/lib/format";
 import { ASSET_CATEGORY_LABEL } from "@/lib/labels";
 import type { LoanFormOptions, LoanUnitOption } from "@/lib/services/demo-loan-queries";
@@ -174,12 +174,19 @@ function PeriodFields({ today }: { today: string }) {
   const end = dueDate && ISO_DATE.test(dueDate) ? dueDate : null;
   return (
     <>
-      <DateInputField name="startDate" label="Tanggal mulai" required min={today} />
+      {/* Tanggal lampau boleh (2026-11-25): peminjaman yang sudah berjalan bisa dicatat belakangan; maks. 1 tahun ke depan. */}
+      <DateInputField
+        name="startDate"
+        label="Tanggal mulai"
+        required
+        max={addDaysIso(today, 365)}
+        hint="Boleh tanggal lampau bila barang sudah dipinjam sebelum dicatat."
+      />
       <DateInputField
         name="dueDate"
         label="Tanggal selesai (jatuh tempo)"
         required
-        min={start ?? today}
+        min={start ?? undefined}
         max={start ? maxLoanEnd(start) : undefined}
         hint="Hari terakhir unit dipinjam. Maksimal 2 tahun."
       />

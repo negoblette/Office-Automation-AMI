@@ -13,7 +13,16 @@ import type { SelectOption } from "@/components/form/select-field";
 import { useFeedback } from "@/components/shared/feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
 import type { ReturnCondition } from "@/generated/prisma/enums";
-import { addDaysIso, addMonthsIso, FOLLOW_UP_RESULT_LABEL, type FollowUpResult, MAX_PICKUP_AHEAD_DAYS, maxLoanEnd, RETURN_CONDITION_LABEL } from "@/lib/demo-loan";
+import {
+  addDaysIso,
+  addMonthsIso,
+  earliestDeliveryIso,
+  FOLLOW_UP_RESULT_LABEL,
+  type FollowUpResult,
+  MAX_PICKUP_AHEAD_DAYS,
+  maxLoanEnd,
+  RETURN_CONDITION_LABEL,
+} from "@/lib/demo-loan";
 import { formatDate, toJakartaIsoDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { deliverDemoLoanSchema, demoLoanExtensionSchema, itemSenderSchema, loanPickupSchema, resolveFollowUpSchema } from "@/lib/validators/demo-loan";
@@ -254,8 +263,10 @@ function FollowUpUnitField({ index, unit }: { index: number; unit: FollowUpUnit 
 }
 
 /** Operational: barang sudah diantar → status Dipinjam. Tanggal antar & nama penerima (Received By). */
-export function DeliverDialog({ loanId, submittedAt }: { loanId: string; submittedAt: string }) {
+export function DeliverDialog({ loanId, startDate, submittedAt }: { loanId: string; startDate: string; submittedAt: string }) {
   const today = toJakartaIsoDate();
+  // Paling awal: tanggal mulai atau tanggal pengajuan (peminjaman yang dicatat belakangan, 2026-11-25). Dicek ulang di server.
+  const earliest = earliestDeliveryIso(startDate, toJakartaIsoDate(submittedAt));
   return (
     <FormDialog
       trigger={
@@ -271,7 +282,7 @@ export function DeliverDialog({ loanId, submittedAt }: { loanId: string; submitt
       successMessage="Peminjaman ditandai sudah diantar"
       action={(values) => markDeliveredAction(loanId, values)}
     >
-      <DateInputField name="deliveredAt" label="Tanggal diantar" required min={toJakartaIsoDate(submittedAt)} max={today} />
+      <DateInputField name="deliveredAt" label="Tanggal diantar" required min={earliest} max={today} />
       <TextInputField name="receivedByName" label="Nama penerima (Received By)" placeholder="mis. Muh Jawad Azzak" hint="Opsional. Sesuai nama di kolom Received By." />
     </FormDialog>
   );

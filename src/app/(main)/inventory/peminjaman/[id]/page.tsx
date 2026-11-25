@@ -135,7 +135,7 @@ export default async function DemoLoanDetailPage({ params }: { params: Promise<{
                 <PickupDialog loanId={loan.id} couriers={senders} deliveredAt={loan.deliveredAt} current={{ pickupDate: loan.pickupDate, courierId: loan.courierId }} />
               )}
               {canExtend && <ExtendLoanDialog loanId={loan.id} startDate={loan.startDate} dueDate={loan.dueDate} />}
-              {canPrepare && loan.itemSenderId && <DeliverDialog loanId={loan.id} submittedAt={loan.submittedAt} />}
+              {canPrepare && loan.itemSenderId && <DeliverDialog loanId={loan.id} startDate={loan.startDate} submittedAt={loan.submittedAt} />}
               {canManagePickup && <CancelPickupButton loanId={loan.id} />}
               {canCancel && <CancelLoanButton loanId={loan.id} borrowerName={loan.borrowerName} />}
               {canEdit && <EditLoanLink loanId={loan.id} rejected={loan.status === "REJECTED"} />}

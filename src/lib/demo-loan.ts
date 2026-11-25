@@ -152,6 +152,14 @@ export function formatLoanDuration(startIso: string, endIso: string): string {
   ]);
 }
 
+/**
+ * Tanggal diantar paling awal: tanggal mulai atau tanggal pengajuan, mana yang lebih dulu. Sejak tanggal mulai boleh
+ * lampau (2026-11-25), peminjaman yang dicatat belakangan bisa mencatat tanggal antar sebelum diajukan di sistem.
+ */
+export function earliestDeliveryIso(startIso: string, submittedIso: string): string {
+  return startIso < submittedIso ? startIso : submittedIso;
+}
+
 /** Tanggal selesai paling lambat: 2 tahun sejak tanggal mulai (hari terakhirnya). */
 export function maxLoanEnd(startIso: string): string {
   return addDaysIso(addMonthsIso(startIso, MAX_LOAN_MONTHS), -1);

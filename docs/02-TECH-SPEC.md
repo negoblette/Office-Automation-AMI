@@ -372,7 +372,9 @@ bertahap (docs/05-TAHAPAN.md Fase 16); Tahap 1 = data, akses, rak; Tahap 2 = pen
     jatuh tempo). Lamanya dihitung, tidak disimpan (`lib/demo-loan.ts#loanSpan` / `formatLoanDuration`): bulan penuh =
     tanggal yang sama di bulan berikutnya (dijepit ke akhir bulan), sisanya hari, keduanya inklusif — 14 Mar – 13 Apr =
     "1 bulan", 17 Nov – 31 Des = "1 bulan 15 hari", 17 Nov 2026 – 21 Jan 2028 = "1 tahun 2 bulan 5 hari". Tanggal mulai:
-    hari ini s/d 1 tahun ke depan; tanggal selesai ≥ tanggal mulai, maks. 2 tahun (`maxLoanEnd`). Form cetak:
+    boleh lampau (peminjaman yang sudah berjalan dicatat belakangan, 2026-11-25) s/d 1 tahun ke depan; tanggal selesai ≥
+    tanggal mulai, maks. 2 tahun (`maxLoanEnd`). Tanggal diantar ≥ tanggal mulai atau tanggal pengajuan, mana yang lebih
+    dulu (`earliestDeliveryIso`), ≤ hari ini. Form cetak:
     "1 Year 2 Months 5 Days (21 January 2028)".
   - **PIC** (2026-11-19, dulu Sales Person; kolom `picId` → `Employee`) = karyawan aktif divisi `ENGINEER` / `SALES`
     (`INVENTORY_DIVISIONS`); pemohon Engineer / Sales terpilih otomatis. Tercetak sebagai "PIC" di kotak atas & tanda

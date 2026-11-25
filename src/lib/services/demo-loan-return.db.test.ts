@@ -49,7 +49,7 @@ const actor = async (key: string) => {
   return { id: user.id, role: user.role, employeeId: user.employeeId };
 };
 
-const submit = async (key: string, assetIds: string[]) =>
+const submit = async (key: string, assetIds: string[], startDate = TODAY) =>
   submitDemoLoan(
     testDb,
     await actor(key),
@@ -60,8 +60,8 @@ const submit = async (key: string, assetIds: string[]) =>
       contactName: "Bapak Uji",
       contactEmail: "uji@bank.test",
       picId: emp.sinta,
-      startDate: TODAY,
-      dueDate: addDaysIso(TODAY, 30),
+      startDate,
+      dueDate: addDaysIso(startDate, 30),
     }),
     TODAY,
   );
@@ -154,3 +154,25 @@ describe("pengembalian: tindak lanjut sebelum verifikasi engineer (revisi 2026-1
     ).rejects.toThrow("setiap unit yang rusak / tidak lengkap");
   });
 });
+
+describe("tanggal mulai lampau (2026-11-25)", () => {
+  it("peminjaman yang sudah berjalan bisa dicatat belakangan; tanggal diantar boleh sejak tanggal mulai", async () => {
+    const start = addDaysIso(TODAY, -10);
+    const { loanId, status: submitted } = await submit("sinta", [units[0]], start);
+    expect(submitted).toBe("PENDING");
+    await approveRequest(testDb, { requestId: (await requestOf("DEMO_LOAN", loanId))!.id, actorId: u.yosep });
+    const devi = await actor("devi");
+    await setItemSender(testDb, devi, loanId, { itemSenderId: emp.devi });
+
+    await expect(markDemoLoanDelivered(testDb, devi, loanId, { deliveredAt: addDaysIso(start, -1), receivedByName: null }, TODAY)).rejects.toThrow(
+      "Tanggal diantar tidak boleh sebelum",
+    );
+    await markDemoLoanDelivered(testDb, devi, loanId, { deliveredAt: start, receivedByName: null }, TODAY);
+    expect(await status(loanId)).toBe("ON_LOAN");
+  });
+
+  it("tanggal mulai tetap maksimal 1 tahun ke depan", async () => {
+    await expect(submit("sinta", [units[0]], addDaysIso(TODAY, 400))).rejects.toThrow("paling lambat 1 tahun");
+  });
+});
+

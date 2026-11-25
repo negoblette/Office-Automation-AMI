@@ -17,6 +17,7 @@ import { Prisma, type PrismaClient, type Role } from "@/generated/prisma/client"
 import {
   addDaysIso,
   AMI_OWNER,
+  earliestDeliveryIso,
   formatHafNumber,
   formatTrialFormNumber,
   isEditableLoanStatus,
@@ -26,7 +27,7 @@ import {
   parseHafNumber,
   parseTrialFormNumber,
 } from "@/lib/demo-loan";
-import { fromIsoDate, toJakartaIsoDate } from "@/lib/format";
+import { formatDate, fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import type {
   DeliverDemoLoanInput,
   DemoLoanInput,
@@ -112,8 +113,11 @@ const assertPic = (tx: Tx, employeeId: string) => assertInventoryPic(tx, employe
  */
 const LOAN_OWNER = AMI_OWNER;
 
+/**
+ * Tanggal mulai: paling jauh 1 tahun ke depan. Tanggal lampau BOLEH (permintaan user 2026-11-25) — peminjaman yang sudah
+ * berjalan bisa dicatat belakangan.
+ */
 function assertStartDate(startDate: string, today: string) {
-  if (startDate < today) throw new ServiceError("Tanggal mulai tidak boleh sebelum hari ini", "startDate");
   const latest = new Date(fromIsoDate(today).getTime() + MAX_START_AHEAD_DAYS * 86_400_000).toISOString().slice(0, 10);
   if (startDate > latest) throw new ServiceError("Tanggal mulai paling lambat 1 tahun dari hari ini", "startDate");
 }
@@ -270,7 +274,10 @@ export async function markDemoLoanDelivered(db: PrismaClient, actor: LoanActor, 
     if (before.status !== "APPROVED") throw new ServiceError("Hanya peminjaman yang sudah disetujui dan belum diantar yang bisa ditandai diantar");
     if (!before.itemSenderId) throw new ServiceError("Pilih Item Sender (pengantar barang) dulu");
     if (input.deliveredAt > today) throw new ServiceError("Tanggal diantar tidak boleh di masa depan", "deliveredAt");
-    if (input.deliveredAt < toJakartaIsoDate(before.submittedAt)) throw new ServiceError("Tanggal diantar tidak boleh sebelum tanggal pengajuan", "deliveredAt");
+    const earliest = earliestDeliveryIso(toJakartaIsoDate(before.startDate), toJakartaIsoDate(before.submittedAt));
+    if (input.deliveredAt < earliest) {
+      throw new ServiceError(`Tanggal diantar tidak boleh sebelum ${formatDate(`${earliest}T00:00:00Z`)} (tanggal mulai / pengajuan)`, "deliveredAt");
+    }
     const after = await tx.demoLoan.update({
       where: { id: loanId },
       data: { status: "ON_LOAN", deliveredAt: fromIsoDate(input.deliveredAt), receivedByName: input.receivedByName },
