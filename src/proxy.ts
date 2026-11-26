@@ -34,6 +34,10 @@ export default auth((request) => {
 });
 
 export const config = {
-  // Lewati API (termasuk /api/auth; /api/files mengecek akses sendiri), aset Next, dan file statis.
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|webp|ico)$).*)"],
+  // Lewati API (termasuk /api/auth; /api/files mengecek akses sendiri), aset Next (`_next/static` = JS/CSS/gambar hasil
+  // import, `_next/image` = optimasi gambar), dan favicon. Path berakhiran .png/.jpg/dst. TIDAK lagi dikecualikan (audit
+  // keamanan 2026-11-26): halaman seperti /approval/x.png dulu tampil tanpa CSP. Folder public/ kosong — gambar baru
+  // dipakai lewat `import` (masuk _next/static). Bila terpaksa menaruh file di public/ yang harus tampil sebelum login,
+  // tambahkan namanya ke pengecualian di pola ini (seperti favicon.ico).
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
 };

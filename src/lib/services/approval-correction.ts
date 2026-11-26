@@ -10,7 +10,7 @@ import type { RequestMeta } from "@/lib/request-meta";
 import { canActOnStep, canApprove } from "@/lib/roles";
 import { NEW_ACQUISITION, reimbursementTotals } from "@/lib/validators/reimbursement";
 import { logAudit } from "./audit";
-import { ForbiddenError } from "./approval";
+import { ForbiddenError, lockApprovalRequest } from "./approval";
 import { ServiceError } from "./errors";
 
 type Tx = Prisma.TransactionClient;
@@ -204,6 +204,8 @@ function toData(module: ApprovalModule, changed: Record<string, CorrectionValue>
 
 export async function correctRequest(db: PrismaClient, actorId: string, requestId: string, changes: CorrectionChange[], meta?: RequestMeta) {
   return db.$transaction(async (tx) => {
+    // F3: koreksi & setujui/batalkan pengajuan yang sama tidak boleh berjalan bersamaan.
+    await lockApprovalRequest(tx, requestId);
     const { request, level } = await assertCurrentApprover(tx, requestId, actorId);
     const targets = new Map((await loadTargets(tx, request.module, request.entityId)).map((t) => [t.targetId, t]));
     const records: Prisma.ApprovalCorrectionCreateManyInput[] = [];

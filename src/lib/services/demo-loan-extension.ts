@@ -10,7 +10,7 @@ import { FLOW_MODULE_OF } from "@/lib/approval-modules";
 import { extensionDueError } from "@/lib/demo-loan";
 import { fromIsoDate, toJakartaIsoDate } from "@/lib/format";
 import type { DemoLoanExtensionInput } from "@/lib/validators/demo-loan";
-import { type ApprovalNotification, buildApproval } from "./approval";
+import { type ApprovalNotification, buildApproval, lockApprovalOf } from "./approval";
 import { logAudit } from "./audit";
 import type { LoanActor } from "./demo-loan";
 import { ServiceError } from "./errors";
@@ -70,6 +70,8 @@ export async function cancelLoanExtension(db: PrismaClient, actor: LoanActor, ex
   return db.$transaction(async (tx) => {
     const found = await tx.demoLoanExtension.findUnique({ where: { id: extensionId }, select: { loanId: true } });
     if (!found) throw new ServiceError("Perpanjangan tidak ditemukan");
+    // Urutan kunci seragam (pengajuan → peminjaman) supaya tidak deadlock dengan approver perpanjangan.
+    await lockApprovalOf(tx, "DEMO_LOAN_EXTENSION", extensionId);
     await tx.$queryRaw`SELECT id FROM "DemoLoan" WHERE id = ${found.loanId} FOR UPDATE`;
     const before = await tx.demoLoanExtension.findUniqueOrThrow({ where: { id: extensionId } });
     if (before.requesterId !== actor.id) throw new ServiceError("Hanya yang mengajukan yang bisa membatalkan perpanjangan ini");

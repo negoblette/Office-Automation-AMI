@@ -6,7 +6,7 @@ Versi 0.2 · Acuan requirement: `01-URD.md` · Skema database: `prisma/schema.pr
 
 | Layer | Teknologi | Catatan |
 |---|---|---|
-| Framework | Next.js (App Router), TypeScript strict | Server Components + Server Actions |
+| Framework | Next.js 16 (App Router), TypeScript strict | Server Components + Server Actions; minimal 16.4.6 (patch keamanan DoS Server Actions & image optimizer, 2026-11-26) |
 | Database | PostgreSQL 17 | |
 | ORM | Prisma 7 | Generator `prisma-client`, driver adapter `@prisma/adapter-pg` |
 | Auth | Auth.js v5 (next-auth@beta) | Credentials provider, session JWT, role di token |
@@ -85,6 +85,15 @@ function buildApproval(module, requester):
 4. Tidak ada → request & entitas APPROVED, jalankan **efek final** per modul, email ke pemohon + semua Admin.
 
 Semua langkah dalam satu transaksi; email di-enqueue setelah commit.
+
+**Kunci baris (audit keamanan 2026-11-26):** approve, tolak, batalkan persetujuan, dan koreksi mengunci baris
+`ApprovalRequest` di awal transaksi (`lockApprovalRequest`, `SELECT … FOR UPDATE`). Tanpa kunci ini, "setujui final" dan
+"batalkan persetujuan" yang terjadi bersamaan bisa membuat efek final berjalan dua kali (mis. `HealthPayout` dobel).
+Urutan kunci di seluruh aplikasi: **pengajuan → data modul**. Aksi di sisi modul yang juga mengubah approval-nya — ubah /
+batalkan peminjaman, batalkan perpanjangan, jadwalkan pengambilan (menutup perpanjangan menunggu), hapus sertifikat yang
+sedang diverifikasi — memanggil `lockApprovalOf(tx, module, entityId)` sebelum mengunci baris modulnya, supaya tidak
+deadlock dengan approver. Tabrakan/deadlock yang tersisa (Prisma `P2034`) dibatalkan PostgreSQL tanpa merusak data;
+`toActionError` menampilkan "Data ini sedang diproses orang lain pada saat yang sama…".
 
 ### 4.3 Efek final per modul
 | Modul | Efek saat APPROVED |
@@ -435,6 +444,10 @@ File: `lib/meeting-room.ts` (aturan murni), `validators/meeting-room.ts`, `servi
   `AppSetting meetingRoom.hours` (default 08:30–17:30; perubahan hanya untuk booking baru/diubah), kelipatan 30 menit, satu
   hari, tanggal ≤ hari ini + 30, jam mulai > sekarang. **Hak** (`bookingRights`): pemilik ubah 1× & batal sebelum mulai;
   Admin batal siapa pun sebelum selesai (alasan wajib bila bukan miliknya).
+- **Batas booking aktif (audit keamanan 2026-11-26):** maks `MAX_ACTIVE_BOOKINGS_PER_USER` = 10 booking ACTIVE yang belum
+  selesai (`endAt > now`) per orang; Admin tidak dibatasi. Dicek hanya saat membuat booking (ubah tidak menambah jumlah),
+  setelah kunci advisory per orang (`pg_advisory_xact_lock(hashtext('meetingRoom.quota:<userId>'))`) supaya klik ganda tidak
+  lolos menjadi 11. Booking ke-11 → `ServiceError` "Anda sudah punya 10 booking yang belum selesai…".
 - **Email** (enqueue setelah commit, ke pemesan): `meeting-booked`, `meeting-updated` (jadwal lama → baru),
   `meeting-cancelled` (oleh siapa + alasan bila Admin). Semua aksi tercatat AuditLog (`MeetingBooking`, `MeetingRoom`,
   `AppSetting`). Action selalu `revalidatePath("/ruang-meeting")`, juga saat bentrok, supaya kalender langsung terbarui.
@@ -518,8 +531,20 @@ Route `/api/files/[key]` (key, bukan id, karena file tersimpan sebagai `fileKey`
   (`User.mustChangePassword` → `/ganti-password`). Karyawan bisa ganti password sendiri (password lama wajib benar).
 - Session JWT httpOnly; role, employeeId & `sessionVersion` di token. Sesi berakhir setelah 1 jam tidak aktif
   atau 12 jam sejak login. Ganti/reset password menaikkan `User.sessionVersion` → semua sesi lama dicabut.
-  User nonaktif ditolak saat login dan di setiap request.
-- Guard `requireUser()` / `requireAdmin()` di setiap Server Action & page.
+  **Logout juga mencabut semua sesi akun itu** di semua perangkat (`endAllSessions`, audit keamanan 2026-11-26), supaya
+  cookie yang sempat tersalin tidak bisa dipakai lagi. User nonaktif ditolak saat login dan di setiap request.
+- Guard `requireUser()` / `requireAdmin()` di setiap Server Action & page. `src/proxy.ts` (cek login cepat + CSP) berlaku
+  untuk semua path kecuali `api`, `_next/static`, `_next/image`, `favicon.ico`; halaman publik hanya `/login` **persis**
+  (`isPublicPath`). Dulu pencocokan awalan (`startsWith("/login")`) membuat `/loginx` dkk. publik sehingga Server Action
+  login bisa dipanggil di luar batas login nginx (`location = /login`); dulu path berakhiran `.png/.jpg/…` juga dilewati
+  proxy (tanpa CSP) — keduanya ditutup 2026-11-26.
+- **Akun yang dilindungi** (`services/account-protection.ts`, audit keamanan 2026-11-26): super admin tidak bisa diubah
+  Admin lain mana pun; akun **pemegang kunci pemulihan** (email di `RECOVERY_KEY_HOLDERS`) — role, aktif/nonaktif, reset
+  password/MFA, resign/rehire, email login — hanya boleh diubah super admin (`assertCanManageAccount`). Email pemegang
+  kunci hanya bisa dipasang/dilepas super admin, juga di akun sendiri (`assertCanSetLoginEmail`), karena status pemegang
+  kunci mengikuti email login: tanpa ini Admin lain bisa memindahkan email direktur ke akunnya, membuat kunci pemulihan,
+  lalu ikut membuka backup. Berlaku di Setting → User, form Karyawan (ubah / tambah / resign / rehire), dan konversi
+  kandidat. Mengganti email login seseorang lewat form karyawan mencabut semua sesi akun itu.
 - Rate limit login (`LOGIN_FAILED` di AuditLog, dengan IP): ditahan 15 menit bila 5 gagal dari email+IP yang sama,
   20 gagal ke satu email, atau 20 gagal dari satu IP. Email tak terdaftar tetap menjalankan argon2 (anti enumerasi akun).
 - **MFA (hardening Tahap 5, 2026-10-20):** semua role wajib kode 6 digit TOTP (awalnya Admin & Approver; Staf ikut
@@ -542,7 +567,10 @@ Route `/api/files/[key]` (key, bukan id, karena file tersimpan sebagai `fileKey`
     (`LOGIN_UNLOCK`; gagal sebelum unlock tidak dihitung lagi untuk email itu, batas per IP tetap).
   - **Alarm email ke semua Admin aktif** (`services/security-monitor.ts`, template `security-alert`, dicatat
     `SECURITY_ALERT` sekaligus anti-email ganda): ≥ 5 login gagal ke akun Admin/Approver dalam 15 menit (sekali per
-    jendela); setiap perubahan role; ≥ 50 unduhan/export/buka data pribadi oleh satu user dalam 1 jam (sekali per jam).
+    jendela); setiap perubahan role — di Setting → User **maupun** form Karyawan; akun Admin/Approver baru (Tambah
+    karyawan / konversi kandidat, `PRIVILEGED_ACCOUNT_CREATED`); email login diganti lewat form Karyawan
+    (`LOGIN_EMAIL_CHANGED`); kunci pemulihan dibuat/diganti; ≥ 50 unduhan/export/buka data pribadi oleh satu user dalam
+    1 jam (sekali per jam). Service mengembalikan alarm di dalam transaksi; action mengirimnya SETELAH commit.
   - **SMTP wajib TLS di produksi** (`smtpTransportOptions`): 465 TLS langsung, port lain wajib STARTTLS, minimal TLS 1.2,
     sertifikat valid. Dev Mailpit tanpa TLS (`SMTP_REQUIRE_TLS=true` untuk memaksa).
   - **`GET /api/health`** (tanpa login): `{status, database}` 200 / 503, tanpa detail; dipakai healthcheck Docker app.

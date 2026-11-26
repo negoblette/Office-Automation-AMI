@@ -26,5 +26,11 @@ export function toActionError(error: unknown): ActionResult<never> {
       fieldErrors: error.field ? { [error.field]: error.message } : undefined,
     };
   }
+  // Prisma P2034 = transaksi bertabrakan / deadlock — PostgreSQL membatalkan salah satu, datanya utuh (rollback). Jaring
+  // pengaman (audit keamanan 2026-11-26): pesan yang bisa dipahami, bukan halaman error. Dicek lewat `code`, bukan
+  // instanceof, supaya file ini tidak mengimpor Prisma (tipenya juga dipakai komponen client).
+  if (typeof error === "object" && error !== null && (error as { code?: unknown }).code === "P2034") {
+    return { ok: false, error: "Data ini sedang diproses orang lain pada saat yang sama. Muat ulang halaman, lalu coba lagi." };
+  }
   throw error;
 }

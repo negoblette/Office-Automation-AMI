@@ -10,7 +10,7 @@
 import { Prisma, type PrismaClient } from "@/generated/prisma/client";
 import { jakartaDateTime } from "@/lib/attendance";
 import { fromIsoDate, formatTime, toJakartaIsoDate } from "@/lib/format";
-import { bookingWindowProblem, DEFAULT_MEETING_HOURS, type MeetingHours, timeRangeLabel } from "@/lib/meeting-room";
+import { bookingWindowProblem, DEFAULT_MEETING_HOURS, MAX_ACTIVE_BOOKINGS_PER_USER, type MeetingHours, timeRangeLabel } from "@/lib/meeting-room";
 import type { CancelMeetingBookingInput, MeetingBookingInput, MeetingHoursInput } from "@/lib/validators/meeting-room";
 import type { Actor } from "./access";
 import { logAudit } from "./audit";
@@ -173,6 +173,22 @@ function bookingTimes(input: MeetingBookingInput) {
   return { startAt: jakartaDateTime(input.date, input.start), endAt: jakartaDateTime(input.date, input.end) };
 }
 
+/**
+ * F7 (audit keamanan 2026-11-26): batas booking aktif (ACTIVE & belum selesai) per orang, supaya satu orang tidak bisa
+ * memborong semua slot. Admin tidak dibatasi. Kunci advisory per orang dipasang dulu, supaya dua booking bersamaan dari
+ * orang yang sama dihitung bergiliran (tidak bisa lolos menjadi 11); orang lain tidak ikut menunggu.
+ */
+async function assertActiveBookingQuota(tx: Tx, actor: BookingActor, now: Date) {
+  if (actor.role === "ADMIN") return;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meetingRoom.quota:${actor.id}`}))`;
+  const active = await tx.meetingBooking.count({ where: { userId: actor.id, status: "ACTIVE", endAt: { gt: now } } });
+  if (active >= MAX_ACTIVE_BOOKINGS_PER_USER) {
+    throw new ServiceError(
+      `Anda sudah punya ${MAX_ACTIVE_BOOKINGS_PER_USER} booking yang belum selesai. Batalkan salah satu, atau tunggu sampai booking terdekat selesai.`,
+    );
+  }
+}
+
 /** Booking baru: langsung berlaku (tanpa approval). Bentrok → ServiceError berisi siapa yang lebih dulu. */
 export async function createMeetingBooking(
   db: PrismaClient,
@@ -185,6 +201,7 @@ export async function createMeetingBooking(
     const booking = await db.$transaction(async (tx) => {
       const room = await lockActiveRoom(tx, input.roomId);
       await assertBookingWindow(tx, input, now);
+      await assertActiveBookingQuota(tx, actor, now);
       // Satu INSERT: tumpang-tindih ditolak exclusion constraint secara atomik (tanpa cek-lalu-simpan).
       const created = await tx.meetingBooking.create({
         data: { roomId: room.id, userId: actor.id, agenda: input.agenda, startAt, endAt },

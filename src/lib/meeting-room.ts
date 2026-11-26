@@ -2,6 +2,7 @@
 // (client). Jam `HH:MM` zona Asia/Jakarta; tanggal `YYYY-MM-DD`.
 // Aturan (keputusan user 2026-11-23): Senin–Jumat & bukan tanggal Kalender Libur, di dalam jam operasional (Setting,
 // default 08:30–17:30), kelipatan 30 menit, paling jauh 30 hari ke depan, tidak boleh jam yang sudah lewat.
+// Maks 10 booking aktif (belum selesai) per orang, Admin tidak dibatasi (audit keamanan 2026-11-26, F7).
 import { jakartaDateTime, timeToMinutes } from "@/lib/attendance";
 import { toJakartaIsoDate } from "@/lib/format";
 import { addDays } from "@/lib/leave";
@@ -12,6 +13,8 @@ export const DEFAULT_MEETING_HOURS: MeetingHours = { start: "08:30", end: "17:30
 export const SLOT_MINUTES = 30;
 export const MAX_ADVANCE_DAYS = 30;
 export const AGENDA_MAX_LENGTH = 200;
+/** Batas booking aktif (ACTIVE & belum selesai) per orang; Admin tidak dibatasi (audit keamanan 2026-11-26, F7). */
+export const MAX_ACTIVE_BOOKINGS_PER_USER = 10;
 
 export function minutesToTime(minutes: number): string {
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;

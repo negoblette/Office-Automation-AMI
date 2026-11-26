@@ -149,8 +149,14 @@ Hak approve ditentukan oleh **Approval Flow**, bukan oleh role saja.
 **Super admin (2026-10-30):** `User.isSuperAdmin` (migrasi: admin.oa@arthamitra.co.id; `seedProduction` menandai akun Admin
 sistem) — Admin yang boleh menyetujui/menolak/mengoreksi pengajuan apa pun walau tidak ada di flow (kecuali miliknya,
 `canActOnStep`), membuka modul yang ditunda (`inventoryEnabled`, `lib/features.ts`), dan tidak bisa diubah role,
-dinonaktifkan, atau di-reset password/MFA-nya oleh Admin lain (`assertNotOtherSuperAdmin`). Tidak diatur dari aplikasi.
+dinonaktifkan, atau di-reset password/MFA-nya oleh Admin lain. Tidak diatur dari aplikasi.
 Tampilan menu & halaman super admin sama dengan Admin biasa (walau tanpa data karyawan/divisi).
+**Akun yang dilindungi (audit keamanan 2026-11-26, `services/account-protection.ts`):** super admin + **pemegang kunci
+pemulihan** (email di `RECOVERY_KEY_HOLDERS`). `assertCanManageAccount`: role, aktif/nonaktif, reset password/MFA, resign/rehire,
+dan email login akun pemegang kunci hanya boleh diubah super admin (super admin sendiri tidak bisa diubah Admin lain mana pun).
+`assertCanSetLoginEmail`: email pemegang kunci hanya bisa dipasang/dilepas super admin, juga di akun sendiri — status pemegang
+kunci mengikuti email login. WAJIB dipanggil di setiap jalur baru yang mengubah akun (Setting → User, form karyawan, kandidat).
+Setting → User menampilkan "Pemegang kunci" tanpa tombol bagi Admin biasa. Dev (`seedAll`) tidak punya super admin.
 
 **Approval (dipakai Reimburse, Cuti, Kesehatan, Expense, Sertifikat, Appeal absensi, Overtime):**
 1. Ambil flow REGULAR sesuai `module` + `division` pemohon (division null = semua).
@@ -160,6 +166,11 @@ Tampilan menu & halaman super admin sama dengan Admin biasa (walau tanpa data ka
 5. Step berurutan; step dengan beberapa approver = salah satu cukup.
 6. Step terakhir yang disetujui = APPROVED (final).
 (`skipApproval` per karyawan sudah dihapus di v1.14.)
+**Kunci baris (audit keamanan 2026-11-26):** approve/tolak/batalkan/koreksi mengunci pengajuan di awal transaksi
+(`lockApprovalRequest`, FOR UPDATE) — mencegah efek final ganda bila dua orang memproses bersamaan. Urutan kunci WAJIB
+**pengajuan → data modul**: aksi di sisi modul yang juga mengubah approval-nya (ubah/batalkan peminjaman, batalkan perpanjangan,
+jadwalkan pengambilan, hapus sertifikat) memanggil `lockApprovalOf(tx, module, entityId)` SEBELUM mengunci baris modul (cegah
+deadlock). Tabrakan/deadlock yang tersisa (Prisma P2034) → `toActionError` menampilkan "Data ini sedang diproses orang lain…".
 
 Flow awal (seed dev/test, matriks v1.14; produksi diisi Admin di Setting → Approval):
 | Module | Divisi | L1 | L2 | Catatan |
@@ -284,7 +295,10 @@ berjalan tidak bisa dinonaktifkan, diturunkan ke Staf, atau di-resign (`assertCa
 **Login (hardening 2026-10):** gagal dicatat `LOGIN_FAILED` di AuditLog (dengan IP). Ditahan 15 menit bila 5 gagal
 dari email+IP yang sama, 20 gagal ke satu email, atau 20 gagal dari satu IP (`login-throttle.ts`). Password baru 15–128
 karakter (`lib/password-policy.ts`); akun baru & hasil reset Admin wajib ganti password (`/ganti-password`). Sesi: idle
-1 jam, absolut 12 jam; ganti/reset password mencabut semua sesi (`User.sessionVersion`). **MFA (hardening Tahap 5,
+1 jam, absolut 12 jam; ganti/reset password **dan logout** mencabut semua sesi (`User.sessionVersion`; logout = semua
+perangkat, `endAllSessions`, 2026-11-26). Halaman publik hanya `/login` **persis** (`isPublicPath`, bukan awalan); `src/proxy.ts`
+berlaku untuk semua path kecuali `api`, `_next/static`, `_next/image`, `favicon.ico` (file di `public/` ikut dicek login & CSP;
+gambar dipakai lewat `import`). **MFA (hardening Tahap 5,
 2026-10-20):** semua role wajib kode TOTP authenticator (Admin & Approver sejak Tahap 5, Staf sejak 2026-10-30;
 `mfaRequired` di `lib/roles.ts`, `services/mfa.ts`, halaman `/mfa`, kode cadangan sekali
 pakai, reset MFA oleh Admin lain di Setting → User); email `security-notice` saat password/MFA berubah. Detail: Tech Spec §9. Kode verifikasi = 6 kotak
@@ -292,7 +306,9 @@ pakai, reset MFA oleh Admin lain di Setting → User); email `security-notice` s
 **Audit & alarm (hardening Tahap 6, 2026-10-21):** AuditLog **permanen** (trigger menolak UPDATE/DELETE — jangan menulis
 kode yang mengubah/menghapus baris audit; buka blokir login = entri `LOGIN_UNLOCK`). Aksi penting menyertakan `meta`
 (`requestMeta`) untuk IP & perangkat; unduhan/export lewat `recordDataAccess`. Alarm ke Admin (`security-monitor.ts` +
-`enqueueSecurityAlert`): login gagal beruntun akun Admin/Approver, ubah role, akses data besar-besaran. `/api/health`.
+`enqueueSecurityAlert`): login gagal beruntun akun Admin/Approver, ubah role (Setting → User maupun form karyawan), akun
+Admin/Approver baru (Tambah karyawan / kandidat), email login diubah (sesi akun itu ikut dicabut), kunci pemulihan dibuat/diganti,
+akses data besar-besaran. Service mengembalikan alarm; action mengirimnya SETELAH commit. `/api/health`.
 
 **Absensi:** clock in / clock out oleh tiap karyawan, jam dari server (WIB), satu baris `Attendance` per
 karyawan per hari. Terlambat / pulang cepat terhadap jam kerja `AppSetting attendance.workHours`
@@ -320,7 +336,9 @@ menyalakan di Setting → Ruang Meeting, nonaktifkan ditolak bila masih ada book
 exclusion constraint `MeetingBooking_no_overlap` (btree_gist, `tsrange '[)'`, hanya ACTIVE) — jangan ganti dengan cek-lalu-simpan;
 error 23P01 → `isBookingOverlapError`. Senin–Jumat bukan libur, jam operasional `AppSetting meetingRoom.hours` (default 08:30–17:30),
 kelipatan 30 menit, ≤ 30 hari ke depan, agenda wajib. Pemilik ubah 1× (`editedAt`) & batal sebelum mulai; Admin batal siapa pun
-(alasan wajib bila bukan miliknya). Batal = status CANCELLED. Email konfirmasi ke pemesan (dibuat/diubah/dibatalkan). Detail: Tech Spec §6.7.
+(alasan wajib bila bukan miliknya). Batal = status CANCELLED. Email konfirmasi ke pemesan (dibuat/diubah/dibatalkan). Maks **10
+booking aktif** (ACTIVE & belum selesai) per orang, Admin tidak dibatasi (`MAX_ACTIVE_BOOKINGS_PER_USER`, dicek saat membuat
+booking dengan kunci advisory per orang, 2026-11-26). Detail: Tech Spec §6.7.
 
 **Modul ditunda:** Inventory / Demo Unit (`FEATURES.inventory = false` di `src/lib/features.ts`) —
 menu, halaman, aksi, dashboard & job `reminder.asset` nonaktif; kode & data tetap ada. Super admin tetap bisa membuka

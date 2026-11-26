@@ -4,10 +4,13 @@ import argon2 from "argon2";
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { nikIndex } from "@/lib/crypto/field-encryption";
 import { fromIsoDate } from "@/lib/format";
+import type { RequestMeta } from "@/lib/request-meta";
 import type { EmployeeAdminUpdateInput, EmployeeCreateInput, EmployeeSelfInput } from "@/lib/validators/employee";
+import { assertCanManageAccount, assertCanSetLoginEmail } from "./account-protection";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { openEmployee, sealEmployeeData } from "./personal-data";
+import { loginEmailChangedAlert, privilegedAccountCreatedAlert, roleChangedAlert, type SecurityAlert } from "./security-monitor";
 import { assertCanLoseApproverRights } from "./user-admin";
 import { canApprove } from "@/lib/roles";
 import { assertDivisions } from "./division";
@@ -70,10 +73,17 @@ function selfData(input: EmployeeSelfInput) {
 async function getEmployeeOrThrow(tx: Tx, employeeId: string) {
   const employee = await tx.employee.findUnique({
     where: { id: employeeId },
-    include: { user: { select: { id: true, role: true, email: true } } },
+    // isSuperAdmin: untuk pengecekan akun yang dilindungi (account-protection.ts, audit keamanan 2026-11-26).
+    include: { user: { select: { id: true, role: true, email: true, isSuperAdmin: true } } },
   });
   if (!employee) throw new ServiceError("Karyawan tidak ditemukan");
   return employee;
+}
+
+/** F2 (audit keamanan 2026-11-26): nama pelaku untuk isi alarm keamanan. */
+async function actorName(tx: Tx, actorId: string): Promise<string> {
+  const actor = await tx.user.findUnique({ where: { id: actorId }, select: { email: true, employee: { select: { fullName: true } } } });
+  return actor?.employee?.fullName ?? actor?.email ?? "—";
 }
 
 // ---------------------------------------------------------------------
@@ -83,9 +93,12 @@ async function getEmployeeOrThrow(tx: Tx, employeeId: string) {
 /**
  * Buat Employee + periode kerja pertama + User di dalam transaksi yang sudah ada (dipakai juga
  * konversi kandidat). `passwordHash` di-hash di luar transaksi karena argon2 lambat.
+ * `alert` (F2): akun Admin/Approver baru → alarm untuk semua Admin; pemanggil mengirimnya SETELAH commit.
  */
-export async function createEmployeeInTx(tx: Tx, actorId: string, input: EmployeeCreateInput, passwordHash: string) {
+export async function createEmployeeInTx(tx: Tx, actorId: string, input: EmployeeCreateInput, passwordHash: string, meta?: RequestMeta) {
   await assertEmailAvailable(tx, input.email);
+  // F1 (audit keamanan 2026-11-26): akun baru dengan email pemegang kunci pemulihan hanya boleh dibuat super admin.
+  await assertCanSetLoginEmail(tx, { from: null, to: input.email }, actorId);
   await assertDivisions(tx, [input.division]);
 
   const employee = await tx.employee.create({
@@ -108,13 +121,22 @@ export async function createEmployeeInTx(tx: Tx, actorId: string, input: Employe
     after: { ...employee, role: input.role, startDate: input.startDate },
   });
 
-  return { employeeId: employee.id, userId: employee.user!.id };
+  // F2 (audit keamanan 2026-11-26): akun Admin/Approver baru dilaporkan ke semua Admin (akun Staf → null).
+  const alert = canApprove(input.role)
+    ? await privilegedAccountCreatedAlert(
+        tx,
+        { userId: employee.user!.id, userName: input.fullName, email: input.email, role: input.role, actorName: await actorName(tx, actorId) },
+        meta,
+      )
+    : null;
+
+  return { employeeId: employee.id, userId: employee.user!.id, alert };
 }
 
 /** Admin membuat akun minimal: Employee + periode kerja pertama + User (password awal dari Admin). */
-export async function createEmployee(db: PrismaClient, actorId: string, input: EmployeeCreateInput) {
+export async function createEmployee(db: PrismaClient, actorId: string, input: EmployeeCreateInput, meta?: RequestMeta) {
   const passwordHash = await argon2.hash(input.password);
-  return db.$transaction((tx) => createEmployeeInTx(tx, actorId, input, passwordHash));
+  return db.$transaction((tx) => createEmployeeInTx(tx, actorId, input, passwordHash, meta));
 }
 
 /** Staf melengkapi/mengubah data dirinya sendiri (EMP-06). */
@@ -135,18 +157,33 @@ export async function applySelfDataInTx(tx: Tx, actorId: string, employeeId: str
   return openEmployee(after);
 }
 
-/** Admin mengubah semua data, termasuk divisi, role, email login, dan tanggal masuk periode terakhir. */
+/**
+ * Admin mengubah semua data, termasuk divisi, role, email login, dan tanggal masuk periode terakhir.
+ * `alerts` (F2): ubah role / email login → alarm untuk semua Admin; pemanggil mengirimnya SETELAH commit.
+ */
 export async function updateByAdmin(
   db: PrismaClient,
   actorId: string,
   employeeId: string,
   input: EmployeeAdminUpdateInput,
+  meta?: RequestMeta,
 ) {
   return db.$transaction(async (tx) => {
     await assertDivisions(tx, [input.division]);
     const before = await getEmployeeOrThrow(tx, employeeId);
     if (before.user?.id === actorId && before.user.role !== input.role) {
       throw new ServiceError("Anda tidak bisa mengubah role akun Anda sendiri", "role");
+    }
+    // F1 (audit keamanan 2026-11-26): role & email login akun yang dilindungi (super admin, pemegang kunci pemulihan) tidak
+    // bisa diubah Admin lain, dan email pemegang kunci tidak bisa dipasang / dilepas — termasuk di akun sendiri.
+    // Data lain (jabatan, data diri, dst.) tetap boleh diubah Admin.
+    const roleChanged = Boolean(before.user && before.user.role !== input.role);
+    const emailChanged = Boolean(before.user && before.user.email !== input.email);
+    if (before.user && (roleChanged || emailChanged)) {
+      await assertCanManageAccount(tx, before.user, actorId, { field: emailChanged ? "email" : "role" });
+    }
+    if (before.user && emailChanged) {
+      await assertCanSetLoginEmail(tx, { from: before.user.email, to: input.email }, actorId);
     }
     if (before.user && canApprove(before.user.role) && !canApprove(input.role)) {
       await assertCanLoseApproverRights(tx, before.user.id, before.fullName);
@@ -175,7 +212,11 @@ export async function updateByAdmin(
       data: { ...selfData(input), fullName: input.fullName, position: input.position, level: input.level, employeeNo: input.employeeNo, email: input.email, division: input.division },
     });
     if (before.user) {
-      await tx.user.update({ where: { id: before.user.id }, data: { email: input.email, role: input.role } });
+      await tx.user.update({
+        where: { id: before.user.id },
+        // F2 (audit keamanan 2026-11-26): email login diganti → semua sesi akun itu berakhir (login ulang dengan email baru).
+        data: { email: input.email, role: input.role, ...(emailChanged ? { sessionVersion: { increment: 1 } } : {}) },
+      });
     }
 
     await logAudit(tx, {
@@ -186,7 +227,22 @@ export async function updateByAdmin(
       before: { ...before, startDate: latest.startDate },
       after: { ...after, role: input.role, startDate },
     });
-    return openEmployee(after);
+
+    // F2 (audit keamanan 2026-11-26): ubah role / email login lewat form karyawan dilaporkan ke semua Admin — sama seperti
+    // Setting → User.
+    const alerts: SecurityAlert[] = [];
+    if (before.user && (roleChanged || emailChanged)) {
+      const by = await actorName(tx, actorId);
+      if (roleChanged) {
+        const alert = await roleChangedAlert(tx, { userId: before.user.id, userName: before.fullName, from: before.user.role, to: input.role, actorName: by }, meta);
+        if (alert) alerts.push(alert);
+      }
+      if (emailChanged) {
+        const alert = await loginEmailChangedAlert(tx, { userId: before.user.id, userName: before.fullName, from: before.user.email, to: input.email, actorName: by }, meta);
+        if (alert) alerts.push(alert);
+      }
+    }
+    return { employee: openEmployee(after), alerts };
   });
 }
 
@@ -199,6 +255,8 @@ export async function resignEmployee(db: PrismaClient, actorId: string, employee
     const employee = await getEmployeeOrThrow(tx, employeeId);
     if (employee.status !== "ACTIVE") throw new ServiceError("Karyawan sudah berstatus resign");
     if (employee.user?.id === actorId) throw new ServiceError("Anda tidak bisa me-resign akun Anda sendiri");
+    // F1 (audit keamanan 2026-11-26): resign menonaktifkan akun — sama dengan nonaktifkan di Setting → User.
+    if (employee.user) await assertCanManageAccount(tx, employee.user, actorId);
     if (employee.user && canApprove(employee.user.role)) await assertCanLoseApproverRights(tx, employee.user.id, employee.fullName);
 
     const period = await tx.employmentPeriod.findFirst({ where: { employeeId, endDate: null } });
@@ -232,6 +290,8 @@ export async function rehireEmployee(db: PrismaClient, actorId: string, employee
   return db.$transaction(async (tx) => {
     const employee = await getEmployeeOrThrow(tx, employeeId);
     if (employee.status !== "RESIGNED") throw new ServiceError("Karyawan masih aktif");
+    // F1 (audit keamanan 2026-11-26): rehire mengaktifkan akun kembali — sama dengan aktifkan di Setting → User.
+    if (employee.user) await assertCanManageAccount(tx, employee.user, actorId);
 
     const lastPeriod = await tx.employmentPeriod.findFirst({ where: { employeeId }, orderBy: { startDate: "desc" } });
     const startDate = fromIsoDate(startDateIso);

@@ -1,5 +1,5 @@
 import argon2 from "argon2";
-import type { Role } from "@/generated/prisma/client";
+import type { PrismaClient, Role } from "@/generated/prisma/client";
 
 export type AuthUser = {
   id: string;
@@ -68,4 +68,13 @@ export async function verifyCredentials(
       sessionVersion: user.sessionVersion,
     },
   };
+}
+
+/**
+ * Logout = semua sesi akun berakhir (audit keamanan 2026-11-26, F5). Token sesi berisi `sessionVersion`; menaikkannya
+ * membuat SEMUA token lama akun ini (perangkat mana pun, termasuk cookie yang sempat tersalin) ditolak `getCurrentUser`.
+ * Sama dengan efek ganti / reset password.
+ */
+export async function endAllSessions(db: Pick<PrismaClient, "user">, userId: string): Promise<void> {
+  await db.user.update({ where: { id: userId }, data: { sessionVersion: { increment: 1 } } });
 }

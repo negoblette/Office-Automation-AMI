@@ -26,7 +26,7 @@ export default async function SettingUserPage() {
         <StatCard label="Akun aktif" value={active.length} icon={UserCheck} tone="success" />
         <StatCard label="Admin aktif" value={active.filter((r) => r.role === "ADMIN").length} icon={ShieldCheck} tone="neutral" />
       </div>
-      <UserTable rows={rows} currentUserId={admin.id} />
+      <UserTable rows={rows} currentUserId={admin.id} viewerIsSuperAdmin={admin.isSuperAdmin} />
     </div>
   );
 }

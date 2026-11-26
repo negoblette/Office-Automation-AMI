@@ -1,10 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { z } from "zod";
 import { type ActionResult, toActionError } from "@/lib/actions";
 import { requireAdmin } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
+import { enqueueSecurityAlert } from "@/lib/mail/security-emails";
+import { requestMeta } from "@/lib/request-meta";
 import { addCandidateDocument, convertCandidate, deleteCandidate, deleteCandidateDocument, saveCandidate } from "@/lib/services/candidate";
 import { ServiceError } from "@/lib/services/errors";
 import { inspectStoredFile } from "@/lib/storage";
@@ -67,11 +70,13 @@ export async function deleteCandidateDocumentAction(documentId: string): Promise
   }
 }
 
-/** Jadikan karyawan (CAN-03): data & dokumen dipindahkan tanpa input ulang. */
+/** Jadikan karyawan (CAN-03): data & dokumen dipindahkan tanpa input ulang. Role Admin/Approver → alarm (F2). */
 export async function convertCandidateAction(candidateId: string, values: unknown): Promise<ActionResult<{ employeeId: string }>> {
   const admin = await requireAdmin();
   try {
-    const result = await convertCandidate(prisma, admin.id, id.parse(candidateId), convertCandidateSchema.parse(values));
+    const result = await convertCandidate(prisma, admin.id, id.parse(candidateId), convertCandidateSchema.parse(values), requestMeta(await headers()));
+    // Email alarm di-enqueue SETELAH transaksi commit.
+    await enqueueSecurityAlert(prisma, result.alert);
     revalidateCandidates();
     return { ok: true, data: { employeeId: result.employeeId } };
   } catch (error) {

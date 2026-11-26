@@ -1,15 +1,18 @@
 // Setting → User & Role (Tahap 10.3): ubah role, aktif/nonaktif, reset password.
 // Approver = user aktif ber-role Admin / Approver; user yang dinonaktifkan / diturunkan ke Staf
 // tidak boleh meninggalkan step approval tanpa approver lain.
+// Akun yang dilindungi (super admin & pemegang kunci pemulihan) dicek di account-protection.ts (audit keamanan 2026-11-26).
 import argon2 from "argon2";
 import type { Prisma, PrismaClient, Role } from "@/generated/prisma/client";
 import { APPROVAL_MODULE_META } from "@/lib/approval-modules";
+import { assertCanManageAccount } from "./account-protection";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { APPROVER_ROLES, canApprove } from "@/lib/roles";
 import { divisionLabels } from "./division";
 import type { RequestMeta } from "@/lib/request-meta";
 import { lockedLoginEmails } from "./login-throttle";
+import { isRecoveryKeyHolder, recoveryKeyHolders } from "./recovery-key";
 import { roleChangedAlert, type SecurityAlert } from "./security-monitor";
 
 type Tx = Prisma.TransactionClient;
@@ -77,6 +80,8 @@ export type UserRow = {
   loginLocked: boolean;
   /** Super admin (2026-10-30): tidak bisa diubah Admin lain. */
   isSuperAdmin: boolean;
+  /** Pemegang kunci pemulihan (RECOVERY_KEY_HOLDERS, audit keamanan 2026-11-26): hanya super admin yang bisa mengubahnya. */
+  isRecoveryKeyHolder: boolean;
 };
 
 export async function listUsers(db: PrismaClient): Promise<UserRow[]> {
@@ -85,6 +90,7 @@ export async function listUsers(db: PrismaClient): Promise<UserRow[]> {
     orderBy: [{ isActive: "desc" }, { email: "asc" }],
   });
   const locked = await lockedLoginEmails(db, users.map((u) => u.email));
+  const holders = recoveryKeyHolders();
   return users.map((u) => ({
     id: u.id,
     email: u.email,
@@ -99,6 +105,7 @@ export async function listUsers(db: PrismaClient): Promise<UserRow[]> {
     mfaEnabled: u.mfaSecret !== null,
     loginLocked: locked.has(u.email.toLowerCase()),
     isSuperAdmin: u.isSuperAdmin,
+    isRecoveryKeyHolder: isRecoveryKeyHolder(u.email, holders),
   }));
 }
 
@@ -108,17 +115,12 @@ async function getUserOrThrow(tx: Tx, userId: string) {
   return { ...user, displayName: user.employee?.fullName ?? user.email };
 }
 
-/** Akun super admin (2026-10-30) tidak bisa diubah role, dinonaktifkan, atau di-reset password/MFA-nya oleh Admin lain. */
-export function assertNotOtherSuperAdmin(user: { id: string; isSuperAdmin: boolean }, actorId: string) {
-  if (user.isSuperAdmin && user.id !== actorId) throw new ServiceError("Akun super admin tidak bisa diubah oleh Admin lain");
-}
-
 /** Ubah role. Mengembalikan alarm untuk semua Admin (hardening Tahap 6) — kirim SETELAH commit; null = tidak berubah. */
 export async function setUserRole(db: PrismaClient, actorId: string, userId: string, role: Role, meta?: RequestMeta): Promise<SecurityAlert | null> {
   return db.$transaction(async (tx) => {
     const user = await getUserOrThrow(tx, userId);
     if (user.id === actorId) throw new ServiceError("Anda tidak bisa mengubah role akun Anda sendiri");
-    assertNotOtherSuperAdmin(user, actorId);
+    await assertCanManageAccount(tx, user, actorId);
     if (user.role === role) return null;
     if (canApprove(user.role) && !canApprove(role)) await assertCanLoseApproverRights(tx, userId, user.displayName);
     await tx.user.update({ where: { id: userId }, data: { role } });
@@ -132,7 +134,7 @@ export async function setUserActive(db: PrismaClient, actorId: string, userId: s
   return db.$transaction(async (tx) => {
     const user = await getUserOrThrow(tx, userId);
     if (user.id === actorId) throw new ServiceError("Anda tidak bisa menonaktifkan akun Anda sendiri");
-    assertNotOtherSuperAdmin(user, actorId);
+    await assertCanManageAccount(tx, user, actorId);
     if (user.isActive === isActive) return;
     if (isActive && user.employee?.status === "RESIGNED") {
       throw new ServiceError("Karyawan ini sudah resign. Aktifkan kembali lewat halaman Arsip (Rehire).");
@@ -150,7 +152,7 @@ export async function setUserActive(db: PrismaClient, actorId: string, userId: s
 export async function resetUserPassword(db: PrismaClient, actorId: string, userId: string, password: string, meta?: RequestMeta) {
   const passwordHash = await argon2.hash(password);
   return db.$transaction(async (tx) => {
-    assertNotOtherSuperAdmin(await getUserOrThrow(tx, userId), actorId);
+    await assertCanManageAccount(tx, await getUserOrThrow(tx, userId), actorId);
     await tx.user.update({
       where: { id: userId },
       data: { passwordHash, mustChangePassword: true, sessionVersion: { increment: 1 } },

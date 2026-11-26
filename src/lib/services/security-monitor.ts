@@ -1,6 +1,7 @@
 // Pemantauan & alarm keamanan (hardening Tahap 6; OWASP Logging & Monitoring, ASVS V7). Mendeteksi:
 //  - login gagal beruntun ke akun Admin/Approver,
 //  - perubahan role,
+//  - akun Admin/Approver baru & email login yang diganti lewat data karyawan (audit keamanan 2026-11-26, F2),
 //  - akses data besar-besaran (unduh file / export / buka data pribadi) oleh satu user.
 // Alarm dicatat di AuditLog (SECURITY_ALERT) — sekaligus mencegah email ganda dalam satu jendela waktu — lalu
 // pemanggil mengirim email ke semua Admin aktif (mail/security-emails.ts#enqueueSecurityAlert) SETELAH commit.
@@ -21,7 +22,13 @@ export const ALERT_RULES = {
   dataAccessPerHour: 50,
 } as const;
 
-export type SecurityAlertKind = "LOGIN_FAILURES" | "ROLE_CHANGED" | "MASS_ACCESS" | "RECOVERY_KEY_CHANGED";
+export type SecurityAlertKind =
+  | "LOGIN_FAILURES"
+  | "ROLE_CHANGED"
+  | "MASS_ACCESS"
+  | "RECOVERY_KEY_CHANGED"
+  | "PRIVILEGED_ACCOUNT_CREATED"
+  | "LOGIN_EMAIL_CHANGED";
 
 export type SecurityAlert = {
   kind: SecurityAlertKind;
@@ -116,6 +123,49 @@ export async function recoveryKeyChangedAlert(
         "Kunci pemulihan dipakai untuk membuka backup & titipan kunci data bila server rusak.",
         ...where(meta),
         "Bila bukan pemilik akun yang melakukannya, segera periksa akun tersebut dan buat ulang kunci pemulihannya.",
+      ],
+    },
+    0,
+    meta,
+  );
+}
+
+/** Akun Admin/Approver baru dibuat (Karyawan → Tambah / konversi kandidat; audit keamanan 2026-11-26, F2). Staf: tanpa alarm. */
+export async function privilegedAccountCreatedAlert(
+  db: Db,
+  input: { userId: string; userName: string; email: string; role: Role; actorName: string },
+  meta?: RequestMeta,
+): Promise<SecurityAlert | null> {
+  if (!canApprove(input.role)) return null;
+  return raiseAlert(
+    db,
+    input.userId,
+    {
+      kind: "PRIVILEGED_ACCOUNT_CREATED",
+      title: `Akun ${ROLE_LABEL[input.role]} baru dibuat: ${input.userName} (${input.email})`,
+      details: [`Dibuat oleh: ${input.actorName}`, ...where(meta), "Bila akun ini tidak direncanakan, segera nonaktifkan di Setting → User."],
+    },
+    0,
+    meta,
+  );
+}
+
+/** Email login diganti lewat Karyawan → Ubah (audit keamanan 2026-11-26, F2). Sesi akun itu diakhiri pemanggil. */
+export async function loginEmailChangedAlert(
+  db: Db,
+  input: { userId: string; userName: string; from: string; to: string; actorName: string },
+  meta?: RequestMeta,
+): Promise<SecurityAlert | null> {
+  return raiseAlert(
+    db,
+    input.userId,
+    {
+      kind: "LOGIN_EMAIL_CHANGED",
+      title: `Email login ${input.userName} diubah: ${input.from} → ${input.to}`,
+      details: [
+        `Diubah oleh: ${input.actorName}`,
+        ...where(meta),
+        "Semua sesi login akun ini sudah diakhiri. Bila perubahan ini tidak direncanakan, segera periksa akun tersebut.",
       ],
     },
     0,

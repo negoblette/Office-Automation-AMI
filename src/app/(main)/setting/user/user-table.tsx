@@ -194,12 +194,12 @@ function ActionSlot({ children }: { children: React.ReactNode }) {
 
 const col = dataTableColumnHelper<UserRow>();
 
-export function UserTable({ rows, currentUserId }: { rows: UserRow[]; currentUserId: string }) {
-  const columns = useMemo(() => buildColumns(currentUserId), [currentUserId]);
+export function UserTable({ rows, currentUserId, viewerIsSuperAdmin }: { rows: UserRow[]; currentUserId: string; viewerIsSuperAdmin: boolean }) {
+  const columns = useMemo(() => buildColumns(currentUserId, viewerIsSuperAdmin), [currentUserId, viewerIsSuperAdmin]);
   return <DataTable columns={columns} data={rows} getRowId={(row) => row.id} searchPlaceholder="Cari nama atau email…" rowNoun="user" emptyMessage="Belum ada user." />;
 }
 
-function buildColumns(currentUserId: string) {
+function buildColumns(currentUserId: string, viewerIsSuperAdmin: boolean) {
   return col.columns([
     col.accessor((row) => `${row.name} ${row.email}`, {
       id: "user",
@@ -256,8 +256,11 @@ function buildColumns(currentUserId: string) {
       cell: ({ row }) => {
         const user = row.original;
         const self = user.id === currentUserId;
-        // Super admin (2026-10-30) hanya bisa diubah dirinya sendiri; Admin lain hanya bisa membuka blokir login.
-        const locked = user.isSuperAdmin && !self;
+        // Super admin (2026-10-30) hanya bisa diubah dirinya sendiri; pemegang kunci pemulihan (audit keamanan 2026-11-26)
+        // hanya oleh super admin. Selain itu Admin lain hanya bisa membuka blokir login. Pengecekan sebenarnya di server
+        // (account-protection.ts) — ini hanya supaya tombol yang pasti ditolak tidak tampil.
+        const lockedHolder = user.isRecoveryKeyHolder && !viewerIsSuperAdmin;
+        const locked = (user.isSuperAdmin || lockedHolder) && !self;
         // Slot ikon tetap (role · password · reset MFA · buka blokir) supaya tombol di kanan sejajar di semua baris.
         return (
           <div className="flex items-start gap-1">
@@ -269,7 +272,7 @@ function buildColumns(currentUserId: string) {
               {self ? (
                 <span className="text-xs whitespace-nowrap text-muted-foreground">Akun Anda</span>
               ) : locked ? (
-                <span className="text-xs whitespace-nowrap text-muted-foreground">Super admin</span>
+                <span className="text-xs whitespace-nowrap text-muted-foreground">{user.isSuperAdmin ? "Super admin" : "Pemegang kunci"}</span>
               ) : (
                 user.employeeStatus !== "RESIGNED" && <ActiveToggle user={user} />
               )}

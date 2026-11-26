@@ -5,7 +5,7 @@ import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { fromIsoDate } from "@/lib/format";
 import type { CertificateInput } from "@/lib/validators/certificate";
 import { type Actor, assertFileKeyAvailable, getManageableEmployee } from "./access";
-import { type ApprovalNotification, buildApproval, restartApproval } from "./approval";
+import { type ApprovalNotification, buildApproval, lockApprovalOf, restartApproval } from "./approval";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 import { nextDocumentNumber } from "./numbering";
@@ -99,6 +99,8 @@ export async function deleteCertificate(db: PrismaClient, actor: Actor, certific
 }
 
 export async function deleteCertificateInTx(tx: Prisma.TransactionClient, actor: Actor, certificateId: string): Promise<void> {
+  // Urutan kunci seragam (pengajuan → sertifikat) supaya tidak deadlock dengan approver yang menyetujui bersamaan.
+  await lockApprovalOf(tx, "CERTIFICATE", certificateId);
   const certificate = await tx.certificate.findUnique({ where: { id: certificateId } });
   if (!certificate || certificate.deletedAt) throw new ServiceError("Sertifikat tidak ditemukan");
   await getManageableEmployee(tx, actor, certificate.employeeId);

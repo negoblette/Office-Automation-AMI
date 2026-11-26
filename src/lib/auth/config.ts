@@ -4,11 +4,16 @@ import type { NextAuthConfig } from "next-auth";
 // Provider Credentials ditambahkan di `./index.ts`.
 
 /** Halaman yang boleh dibuka tanpa login. */
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = new Set(["/login"]);
 
-/** true untuk halaman yang boleh dibuka tanpa login (dipakai callback `authorized` & `proxy.ts`). */
+/**
+ * true untuk halaman yang boleh dibuka tanpa login (dipakai callback `authorized` & `proxy.ts`).
+ * Dicocokkan PERSIS, bukan awalan (audit keamanan 2026-11-26): dulu `startsWith("/login")` membuat `/loginx`, `/login/x`,
+ * dst. ikut publik, sehingga Server Action login bisa dipanggil dari path itu tanpa terkena batas login nginx
+ * (`location = /login`). Path baru yang memang harus publik ditambahkan satu per satu di sini.
+ */
 export function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PATHS.some((path) => pathname.startsWith(path));
+  return PUBLIC_PATHS.has(pathname);
 }
 
 /**

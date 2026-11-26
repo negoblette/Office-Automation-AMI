@@ -2,13 +2,19 @@
 
 import { type ActionResult, toActionError } from "@/lib/actions";
 import { signOut } from "@/lib/auth";
-import { requireUser } from "@/lib/auth/guards";
+import { getCurrentUser, requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
+import { endAllSessions } from "@/lib/services/auth";
 import { dismissNotification, restoreNotification } from "@/lib/services/notifications";
 import { dismissNotificationSchema, notificationKeySchema } from "@/lib/validators/notification";
 
-/** Logout lalu kembali ke halaman login. */
+/**
+ * Logout lalu kembali ke halaman login. F5 (audit keamanan 2026-11-26): sesi dicabut di SERVER dulu (semua perangkat),
+ * baru cookie dihapus — supaya cookie yang sempat tersalin tidak bisa dipakai lagi.
+ */
 export async function logoutAction() {
+  const user = await getCurrentUser();
+  if (user) await endAllSessions(prisma, user.id);
   await signOut({ redirectTo: "/login" });
 }
 

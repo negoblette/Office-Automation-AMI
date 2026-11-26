@@ -8,6 +8,7 @@ import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { decryptText, encryptText } from "@/lib/crypto/field-encryption";
 import type { RequestMeta } from "@/lib/request-meta";
 import { mfaRequired } from "@/lib/roles";
+import { assertCanManageAccount } from "./account-protection";
 import { logAudit } from "./audit";
 import { ServiceError } from "./errors";
 
@@ -154,14 +155,15 @@ export async function regenerateBackupCodes(db: PrismaClient, userId: string, co
 
 /**
  * Admin me-reset MFA user lain (HP hilang & kode cadangan habis). Semua sesi user berakhir; saat login berikutnya
- * user wajib mendaftarkan authenticator lagi. Tidak bisa untuk akun sendiri — minta Admin lain.
+ * user wajib mendaftarkan authenticator lagi. Tidak bisa untuk akun sendiri — minta Admin lain. Super admin & pemegang
+ * kunci pemulihan dilindungi (audit keamanan 2026-11-26, account-protection.ts).
  */
 export async function resetUserMfa(db: PrismaClient, actorId: string, userId: string, meta?: RequestMeta): Promise<void> {
   if (actorId === userId) throw new ServiceError("Anda tidak bisa me-reset MFA akun sendiri. Minta Admin lain.");
   await db.$transaction(async (tx) => {
-    const user = await tx.user.findUnique({ where: { id: userId }, select: { mfaSecret: true, isSuperAdmin: true } });
+    const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true, email: true, mfaSecret: true, isSuperAdmin: true } });
     if (!user) throw new ServiceError("User tidak ditemukan");
-    if (user.isSuperAdmin) throw new ServiceError("Akun super admin tidak bisa diubah oleh Admin lain");
+    await assertCanManageAccount(tx, user, actorId);
     if (!user.mfaSecret) throw new ServiceError("MFA user ini belum aktif");
     await tx.user.update({
       where: { id: userId },

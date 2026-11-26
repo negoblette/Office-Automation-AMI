@@ -41,6 +41,27 @@ async function adminIds(tx: Tx) {
   return admins.map((admin) => admin.id);
 }
 
+/**
+ * F3 (audit keamanan 2026-11-26): kunci baris pengajuan sampai transaksi selesai. Setujui / tolak / batalkan / koreksi
+ * untuk pengajuan yang SAMA berjalan bergiliran — tanpa ini, "setujui final" dan "batalkan persetujuan" yang terjadi
+ * bersamaan bisa membuat efek final (potong saldo cuti, payout klaim) berjalan dua kali. Panggil di AWAL transaksi,
+ * sebelum membaca pengajuan. Id yang tidak ada → tidak mengunci apa-apa (pemanggil lalu menolak "tidak ditemukan").
+ */
+export async function lockApprovalRequest(tx: Tx, requestId: string) {
+  await tx.$queryRaw`SELECT id FROM "ApprovalRequest" WHERE id = ${requestId} FOR UPDATE`;
+}
+
+/**
+ * Kunci pengajuan milik satu entitas modul (bila ada) — untuk aksi di SISI MODUL yang juga mengubah approval-nya
+ * (batalkan peminjaman, hapus sertifikat, dst.; audit keamanan 2026-11-26). Panggil SEBELUM mengunci baris modul, supaya
+ * urutan kunci di seluruh aplikasi seragam — pengajuan dulu, baru data modul — sehingga dua transaksi tidak saling
+ * menunggu (deadlock).
+ */
+export async function lockApprovalOf(tx: Tx, module: ApprovalModule, entityId: string) {
+  const request = await tx.approvalRequest.findUnique({ where: { module_entityId: { module, entityId } }, select: { id: true } });
+  if (request) await lockApprovalRequest(tx, request.id);
+}
+
 // ---------------------------------------------------------------------
 // build (Tech Spec §4.1)
 // ---------------------------------------------------------------------
@@ -204,6 +225,7 @@ export async function approveRequest(
   },
 ): Promise<ApproveResult> {
   return db.$transaction(async (tx) => {
+    await lockApprovalRequest(tx, input.requestId);
     const request = await tx.approvalRequest.findUnique({
       where: { id: input.requestId },
       include: { steps: { orderBy: { level: "asc" } } },
@@ -392,6 +414,7 @@ export async function revokeApproval(db: PrismaClient, input: { requestId: strin
   const reason = input.reason.trim();
   if (reason.length < 3) throw new ServiceError("Alasan pembatalan minimal 3 karakter", "reason");
   return db.$transaction(async (tx) => {
+    await lockApprovalRequest(tx, input.requestId);
     const request = await tx.approvalRequest.findUnique({ where: { id: input.requestId }, include: { steps: true } });
     if (!request) throw new ServiceError("Pengajuan tidak ditemukan");
     const actor = await tx.user.findUnique({
@@ -463,6 +486,7 @@ export async function rejectRequest(db: PrismaClient, input: { requestId: string
   const reason = input.reason.trim();
   if (reason.length < 3) throw new ServiceError("Alasan penolakan minimal 3 karakter", "reason");
   return db.$transaction(async (tx) => {
+    await lockApprovalRequest(tx, input.requestId);
     const request = await tx.approvalRequest.findUnique({ where: { id: input.requestId }, include: { steps: { orderBy: { level: "asc" } } } });
     if (!request) throw new ServiceError("Pengajuan tidak ditemukan");
     if (request.status !== "PENDING") throw new ServiceError("Pengajuan ini sudah diproses");

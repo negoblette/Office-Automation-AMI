@@ -37,7 +37,7 @@ import type {
   ReturnDemoLoanInput,
   TrialFormCounterInput,
 } from "@/lib/validators/demo-loan";
-import { type ApprovalNotification, buildApproval, restartApproval } from "./approval";
+import { type ApprovalNotification, buildApproval, lockApprovalOf, restartApproval } from "./approval";
 import { logAudit } from "./audit";
 import { closePendingExtensions } from "./demo-loan-extension";
 import { heldLoanItemWhere } from "./demo-loan-hold";
@@ -180,6 +180,8 @@ export async function submitDemoLoan(db: PrismaClient, actor: LoanActor, input: 
  */
 export async function reviseDemoLoan(db: PrismaClient, actor: LoanActor, loanId: string, input: DemoLoanInput, today = toJakartaIsoDate()) {
   return db.$transaction(async (tx) => {
+    // Urutan kunci seragam (pengajuan → peminjaman) supaya tidak deadlock dengan approver yang memproses bersamaan.
+    await lockApprovalOf(tx, "DEMO_LOAN", loanId);
     const before = await lockLoan(tx, loanId);
     if (before.requesterId !== actor.id) throw new ServiceError("Hanya pemohon yang bisa mengubah pengajuan ini");
     if (!isEditableLoanStatus(before.status)) throw new ServiceError("Pengajuan yang sudah disetujui atau dibatalkan tidak bisa diubah");
@@ -218,6 +220,8 @@ export async function reviseDemoLoan(db: PrismaClient, actor: LoanActor, loanId:
  */
 export async function cancelDemoLoan(db: PrismaClient, actor: LoanActor, loanId: string) {
   return db.$transaction(async (tx) => {
+    // Urutan kunci seragam (pengajuan → peminjaman) supaya tidak deadlock dengan approver yang memproses bersamaan.
+    await lockApprovalOf(tx, "DEMO_LOAN", loanId);
     const before = await lockLoan(tx, loanId);
     if (before.requesterId !== actor.id) throw new ServiceError("Hanya pemohon yang bisa membatalkan pengajuan ini");
     if (!isEditableLoanStatus(before.status)) throw new ServiceError("Pengajuan yang sudah disetujui atau dibatalkan tidak bisa dibatalkan lagi");
@@ -297,6 +301,11 @@ export async function markDemoLoanDelivered(db: PrismaClient, actor: LoanActor, 
 export async function scheduleLoanPickup(db: PrismaClient, actor: LoanActor, loanId: string, input: LoanPickupInput, today = toJakartaIsoDate()) {
   return db.$transaction(async (tx) => {
     await assertOperational(tx, actor);
+    // Perpanjangan yang masih menunggu ikut ditutup di bawah (closePendingExtensions) → kunci dulu pengajuannya sebelum
+    // baris peminjaman (urutan seragam pengajuan → peminjaman, supaya tidak deadlock dengan approver perpanjangan).
+    for (const extension of await tx.demoLoanExtension.findMany({ where: { loanId, status: "PENDING" }, select: { id: true } })) {
+      await lockApprovalOf(tx, "DEMO_LOAN_EXTENSION", extension.id);
+    }
     const before = await lockLoan(tx, loanId);
     if (before.status !== "ON_LOAN" && before.status !== "PICKUP") {
       throw new ServiceError("Pengambilan hanya bisa dijadwalkan untuk peminjaman yang barangnya sedang dipinjam");

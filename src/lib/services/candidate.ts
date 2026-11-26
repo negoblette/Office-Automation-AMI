@@ -4,6 +4,7 @@ import type { DocumentType, PrismaClient } from "@/generated/prisma/client";
 import { nikIndex } from "@/lib/crypto/field-encryption";
 import { PERSONAL_DOCUMENT_TYPES } from "@/lib/employee-documents";
 import type { CandidateInput, ConvertCandidateInput } from "@/lib/validators/candidate";
+import type { RequestMeta } from "@/lib/request-meta";
 import { assertFileKeyAvailable } from "./access";
 import { logAudit } from "./audit";
 import { createEmployeeInTx } from "./employee";
@@ -77,8 +78,9 @@ export async function deleteCandidateDocument(db: PrismaClient, actorId: string,
 /**
  * Konversi kandidat Diterima → karyawan tanpa input ulang (CAN-03): buat Employee + periode +
  * User dari data kandidat, salin NIK & HP, pindahkan dokumen (ownerType → EMPLOYEE).
+ * `alert` (F2, audit keamanan 2026-11-26): kandidat dijadikan Admin/Approver → alarm; pemanggil mengirim SETELAH commit.
  */
-export async function convertCandidate(db: PrismaClient, actorId: string, candidateId: string, input: ConvertCandidateInput) {
+export async function convertCandidate(db: PrismaClient, actorId: string, candidateId: string, input: ConvertCandidateInput, meta?: RequestMeta) {
   const passwordHash = await argon2.hash(input.password);
   return db.$transaction(async (tx) => {
     const candidate = await tx.candidate.findUnique({ where: { id: candidateId, deletedAt: null } });
@@ -100,7 +102,7 @@ export async function convertCandidate(db: PrismaClient, actorId: string, candid
       }
     }
 
-    const { employeeId } = await createEmployeeInTx(tx, actorId, { ...input, fullName: candidate.fullName, email: candidate.email }, passwordHash);
+    const { employeeId, alert } = await createEmployeeInTx(tx, actorId, { ...input, fullName: candidate.fullName, email: candidate.email }, passwordHash, meta);
     await tx.employee.update({ where: { id: employeeId }, data: sealEmployeeData({ nik, phone }) });
     const moved = await tx.document.updateMany({
       where: { candidateId, deletedAt: null },
@@ -116,6 +118,6 @@ export async function convertCandidate(db: PrismaClient, actorId: string, candid
       before: { convertedEmployeeId: null },
       after: { convertedEmployeeId: employeeId, movedDocuments: moved.count },
     });
-    return { employeeId, movedDocuments: moved.count };
+    return { employeeId, movedDocuments: moved.count, alert };
   });
 }
