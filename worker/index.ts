@@ -4,7 +4,8 @@
 // 07:00 WIB, jatuh tempo peminjaman unit — Tahap 16.4 — & tindak lanjut unit rusak / tidak lengkap — 2026-11-20),
 // `attendance.deduct` (harian 01:00 WIB),
 // `storage.orphan-purge` (harian 03:00 WIB, hardening Tahap 7), `attendance.auto-clock-out` (tiap 5 menit, 2026-10-30),
-// `holiday.sync` (harian 06:00 WIB + tombol Admin, libur nasional dari kalender publik Google — 2026-11-18).
+// `holiday.sync` (harian 06:00 WIB + tombol Admin, libur nasional dari kalender publik Google — 2026-11-18; mode browser
+// 2026-11-27: hanya tombol Admin, data dari browser — lib/holidays/mode.ts).
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PgBoss } from "pg-boss";
@@ -23,6 +24,8 @@ import { LocalStorage } from "@/lib/storage/local";
 import { assetReminders, certificateReminders, documentReminders } from "@/lib/services/reminder";
 import { HOLIDAY_SYNC_QUEUE, syncHolidays } from "@/lib/services/holiday-sync";
 import { buildHolidayChangeEmails } from "@/lib/mail/holiday-emails";
+import { holidaySyncMode } from "@/lib/holidays/mode";
+import { externalHolidaysSchema } from "@/lib/validators/leave";
 
 const LEAVE_ROLLOVER_QUEUE = "leave.rollover";
 const REMINDER_JOBS: Record<string, (db: PrismaClient) => Promise<OutgoingEmail[]>> = {
@@ -112,17 +115,32 @@ async function main() {
     });
   }
 
-  // Libur nasional dari kalender publik Google (setiap hari 06:00 WIB) + tombol "Sinkronkan sekarang" (Admin). Perubahan
-  // yang diterapkan → email ke penerima notifikasi (HR & Direktur) beserta pengajuan cuti terdampak.
+  // Libur nasional dari kalender publik Google + tombol "Sinkronkan sekarang" (Admin). Perubahan yang diterapkan → email
+  // ke penerima notifikasi (HR & Direktur) beserta pengajuan cuti terdampak.
+  // Mode server: worker mengunduh sendiri, setiap hari 06:00 WIB. Mode browser (2026-11-27, server tanpa internet): data
+  // dikirim browser Admin lewat job; jadwal harian dihapus (jadwal lama tersimpan di database pg-boss).
+  const holidayMode = holidaySyncMode();
   await boss.createQueue(HOLIDAY_SYNC_QUEUE);
-  await boss.schedule(HOLIDAY_SYNC_QUEUE, "0 6 * * *", null, { tz: "Asia/Jakarta" });
-  await boss.work<{ requestedBy?: string } | null>(HOLIDAY_SYNC_QUEUE, async ([job]) => {
+  if (holidayMode === "server") await boss.schedule(HOLIDAY_SYNC_QUEUE, "0 6 * * *", null, { tz: "Asia/Jakarta" });
+  else await boss.unschedule(HOLIDAY_SYNC_QUEUE).catch(() => undefined);
+  await boss.work<{ requestedBy?: string; holidays?: unknown } | null>(HOLIDAY_SYNC_QUEUE, async ([job]) => {
+    const fromBrowser = job?.data?.holidays;
+    if (holidayMode === "browser" && fromBrowser === undefined) {
+      // Job tanpa data (jadwal lama / tombol versi lama) — mode browser tidak boleh mengunduh sendiri.
+      console.log(`[worker] ${HOLIDAY_SYNC_QUEUE}: dilewati — mode browser, data libur dikirim dari browser Admin`);
+      return;
+    }
     // Pelaku audit: Admin aktif yang menekan tombol; jadwal otomatis = sistem (null).
     const requestedBy = typeof job?.data?.requestedBy === "string" ? job.data.requestedBy : null;
     const admin = requestedBy
       ? await db.user.findFirst({ where: { id: requestedBy, role: "ADMIN", isActive: true }, select: { id: true } })
       : null;
-    const result = await syncHolidays(db, { actorId: admin?.id ?? null });
+    const result = await syncHolidays(db, {
+      actorId: admin?.id ?? null,
+      // Mode browser: data kiriman browser Admin (sudah divalidasi server action) dicek ulang sebelum dipakai; tidak sesuai
+      // → sinkronisasi gagal tanpa perubahan (pesan di kartu Admin, detail di log worker).
+      source: fromBrowser === undefined ? undefined : async () => externalHolidaysSchema.parse(fromBrowser),
+    });
     // Perubahan sudah tersimpan: gagal menyusun email tidak mengulang sinkronisasi (lonceng & kartu tetap menampilkannya).
     if (result.runId) {
       await buildHolidayChangeEmails(db, result.runId)
@@ -138,7 +156,7 @@ async function main() {
   });
 
   console.log(
-    `[worker] siap. Queue: ${EMAIL_QUEUE}, ${LEAVE_ROLLOVER_QUEUE} (00:30 WIB), ${Object.keys(REMINDER_JOBS).join(", ")} (07:00 WIB), ${ATTENDANCE_DEDUCT_QUEUE} (01:00 WIB), ${ORPHAN_PURGE_QUEUE} (03:00 WIB), ${AUTO_CLOCK_OUT_QUEUE} (tiap 5 menit), ${HOLIDAY_SYNC_QUEUE} (06:00 WIB + tombol Admin)`,
+    `[worker] siap. Queue: ${EMAIL_QUEUE}, ${LEAVE_ROLLOVER_QUEUE} (00:30 WIB), ${Object.keys(REMINDER_JOBS).join(", ")} (07:00 WIB), ${ATTENDANCE_DEDUCT_QUEUE} (01:00 WIB), ${ORPHAN_PURGE_QUEUE} (03:00 WIB), ${AUTO_CLOCK_OUT_QUEUE} (tiap 5 menit), ${HOLIDAY_SYNC_QUEUE} (${holidayMode === "server" ? "06:00 WIB + tombol Admin" : "mode browser — tombol Admin"})`,
   );
 
   const shutdown = async () => {

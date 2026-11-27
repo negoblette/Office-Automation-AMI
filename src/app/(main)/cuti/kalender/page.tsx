@@ -8,11 +8,12 @@ import { buttonVariants } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { formatDate, toJakartaIsoDate } from "@/lib/format";
+import { holidaySyncMode } from "@/lib/holidays/mode";
 import { LeaveCalendar } from "@/components/shared/leave-calendar";
 import { getHolidaySyncStatus, listHolidayRuns } from "@/lib/services/holiday-sync";
-import { getLeaveCalendar, listDirectorLeaves, listHolidays } from "@/lib/services/leave-queries";
+import { getLeaveCalendar, listDirectorLeaves, listHolidays, listRemovedHolidays } from "@/lib/services/leave-queries";
 import { CutiTabs } from "../leave-ui";
-import { DeleteHolidayButton, HolidayForms } from "./holiday-manager";
+import { DeleteHolidayButton, HolidayForms, RestoreHolidayButton } from "./holiday-manager";
 import { HolidaySyncCard } from "./holiday-sync-card";
 
 export const metadata: Metadata = { title: "Kalender Libur" };
@@ -26,12 +27,14 @@ export default async function KalenderLiburPage({ searchParams }: { searchParams
   const todayIso = toJakartaIsoDate();
   const yearMonth = params.bulan && /^\d{4}-(0[1-9]|1[0-2])$/.test(params.bulan) ? params.bulan : todayIso.slice(0, 7);
   const year = Number.isInteger(requested) && requested >= 2000 && requested <= 2100 ? requested : currentYear;
-  const [holidays, directorLeaves, syncStatus, syncRuns] = await Promise.all([
+  const [holidays, directorLeaves, syncStatus, syncRuns, removedHolidays] = await Promise.all([
     listHolidays(prisma, `${year}-01-01`, `${year}-12-31`),
     listDirectorLeaves(prisma, `${year}-01-01`, `${year}-12-31`),
     // Sinkronisasi libur nasional dari kalender Google (2026-11-18) — status & riwayat perubahan, hanya untuk Admin.
     isAdmin ? getHolidaySyncStatus(prisma) : null,
     isAdmin ? listHolidayRuns(prisma) : [],
+    // Libur yang dikeluarkan Admin (2026-11-27) — bisa dikembalikan, hanya untuk Admin.
+    isAdmin ? listRemovedHolidays(prisma, `${year}-01-01`, `${year}-12-31`) : [],
   ]);
 
   return (
@@ -45,7 +48,15 @@ export default async function KalenderLiburPage({ searchParams }: { searchParams
 
       <LeaveCalendar weeks={await getLeaveCalendar(prisma, yearMonth)} yearMonth={yearMonth} todayIso={todayIso} hrefFor={(ym) => `/cuti/kalender?bulan=${ym}`} />
 
-      {isAdmin && <HolidaySyncCard status={syncStatus} runs={syncRuns} />}
+      {isAdmin && (
+        <HolidaySyncCard
+          status={syncStatus}
+          runs={syncRuns}
+          // Mode browser (server tanpa internet, 2026-11-27): API key Google hanya dikirim ke halaman Admin — bukan
+          // NEXT_PUBLIC_, jadi tidak tertanam di file JavaScript yang bisa diunduh semua pengguna.
+          browserSync={holidaySyncMode() === "browser" ? { apiKey: process.env.GOOGLE_CALENDAR_API_KEY ?? "", year: currentYear } : null}
+        />
+      )}
       {isAdmin && <HolidayForms />}
 
       <section className="rounded-2xl bg-card p-5 shadow-card sm:p-6">
@@ -117,6 +128,31 @@ export default async function KalenderLiburPage({ searchParams }: { searchParams
               </li>
             ))}
           </ul>
+        )}
+
+        {isAdmin && removedHolidays.length > 0 && (
+          <div className="mt-6 border-t border-border pt-5">
+            <h3 className="text-sm font-semibold">Dikeluarkan dari {year}</h3>
+            <p className="mt-1 mb-2 text-sm text-muted-foreground">
+              Libur yang dihapus Admin: dihitung sebagai hari kerja dan tidak dimunculkan lagi oleh sinkronisasi. Tekan Kembalikan untuk memakainya lagi.
+            </p>
+            <ul className="divide-y divide-border">
+              {removedHolidays.map((holiday) => (
+                <li key={holiday.id} className="flex items-center gap-4 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-muted-foreground">{holiday.name}</p>
+                    <p className="text-sm text-muted-foreground">{formatDate(`${holiday.date}T00:00:00Z`, "weekday")}</p>
+                  </div>
+                  {holiday.fromSync && (
+                    <span className="hidden text-xs text-muted-foreground sm:inline" title="Diambil otomatis dari kalender libur nasional Google">
+                      Otomatis
+                    </span>
+                  )}
+                  <RestoreHolidayButton id={holiday.id} name={holiday.name} fromSync={holiday.fromSync} />
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </section>
     </div>

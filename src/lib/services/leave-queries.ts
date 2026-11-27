@@ -134,6 +134,14 @@ export async function listLeaveRequests(db: PrismaClient, viewer: { role: Role; 
 /** `fromSync` = diambil otomatis dari kalender Google (2026-11-18). */
 export type HolidayView = { id: string; date: string; name: string; isNational: boolean; fromSync: boolean };
 
+const toHolidayView = (h: { id: string; date: Date; name: string; isNational: boolean; source: string }): HolidayView => ({
+  id: h.id,
+  date: toJakartaIsoDate(h.date),
+  name: h.name,
+  isNational: h.isNational,
+  fromSync: h.source === "SYNC",
+});
+
 /** Hari libur dalam rentang (default: 30 hari lalu s/d 13 bulan ke depan untuk pratinjau form). */
 export async function listHolidays(db: PrismaClient, fromIso?: string, toIso?: string): Promise<HolidayView[]> {
   const today = toJakartaIsoDate();
@@ -141,7 +149,19 @@ export async function listHolidays(db: PrismaClient, fromIso?: string, toIso?: s
     where: { deletedAt: null, date: { gte: fromIsoDate(fromIso ?? addDays(today, -30)), lte: fromIsoDate(toIso ?? addDays(today, 400)) } },
     orderBy: { date: "asc" },
   });
-  return holidays.map((h) => ({ id: h.id, date: toJakartaIsoDate(h.date), name: h.name, isNational: h.isNational, fromSync: h.source === "SYNC" }));
+  return holidays.map(toHolidayView);
+}
+
+/**
+ * Libur yang dikeluarkan (dihapus) Admin dalam rentang — bisa dikembalikan (2026-11-27). Libur yang dihapus
+ * sinkronisasi (kalender Google membatalkannya, `removedBySync`) tidak termasuk: itu mengikuti sumbernya.
+ */
+export async function listRemovedHolidays(db: PrismaClient, fromIso: string, toIso: string): Promise<HolidayView[]> {
+  const holidays = await db.holiday.findMany({
+    where: { deletedAt: { not: null }, removedBySync: false, date: { gte: fromIsoDate(fromIso), lte: fromIsoDate(toIso) } },
+    orderBy: { date: "asc" },
+  });
+  return holidays.map(toHolidayView);
 }
 
 export async function getLeaveSettings(db: PrismaClient) {

@@ -108,6 +108,10 @@ services:
       AUTH_TRUST_HOST: ${AUTH_TRUST_HOST:-true}
       APP_URL: ${APP_URL:?isi APP_URL di .env.production}
       CSP_MODE: ${CSP_MODE:-enforce}
+      # Libur nasional (docs/07-DEPLOYMENT.md §4.5): bawaan produksi "browser" — server tanpa internet, browser Admin yang
+      # mengambil dari Google Calendar API memakai API key ini (dibatasi ke alamat aplikasi). Nilai mode sama dengan worker.
+      HOLIDAY_SYNC_MODE: ${HOLIDAY_SYNC_MODE:-browser}
+      GOOGLE_CALENDAR_API_KEY: ${GOOGLE_CALENDAR_API_KEY:-}
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-5}
       DATA_ENCRYPTION_KEYS: ${DATA_ENCRYPTION_KEYS:?isi DATA_ENCRYPTION_KEYS di .env.production (npm run keys:generate)}
@@ -147,11 +151,13 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       MAIL_FROM: ${MAIL_FROM:?isi MAIL_FROM di .env.production}
       APP_URL: ${APP_URL:?isi APP_URL di .env.production}
+      # Sama dengan service app: "browser" = tidak ada jadwal unduh harian, data libur dikirim dari browser Admin.
+      HOLIDAY_SYNC_MODE: ${HOLIDAY_SYNC_MODE:-browser}
       TZ: Asia/Jakarta
     # Job invoice.purge menghapus file invoice > 2 tahun dari volume upload yang sama dengan app (tanpa perlu kunci data).
     volumes:
       - uploads:/app/storage/uploads
-    # egress: kirim email ke server SMTP & unduh kalender libur nasional dari calendar.google.com (tanpa token).
+    # egress: kirim email ke server SMTP (& unduh kalender libur dari calendar.google.com hanya bila HOLIDAY_SYNC_MODE=server).
     networks: [db_net, egress]
     depends_on:
       migrate: { condition: service_completed_successfully }

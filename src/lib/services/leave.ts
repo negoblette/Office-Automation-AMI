@@ -151,6 +151,21 @@ export async function deleteHoliday(db: PrismaClient, actorId: string, holidayId
 }
 
 /**
+ * Kembalikan libur yang dikeluarkan Admin (2026-11-27). Asalnya tidak berubah: libur dari kalender Google (SYNC)
+ * kembali diikuti sinkronisasi — bila sumber mengganti nama / membatalkannya, diterapkan dengan aturan biasa
+ * (konfirmasi 20 jam); libur MANUAL tetap manual. Libur yang dihapus sinkronisasi tidak bisa dikembalikan di sini.
+ */
+export async function restoreHoliday(db: PrismaClient, actorId: string, holidayId: string) {
+  return db.$transaction(async (tx) => {
+    const holiday = await tx.holiday.findUnique({ where: { id: holidayId } });
+    if (!holiday || !holiday.deletedAt) throw new ServiceError("Libur ini sudah tidak ada di daftar yang dikeluarkan — muat ulang halaman");
+    if (holiday.removedBySync) throw new ServiceError("Libur ini dibatalkan kalender Google — tambahkan manual bila kantor tetap libur");
+    const saved = await tx.holiday.update({ where: { id: holidayId }, data: { deletedAt: null } });
+    await logAudit(tx, { actorId, action: "CREATE", entity: "Holiday", entityId: holidayId, before: holiday, after: saved });
+  });
+}
+
+/**
  * Simpan jatah cuti per masa kerja & batas carry over. Berlaku untuk saldo periode BARU;
  * saldo yang sudah terbentuk tidak diubah.
  */

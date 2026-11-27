@@ -9,11 +9,27 @@
 // Isi feed = data luar yang tidak dipercaya: alamat tetap (HTTPS), pengalihan hanya ke *.google.com, batas waktu & ukuran,
 // format & penanda wajib dikenali, tanggal & nama divalidasi. Ada yang aneh → seluruh feed ditolak (tidak ada yang
 // berubah, Admin melihat pesannya), bukan diambil sebagian.
+//
+// Mode browser (2026-11-27, `lib/holidays/mode.ts`): server produksi tanpa internet → browser Admin mengambil kalender
+// yang sama lewat Google Calendar API (`browser-fetch.ts`) dan mengirim acaranya; `holidaysFromBrowserFeeds` memakai
+// validasi & aturan gabung yang sama dengan feed .ics.
 
 export const GOOGLE_HOLIDAY_FEEDS = {
   id: "https://calendar.google.com/calendar/ical/id.indonesian%23holiday%40group.v.calendar.google.com/public/basic.ics",
   en: "https://calendar.google.com/calendar/ical/en.indonesian%23holiday%40group.v.calendar.google.com/public/basic.ics",
 } as const;
+
+/** Id kalender yang sama dengan feed di atas, untuk Google Calendar API (mode browser). */
+export const GOOGLE_HOLIDAY_CALENDARS = {
+  id: "id.indonesian#holiday@group.v.calendar.google.com",
+  en: "en.indonesian#holiday@group.v.calendar.google.com",
+} as const;
+
+/**
+ * Satu acara dari Google Calendar API, diringkas browser Admin (mode browser). Tetap data luar yang tidak dipercaya.
+ * `start` / `end` = tanggal acara seharian (YYYY-MM-DD, `end` = hari SETELAH hari terakhir); null = acara berjam.
+ */
+export type BrowserEvent = { summary: string; description: string; start: string | null; end: string | null };
 
 const TIMEOUT_MS = 15_000;
 const MAX_FEED_CHARS = 1_000_000;
@@ -193,6 +209,29 @@ export async function fetchFeed(url: string): Promise<string> {
     return readLimited(response);
   }
   throw new HolidaySourceError("Kalender Google dialihkan terlalu banyak — dihentikan");
+}
+
+/** Acara Calendar API → bentuk yang sama dengan hasil baca .ics; aturan validasinya sama dengan `toEvents`. */
+function eventsFromBrowser(items: BrowserEvent[]): FeedEvent[] {
+  if (items.length > MAX_EVENTS) throw invalid();
+  return items.flatMap((item) => {
+    if (!item.start) return []; // bukan acara seharian → bukan libur
+    const start = item.start;
+    if (!isRealDate(start)) throw invalid();
+    const end = item.end ?? addDays(start, 1);
+    if (!isRealDate(end)) throw invalid();
+    const days = Math.round((Date.parse(end) - Date.parse(start)) / 86_400_000);
+    if (days < 1 || days > MAX_EVENT_DAYS) throw invalid();
+    const summary = item.summary.trim();
+    if (!summary || summary.length > MAX_NAME_CHARS || hasControlChars(summary)) throw invalid();
+    const marker = item.description.split("\n")[0].trim();
+    return Array.from({ length: days }, (_, index) => ({ date: addDays(start, index), summary, marker }));
+  });
+}
+
+/** Libur dari acara kiriman browser Admin (mode browser) — digabung dengan aturan yang sama seperti feed .ics. */
+export function holidaysFromBrowserFeeds(feeds: { id: BrowserEvent[]; en: BrowserEvent[] }): ExternalHoliday[] {
+  return combineHolidayFeeds(eventsFromBrowser(feeds.id), eventsFromBrowser(feeds.en));
 }
 
 /** Semua libur (nasional & cuti bersama) dari kalender Google, semua tahun yang tersedia, urut tanggal. */

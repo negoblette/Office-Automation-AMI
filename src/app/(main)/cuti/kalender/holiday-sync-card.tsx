@@ -7,9 +7,11 @@ import { useFeedback } from "@/components/shared/feedback";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import type { HolidayChangeKind } from "@/generated/prisma/enums";
+import type { ActionResult } from "@/lib/actions";
 import { formatDate, formatDateTime } from "@/lib/format";
+import { fetchHolidayFeedsInBrowser, GoogleFetchError } from "@/lib/holidays/browser-fetch";
 import type { HolidayChangeView, HolidayRunView, HolidaySyncResult } from "@/lib/services/holiday-sync";
-import { syncHolidaysNowAction } from "../actions";
+import { syncHolidaysFromBrowserAction, syncHolidaysNowAction } from "../actions";
 
 const day = (iso: string) => formatDate(`${iso}T00:00:00Z`, "weekday");
 const shortDay = (iso: string) => formatDate(`${iso}T00:00:00Z`, "short");
@@ -34,18 +36,34 @@ function ChangeLine({ change }: { change: HolidayChangeView }) {
   );
 }
 
+/** Mode browser (server tanpa internet): browser Admin yang mengambil kalender Google. null = mode server. */
+type BrowserSync = { apiKey: string; year: number } | null;
+
 /**
  * Admin: sinkronisasi libur nasional dari kalender Google (2026-11-18) — status terakhir, perubahan yang menunggu
  * konfirmasi, perubahan 30 hari terakhir beserta pengajuan cuti terdampak, dan tombol jalankan sekarang.
+ * Mode browser (2026-11-27): tombol mengambil kalender dari browser ini lalu mengirimnya ke server.
  */
-export function HolidaySyncCard({ status, runs }: { status: HolidaySyncResult | null; runs: HolidayRunView[] }) {
+export function HolidaySyncCard({ status, runs, browserSync }: { status: HolidaySyncResult | null; runs: HolidayRunView[]; browserSync: BrowserSync }) {
   const router = useRouter();
   const { notify } = useFeedback();
   const [pending, startTransition] = useTransition();
 
+  /** Mode browser: ambil dari Google di browser ini, lalu kirim ke server. Error Google → pesan, tidak ada yang dikirim. */
+  const syncFromBrowser = async ({ apiKey, year }: NonNullable<BrowserSync>): Promise<ActionResult> => {
+    if (!apiKey) return { ok: false, error: "API key Google belum dipasang di server — hubungi Tim IT" };
+    let feeds: Awaited<ReturnType<typeof fetchHolidayFeedsInBrowser>>;
+    try {
+      feeds = await fetchHolidayFeedsInBrowser(apiKey, year);
+    } catch (error) {
+      return { ok: false, error: error instanceof GoogleFetchError ? error.message : "Gagal mengambil kalender Google — coba lagi" };
+    }
+    return syncHolidaysFromBrowserAction(feeds);
+  };
+
   const runNow = () =>
     startTransition(async () => {
-      const result = await syncHolidaysNowAction();
+      const result = browserSync ? await syncFromBrowser(browserSync) : await syncHolidaysNowAction();
       if (!result.ok) {
         notify(result.error, "danger");
         return;
@@ -61,10 +79,18 @@ export function HolidaySyncCard({ status, runs }: { status: HolidaySyncResult | 
           <h2 id="holiday-sync-title" className="text-base font-semibold">
             Libur nasional otomatis
           </h2>
-          <p className="text-sm text-muted-foreground">
-            Diambil dari kalender libur nasional Google setiap hari jam 06.00 WIB, untuk sisa tahun ini dan tahun depan. Perubahan (libur dipindah,
-            ditambah, atau dihapus) diterapkan setelah dicek ulang keesokan harinya. Libur yang diisi atau diimpor manual tidak pernah diubah.
-          </p>
+          {browserSync ? (
+            <p className="text-sm text-muted-foreground">
+              Diambil dari kalender libur nasional Google lewat browser Admin (server tidak perlu internet) setiap kali tombol Sinkronkan sekarang
+              ditekan, untuk sisa tahun ini dan tahun depan. Perubahan (libur dipindah, ditambah, atau dihapus) diterapkan bila masih sama saat
+              disinkronkan lagi minimal 20 jam kemudian. Libur yang diisi atau diimpor manual tidak pernah diubah.
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Diambil dari kalender libur nasional Google setiap hari jam 06.00 WIB, untuk sisa tahun ini dan tahun depan. Perubahan (libur dipindah,
+              ditambah, atau dihapus) diterapkan setelah dicek ulang keesokan harinya. Libur yang diisi atau diimpor manual tidak pernah diubah.
+            </p>
+          )}
         </div>
         <Button variant="outline" disabled={pending} onClick={runNow}>
           {pending ? <Loader2 className="animate-spin" aria-hidden /> : <RefreshCw aria-hidden />} Sinkronkan sekarang
@@ -87,7 +113,11 @@ export function HolidaySyncCard({ status, runs }: { status: HolidaySyncResult | 
           {status.pending.length > 0 && (
             <div className="rounded-xl bg-amber-soft px-4 py-3 text-amber-deep">
               <p className="font-semibold">Menunggu konfirmasi ({status.pending.length})</p>
-              <p className="mb-2 text-xs">Diterapkan pada cek berikutnya bila sumber masih sama; batal bila berubah lagi.</p>
+              <p className="mb-2 text-xs">
+                {browserSync
+                  ? "Diterapkan saat Sinkronkan sekarang ditekan lagi setelah waktu di bawah, bila sumber masih sama; batal bila berubah lagi."
+                  : "Diterapkan pada cek berikutnya bila sumber masih sama; batal bila berubah lagi."}
+              </p>
               <ul className="flex flex-col gap-1.5">
                 {status.pending.map((change) => (
                   <li key={`${change.kind}-${change.date}`}>

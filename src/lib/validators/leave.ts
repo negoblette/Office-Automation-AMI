@@ -52,6 +52,31 @@ export const holidayNotifyUsersSchema = z.object({
 });
 export type HolidayNotifyUsersInput = z.infer<typeof holidayNotifyUsersSchema>;
 
+// Sinkronisasi libur mode browser (2026-11-27, server produksi tanpa internet): acara kalender Google dikirim browser
+// Admin = data luar — ukurannya dibatasi di sini, isinya divalidasi `holidaysFromBrowserFeeds` (lib/holidays/google-calendar).
+const browserEventSchema = z.object({
+  summary: z.string().max(300),
+  description: z.string().max(2_000),
+  start: z.string().max(10).nullable(),
+  end: z.string().max(10).nullable(),
+});
+export const browserHolidayFeedsSchema = z.object({
+  id: z.array(browserEventSchema).max(2_000),
+  en: z.array(browserEventSchema).max(2_000),
+});
+
+/** Libur hasil olahan yang dititipkan ke job `holiday.sync` (mode browser) — dicek ulang di worker sebelum dipakai. */
+export const externalHolidaysSchema = z
+  .array(
+    z.object({
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      name: z.string().min(1).max(150),
+      kind: z.enum(["NATIONAL", "CUTI_BERSAMA"]),
+      tentative: z.boolean(),
+    }),
+  )
+  .max(2_000);
+
 /** Parse teks impor; mengembalikan baris valid dan nomor baris yang tidak valid. */
 export function parseHolidayLines(text: string) {
   const holidays: { date: string; name: string }[] = [];

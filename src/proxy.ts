@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import { authConfig, isPublicPath } from "@/lib/auth/config";
+import { GOOGLE_CALENDAR_API_CSP, holidaySyncMode } from "@/lib/holidays/mode";
 import { buildCsp, cspHeaderName } from "@/lib/security/csp";
 
 // Dijalankan sebelum setiap halaman:
@@ -21,7 +22,8 @@ export default auth((request) => {
 
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const headerName = cspHeaderName();
-  const policy = buildCsp(nonce, process.env.NODE_ENV === "development");
+  // Mode browser sinkronisasi libur (2026-11-27): browser Admin boleh menghubungi Google Calendar API (path itu saja).
+  const policy = buildCsp(nonce, process.env.NODE_ENV === "development", holidaySyncMode() === "browser" ? [GOOGLE_CALENDAR_API_CSP] : []);
 
   // Header di request dibaca Next.js untuk memasang nonce di script-nya; header di response untuk browser.
   const requestHeaders = new Headers(request.headers);

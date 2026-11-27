@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, Trash2, Upload } from "lucide-react";
+import { Loader2, RotateCcw, Trash2, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { FormProvider, useForm, useWatch } from "react-hook-form";
@@ -12,7 +12,7 @@ import { useActionSubmit } from "@/components/form/use-action-submit";
 import { useFeedback } from "@/components/shared/feedback";
 import { Button } from "@/components/ui/button";
 import { holidayImportSchema, holidaySchema } from "@/lib/validators/leave";
-import { addHolidayAction, deleteHolidayAction, importHolidaysAction } from "../actions";
+import { addHolidayAction, deleteHolidayAction, importHolidaysAction, restoreHolidayAction } from "../actions";
 
 function NationalToggle({ value, onChange }: { value: boolean; onChange: (value: boolean) => void }) {
   return (
@@ -118,7 +118,12 @@ export function DeleteHolidayButton({ id, name }: { id: string; name: string }) 
       disabled={pending}
       aria-label={`Hapus ${name}`}
       onClick={async () => {
-        const ok = await confirm({ title: `Hapus hari libur "${name}"?`, description: "Tanggal ini dihitung sebagai hari kerja lagi.", confirmLabel: "Hapus", tone: "danger" });
+        const ok = await confirm({
+          title: `Hapus hari libur "${name}"?`,
+          description: 'Tanggal ini dihitung sebagai hari kerja lagi. Bisa dikembalikan dari daftar "Dikeluarkan" di bawah daftar libur.',
+          confirmLabel: "Hapus",
+          tone: "danger",
+        });
         if (!ok) return;
         startTransition(async () => {
           const result = await deleteHolidayAction(id);
@@ -130,6 +135,40 @@ export function DeleteHolidayButton({ id, name }: { id: string; name: string }) 
       }}
     >
       {pending ? <Loader2 className="animate-spin" aria-hidden /> : <Trash2 />}
+    </Button>
+  );
+}
+
+/** Kembalikan libur yang dikeluarkan Admin (2026-11-27). */
+export function RestoreHolidayButton({ id, name, fromSync }: { id: string; name: string; fromSync: boolean }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const { confirm, notify } = useFeedback();
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={pending}
+      aria-label={`Kembalikan ${name}`}
+      onClick={async () => {
+        const ok = await confirm({
+          title: `Kembalikan hari libur "${name}"?`,
+          description: fromSync
+            ? "Tanggal ini dihitung sebagai hari libur lagi dan kembali mengikuti kalender Google (bila Google mengganti nama / membatalkannya, ikut berubah)."
+            : "Tanggal ini dihitung sebagai hari libur lagi.",
+          confirmLabel: "Kembalikan",
+        });
+        if (!ok) return;
+        startTransition(async () => {
+          const result = await restoreHolidayAction(id);
+          if (result.ok) {
+            notify(`Hari libur "${name}" dikembalikan`);
+            router.refresh();
+          } else notify(result.error, "danger");
+        });
+      }}
+    >
+      {pending ? <Loader2 className="animate-spin" aria-hidden /> : <RotateCcw aria-hidden />} Kembalikan
     </Button>
   );
 }

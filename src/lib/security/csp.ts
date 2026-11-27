@@ -7,15 +7,18 @@
  *   yang dimuat script tersebut. Dev butuh 'unsafe-eval' untuk debugging React.
  * - style: 'unsafe-inline' karena banyak atribut `style={…}` (nonce tidak berlaku untuk atribut).
  * - sumber lain hanya dari domain sendiri; font `next/font` sudah disajikan dari server sendiri.
+ * - `extraConnect`: alamat luar tambahan yang boleh dihubungi `fetch` browser — saat ini hanya path Google Calendar API
+ *   untuk sinkronisasi libur mode browser (2026-11-27, `lib/holidays/mode.ts`). Berlaku di semua halaman karena
+ *   perpindahan halaman Next.js tidak memuat ulang dokumen (CSP halaman pertama yang dibuka yang berlaku).
  */
-export function buildCsp(nonce: string, isDev: boolean): string {
+export function buildCsp(nonce: string, isDev: boolean, extraConnect: readonly string[] = []): string {
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' blob: data:",
     "font-src 'self'",
-    "connect-src 'self'",
+    ["connect-src 'self'", ...extraConnect].join(" "),
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

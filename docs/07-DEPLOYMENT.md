@@ -319,31 +319,83 @@ aplikasi mulai dipakai.
   (biasanya sudah otomatis bila memakai Google Workspace / Microsoft 365).
 - Akun SMTP dicatat di pengelola password Tim IT (§4.3), bukan di dokumen ini.
 
-### 4.5 Libur nasional otomatis (kalender publik Google — tanpa token)
-> **Singkatnya:** Kalender Libur mengikuti kalender publik Google "Hari Libur di Indonesia" (mengikuti SKB) **setiap
-> hari jam 06.00 WIB**, untuk sisa tahun ini dan tahun depan. Tidak perlu daftar atau token — Tim IT cukup memastikan
-> `worker` berjalan dan server boleh keluar ke `https://calendar.google.com`.
+### 4.5 Libur nasional otomatis (kalender publik Google)
+> **Singkatnya:** Kalender Libur mengikuti kalender publik Google "Hari Libur di Indonesia" (mengikuti SKB), untuk sisa
+> tahun ini dan tahun depan. Server produksi **tidak punya akses internet**, jadi dipakai **mode browser**
+> (`HOLIDAY_SYNC_MODE=browser`, bawaan `docker-compose.prod.yml`): saat Admin menekan **Sinkronkan sekarang**, browser
+> Admin yang mengambil data dari Google lalu mengirimnya ke server. Server & worker tidak pernah menghubungi internet.
+> Tim IT cukup memasang satu API key Google Calendar (langkah di bawah) dan memastikan `worker` berjalan.
+
+| Mode | Siapa yang mengambil dari Google | Jadwal | Syarat |
+|---|---|---|---|
+| `browser` (produksi) | Browser Admin, lewat Google Calendar API | Setiap kali Admin menekan **Sinkronkan sekarang** | API key; komputer Admin bisa membuka internet **dan** aplikasi sekaligus |
+| `server` (dev) | Worker, lewat feed `.ics` `calendar.google.com` | Setiap hari 06.00 WIB + tombol Admin | Server boleh keluar ke `https://calendar.google.com` |
+
+**Membuat API key (mode browser, sekali saja — Tim IT):**
+
+Google Calendar API **gratis** (hanya ada batas kuota; terlewati = ditolak sementara, tidak ditagih). Tidak perlu
+mengaktifkan billing / *Free trial* (tidak perlu kartu kredit).
+
+1. Buka <https://console.cloud.google.com> dengan akun Google kantor → buat project baru, mis. "OA AMI Kalender".
+2. **APIs & Services → Library** → cari **Google Calendar API** (bukan Calendar MCP / CalDAV API) → **Enable**.
+3. **APIs & Services → Credentials → + Create credentials → API key** (bukan *Help me choose*, *OAuth client*, atau
+   *Service account*). Di form **Create API key** (atau **Edit API key** bila key langsung jadi):
+   - **Name:** bebas, mis. "OA Kalender Libur".
+   - *Authenticate API calls through a service account* (bila ada): **jangan dicentang**.
+   - **API restrictions:** *Restrict key* → **Google Calendar API** saja.
+   - **Application restrictions:** *Websites* → **Add** dua alamat (keduanya; centang di tabel tidak perlu — centang hanya
+     untuk menghapus):
+     - `https://<APP_DOMAIN>/*`
+     - `<APP_DOMAIN>/*`
+
+     `<APP_DOMAIN>` = alamat aplikasi, sama dengan `APP_URL` tanpa `https://` (domain atau IP). Uji dev 2026-11-27: dengan
+     format pertama saja Google menolak (403), setelah format kedua ditambahkan berhasil (penyebab pastinya — format atau
+     jeda berlaku — belum diketahui), jadi isi keduanya.
+   - **Create / Save**. Pengaturan baru berlaku **sampai 5 menit** kemudian.
+4. Isi di `.env.production`: `HOLIDAY_SYNC_MODE="browser"` dan `GOOGLE_CALENDAR_API_KEY="<key>"`, lalu
+   `dc up -d app worker`.
+5. Setelah ≥ 5 menit, uji seperti langkah 3 "Langkah setelah deploy" di bawah, **termasuk uji pembatasan**.
+
+Catatan keamanan: API key ini **terlihat di browser Admin** (memang begitu cara kerja Google Calendar API dari browser) —
+karena itu wajib dibatasi seperti langkah 3; data yang dibaca hanya kalender libur publik. Simpan key di pengelola
+password Tim IT, jangan dikirim lewat chat / email. Bila bocor: buat key baru, ganti di `.env.production`, hapus key lama.
+Aplikasi hanya mengizinkan browser menghubungi `https://www.googleapis.com/calendar/v3/calendars/` (Content Security
+Policy), bukan alamat Google lain.
 
 **Cara kerja (untuk Tim IT & Admin):**
 - Tahun yang belum pernah disinkronkan → libur nasional langsung masuk (impor awal).
 - Setelah itu setiap perubahan (libur dipindah / ditambah / dihapus / nama berubah, mis. "(belum pasti)" hilang setelah SKB
-  final) **dicek ulang keesokan harinya**: diterapkan bila sumber masih sama, dibatalkan bila berubah lagi.
+  final) **dicek ulang keesokan harinya**: diterapkan bila sumber masih sama, dibatalkan bila berubah lagi. Mode browser:
+  "dicek ulang" = Admin menekan **Sinkronkan sekarang** lagi minimal 20 jam kemudian (kartu menampilkan "Paling cepat …").
 - Libur yang diisi / diimpor manual oleh Admin (termasuk libur Kantor) dan libur yang dihapus Admin **tidak pernah diubah**.
   Hari ini & tanggal lampau tidak diubah. Cuti bersama tidak diambil (kebijakan HR).
+- Libur yang dihapus Admin tampil di **Dikeluarkan dari {tahun}** (di bawah daftar libur, hanya Admin) dan bisa
+  **Dikembalikan**. Libur "Otomatis" yang dikembalikan kembali mengikuti Google; libur manual tetap manual. Libur yang
+  dibatalkan Google (dihapus sinkronisasi) tidak ada di daftar itu — tambahkan manual bila kantor tetap libur.
 - Lebih dari 6 perubahan sekaligus → **ditahan** (kemungkinan sumber sedang salah); Admin diberi tahu.
 - Setiap perubahan yang diterapkan dikirim (email + lonceng) ke **penerima notifikasi** — diatur Admin di **Setting →
   Jatah Cuti → Notifikasi perubahan libur** (keputusan: Ci Ika (HR) & Ko Rudy (Direktur); kosong = semua Admin) —
   beserta pengajuan cuti yang hari kerjanya ikut berubah. **Saldo cuti tidak dikoreksi otomatis**; HR menyesuaikannya.
 
 **Langkah setelah deploy:**
-1. `dc logs --tail 20 worker` — baris "siap" harus menyebut `holiday.sync (06:00 WIB …)`.
+1. `dc logs --tail 20 worker` — baris "siap" harus menyebut `holiday.sync (mode browser — tombol Admin)` (mode server:
+   `holiday.sync (06:00 WIB …)`).
 2. Admin membuka **Setting → Jatah Cuti** → **Atur Penerima** → pilih Ci Ika & Ko Rudy → Simpan.
-3. Admin membuka **Cuti → Kalender Libur** → **Sinkronkan sekarang**. Dalam beberapa detik kartu "Libur nasional
-   otomatis" menampilkan hasilnya; libur bertanda "Otomatis" muncul di daftar.
+3. Admin membuka **Cuti → Kalender Libur** dari komputer kantor yang bisa membuka internet → **Sinkronkan sekarang**.
+   Dalam beberapa detik kartu "Libur nasional otomatis" menampilkan hasilnya; libur bertanda "Otomatis" muncul di daftar.
+   **Uji pembatasan API key (mode browser, Tim IT):** sebelum klik, tekan F12 → tab **Network** → filter `googleapis`.
+   Setelah klik harus ada 2 request `events?key=…` berstatus **200**. Lalu klik kanan salah satunya → **Open in new tab**:
+   Google harus **menolak (403)**, karena dibuka di luar aplikasi. Bila justru tampil data (`"items"`), pembatasan Websites
+   belum berlaku — tunggu 5 menit, ulangi. Tutup tab itu (alamatnya memuat key); jangan screenshot alamat yang memuat key.
+4. Mode browser: Admin menekan **Sinkronkan sekarang** secara berkala (mis. sebulan sekali, dan setelah SKB libur tahun
+   depan terbit), serta sekali lagi ≥ 20 jam kemudian bila kartu menampilkan "Menunggu konfirmasi".
 
-| Pesan di kartu | Arti | Tindakan |
+| Pesan | Arti | Tindakan |
 |---|---|---|
-| "Kalender Google tidak bisa dihubungi" | Server tidak bisa ke internet / Google sedang gangguan | Cek koneksi keluar server ke `calendar.google.com:443`; dicoba lagi otomatis besok |
+| "Komputer ini tidak bisa menghubungi Google …" (mode browser) | Komputer Admin tidak bisa membuka internet | Pakai komputer lain yang bisa membuka internet & aplikasi sekaligus |
+| "Google menolak permintaan (API key …)" (mode browser) | API key salah / pembatasannya tidak cocok dengan alamat aplikasi / pengaturan baru belum berlaku | Tunggu 5 menit setelah Save. Cek `GOOGLE_CALENDAR_API_KEY`, dan Websites berisi **kedua** format (langkah 3). Detail: F12 → Network → request `events…` → tab **Response** → `"message"` |
+| "API key Google belum dipasang di server" (mode browser) | `GOOGLE_CALENDAR_API_KEY` kosong | Isi `.env.production`, lalu `dc up -d app` |
+| "Kalender Google tidak bisa dihubungi" (mode server) | Server tidak bisa ke internet / Google sedang gangguan | Server produksi tanpa internet → pakai mode browser; selain itu cek koneksi keluar ke `calendar.google.com:443` |
 | "Format penanda kalender Google berubah" / "Isi kalender Google tidak wajar" | Google mengubah format feed | Tidak ada yang berubah. Isi libur manual (Impor) sementara, lapor ke pengembang |
 | "Kalender Google bahasa Indonesia & Inggris sedang tidak sama" | Google sedang memperbarui salah satu feed | Normal, dicoba lagi besok |
 | "{tahun}: belum tersedia" | Google belum memuat tahun itu (SKB belum terbit) | Normal — masuk otomatis begitu tersedia |
@@ -1025,6 +1077,7 @@ Isi template di bawah dengan tangan atau salin ke dokumen terpisah, lalu simpan 
 | 1.0 | 2026-10-21 | Versi pertama: persiapan server, konfigurasi, deploy, kunci pemulihan lewat aplikasi, salinan backup ke luar server (NAS / cloud / HDD), pekerjaan rutin, update, pemulihan, troubleshooting, checklist go-live |
 | 1.1 | 2026-10-21 | Versi lengkap: firewall server (UFW) dihapus atas keputusan pemilik project, diganti §3.3 "Pintu yang terbuka di server"; bab 13 gladi resik rinci (18 uji), go-live, dan serah terima ke Tim IT; lampiran template berita acara & Lembar Data Instalasi |
 | 1.2 | 2026-10-22 | Hasil gladi resik emulasi 18/18 lulus (§13.6); update memakai `--force-recreate` (§9); pemulihan: tunggu prompt `Enter passphrase:` (§10.2) |
+| 1.6 | 2026-11-27 | §4.5 libur nasional: mode browser untuk server tanpa internet (API key Google Calendar, dua format alamat Websites, uji pembatasan), daftar libur "Dikeluarkan" yang bisa dikembalikan |
 | 1.5 | 2026-10-29 | Akses lewat alamat IP tanpa domain: `APP_DOMAIN` boleh berisi IP, sertifikat §5 pilihan C |
 | 1.4 | 2026-10-29 | Seed produksi hanya akun Admin sistem (`SEED_ADMIN_EMAIL`) + aturan cuti; data aktual diisi Admin dengan urutan di §6.4. Uji pasang di **Ubuntu 24.04.5 LTS** (Docker Engine 29.9 dari repository resmi, kode setara `git clone`): §3.2–§6.3, backup (§6.6), update (§9), dan restart Docker — lulus |
 | 1.3 | 2026-10-28 | Uji pra-deploy lokal dengan kode terbaru (build image, stack lengkap, seed, health, login: lulus). Seed produksi tanpa staf contoh Andi & Sinta (`SEED_SAMPLE_STAFF`, §6.2); Admin membetulkan email, tanggal masuk & saldo cuti akun awal (§6.4); troubleshooting file `.sh` CRLF (§12) |
